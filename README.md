@@ -13,7 +13,7 @@ Status: SVG plotting works end to end on real hardware. The photo-to-pen-paths c
 ## Setup
 
 ```
-pip install pyserial
+pip install -r requirements.txt
 python3 tools/ebb_check.py          # finds the EBB (04d8:fd92) and prints its firmware version, read-only
 python3 tools/wcb_setup.py          # guided servo + axis + steps/mm calibration; writes results/*.json
 ```
@@ -41,3 +41,7 @@ Slow, bounded moves only (no single move over 3000 steps), but nothing here can 
 - `tools/` driver, calibration and check scripts (stdlib + pyserial)
 - `config/machine.json` calibration baseline (40 steps/mm at 1/16 microstepping on the author's unit; measure your own)
 - `research/image-conversion.md` survey of image-to-pen-path methods, papers and repos
+
+## License
+
+MIT, see `LICENSE`.
