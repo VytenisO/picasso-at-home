@@ -1,0 +1,11 @@
+{
+  "measured": "2026-11-16",
+  "firmware": "EBB 2.0.1 (no QM/QS/ES)",
+  "microstep": "EM,1,1 (1/16)",
+  "steps_per_mm": {"x": 40.0, "y": 40.0},
+  "steps_per_inch": 1016,
+  "axis": {"x": {"ebb_axis": 1, "sign": 1}, "y": {"ebb_axis": 2, "sign": 1}},
+  "servo": {"pen_up": 14000, "pen_down": 13040},
+  "travel_mm": {"x": 368.0, "y": 227.5},
+  "notes": "Calibration from a single 2000-step line per axis measured at 50 mm by ruler (+/-1 mm, i.e. +/-2%); return dot coincided with start. Refine with a longer line."
+}
