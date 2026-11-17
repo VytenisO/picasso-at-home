@@ -16,6 +16,10 @@ export function initLibrary() {
   input.onchange = () => { if (input.files[0]) choose(input.files[0]); input.value = ''; };
   $('convCancel').onclick = () => { pending = null; $('convBox').hidden = true; };
   $('convPreviewBtn').onclick = convPreview;
+  let t = null;
+  $('convForm').addEventListener('change', () => {
+    if (pending && pending.conv.previewable) { clearTimeout(t); t = setTimeout(convPreview, 400); }
+  });
   $('convAddBtn').onclick = convAdd;
   $('taPreview').onclick = () => textArt(false);
   $('taAdd').onclick = () => textArt(true);
@@ -37,6 +41,7 @@ function choose(file) {
   $('convHelp').textContent = conv.help || '';
   schemaForm($('convForm'), conv.params, state.me.pens);
   $('convImg').hidden = true;
+  $('convMask').hidden = true;
   $('convStats').textContent = '';
   $('convPreviewBtn').hidden = !conv.previewable;
   if (conv.previewable) convPreview();
@@ -56,6 +61,9 @@ async function convPreview() {
     const img = $('convImg');
     img.src = URL.createObjectURL(new Blob([r.svg], { type: 'image/svg+xml' }));
     img.hidden = false;
+    const mask = $('convMask');
+    mask.hidden = !r.mask;
+    if (r.mask) mask.src = 'data:image/png;base64,' + r.mask;
     const s = r.stats || {};
     $('convStats').textContent = [s.paths !== undefined ? `${s.paths} paths` : '', s.points !== undefined ? `${s.points} points` : '',
       s.width_mm ? `${Number(s.width_mm).toFixed(0)} x ${Number(s.height_mm || 0).toFixed(0)} mm` : ''].filter(Boolean).join(', ');
