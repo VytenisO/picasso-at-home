@@ -7,7 +7,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/robotlab/picasso-at-home
-# Optional: PLOTTER_WEB_PASSWORD, PLOTTER_WEB_HOST, PLOTTER_WEB_PORT.
+# Optional: PLOTTER_WEB_PASSWORD, PLOTTER_WEB_HOST, PLOTTER_WEB_PORT,
+# PLOTTER_WEB_SIM=1 (simulator: no hardware is ever touched).
+# Stopping the service stops a running job first (pen up, motors off); allow time for it.
+TimeoutStopSec=90
 # Note: if the user was added to dialout after login, re-login/reboot is needed
 # for the user manager to pick up the new group.
 # "-": ignore if the file does not exist (then the server generates a password).

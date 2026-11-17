@@ -276,6 +276,35 @@ class TestApi(SimServer):
         st = self.wait_state(("complete", "stopped"))
         self.assertEqual(st["job"]["kind"], "pentest")
 
+    def test_12_trace_refuses_pause_and_return(self):
+        fid = self.upload("many_strokes.svg")
+        d = self.preview(fid)
+        code, r = self.call("POST", "/api/job/start", {"id": fid, "settings": d["settings"], "plan_id": d["plan_id"],
+                                                      "mode": "trace", "confirm": {"parked": True}})
+        self.assertEqual(code, 200, r)
+        self.wait_state(("running", "complete"))
+        code, r2 = self.call("POST", "/api/job/pause", {"job": r["job"]})
+        self.assertEqual(code, 409)
+        code, r2 = self.call("POST", "/api/job/return", {"job": r["job"]})
+        self.assertEqual(code, 409)
+        st = self.wait_state(("complete",))
+        self.assertEqual(st["position"]["state"], "at_start")
+
+    def test_13_plan_inputs_are_staged(self):
+        fid = self.upload("two_layers.svg")
+        d = self.preview(fid)
+        plan = self.app.plan_dir / d["plan_id"]
+        for name in ("drawing.svg", "machine.json", "layers.json"):
+            self.assertTrue((plan / name).is_file(), name)
+        # editing the stored drawing after the preview makes the plan stale
+        e = self.app.lib.get(fid)
+        p = self.app.lib.path(e)
+        p.write_text(p.read_text().replace('width="40"', 'width="41"'))
+        code, r = self.call("POST", "/api/job/start", {"id": fid, "settings": d["settings"], "plan_id": d["plan_id"],
+                                                      "mode": "plot", "confirm": {"parked": True}})
+        self.assertEqual(code, 409)
+        self.assertIn("changed since the preview", r["error"])
+
     def test_11_one_job_at_a_time(self):
         fid = self.upload("many_strokes.svg")
         d = self.preview(fid)
