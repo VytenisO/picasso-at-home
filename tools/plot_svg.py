@@ -17,6 +17,16 @@ is toward you. Calibration comes from ../config/machine.json.
 
 Ctrl-C is the software e-stop: it raises the pen and releases the motors. Firmware 2.0.1
 cannot stop a move already sent, so cutting power is the only instant stop.
+
+Web UI flags (opt-in; without them the behaviour above is unchanged):
+  --control           read commands from stdin, one per line: CONTINUE (resume a pause),
+                      PAUSE (at the end of the current stroke: pen up, motors stay on),
+                      STOP (same cleanup as Ctrl-C, before the next command is sent), RETURN
+                      (at the end of the current stroke: travel back to S, then release).
+                      End of input counts as STOP. With --sim the pen-swap pause waits too.
+  --sim-speed F       with --sim, also sleep in real time at F x speed (watchable runs)
+  --preview-json FILE dry run: write the plotted strokes in machine mm and the summary
+  --layers FILE       per ink layer (JSON list, in layer order): enabled, speed, pressure, pen
 Supported SVG: path (M L H V C S Q T Z, no arcs), line, polyline, polygon, rect, circle,
 ellipse, and translate/scale/rotate/skew/matrix transforms. Text is outlined via
 tools/svg_vector.py at upload time (or here when fonttools is available). Other unknown
@@ -27,9 +37,11 @@ import datetime
 import json
 import math
 import pathlib
+import queue
 import re
 import signal
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 
@@ -115,6 +127,11 @@ def color_label(key):
     return layer or INK_NAMES.get(color) or color or "Ink"
 
 
+def layer_key(key):
+    """Stable text id of an ink layer: 'colour|inkscape layer'."""
+    return f"{key[0] or ''}|{key[1] or ''}"
+
+
 def color_groups(metas):
     """Group stroke indices by ink, in order of first appearance."""
     groups, by_key = [], {}
@@ -127,18 +144,94 @@ def color_groups(metas):
     return groups
 
 
-def pause_for_swap(key, a):
-    """Tell the operator (and the web UI) to change pens, then wait for CONTINUE."""
-    info = {"color": key[0], "layer": key[1], "label": color_label(key)}
+class Control:
+    """--control: commands on stdin, one per line. A reader thread sets flags; the plot loop polls them.
+    STOP is honoured before the next SM/SP is sent; PAUSE and RETURN at the end of the current stroke.
+    End of input (the web server went away) counts as STOP."""
+
+    def __init__(self, stream=None):
+        self.lines = queue.Queue()
+        self.stop = threading.Event()
+        self.pause = threading.Event()
+        self.ret = threading.Event()
+        self.paused_s = 0.0          # real seconds spent waiting, kept out of the ETA
+        self.stream = stream or sys.stdin
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        try:
+            for raw in self.stream:
+                word = raw.strip().upper()
+                if word == "STOP":
+                    self.stop.set()
+                elif word == "PAUSE":
+                    self.pause.set()
+                elif word == "RETURN":
+                    self.ret.set()
+                self.lines.put(word)
+        finally:
+            self.stop.set()
+            self.lines.put(None)
+
+    def check_stop(self):
+        if self.stop.is_set():
+            raise KeyboardInterrupt()
+
+    def readline(self, prompt):
+        print(prompt, flush=True)
+        word = self.lines.get()
+        if word is None:
+            raise EOFError
+        return word
+
+    def wait_continue(self):
+        """Block until CONTINUE (-> True) or RETURN (-> False); STOP or end of input raises KeyboardInterrupt."""
+        while True:
+            try:
+                if self.lines.get_nowait() is None:
+                    self.lines.put(None)
+                    break
+            except queue.Empty:
+                break
+        t0 = time.monotonic()
+        try:
+            while True:
+                self.check_stop()
+                if self.ret.is_set():
+                    return False
+                try:
+                    word = self.lines.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if word == "CONTINUE":
+                    self.pause.clear()
+                    return True
+        finally:
+            self.paused_s += time.monotonic() - t0
+
+
+def pause_for_swap(key, a, ctl=None, extra=None):
+    """Tell the operator (and the web UI) to change pens, then wait for CONTINUE.
+    -> False if the operator asked to return to S instead."""
+    info = {"kind": "swap", "color": key[0], "layer": key[1], "label": color_label(key)}
+    info.update(extra or {})
     log("")
-    log(f"*** PEN CHANGE: swap to {color_label(key)} ***")
+    pen = f" (pen: {info['pen']})" if info.get("pen") else ""
+    log(f"*** PEN CHANGE: swap to {color_label(key)}{pen} ***")
     print("__PAUSE__:" + json.dumps(info), flush=True)
+    if ctl:
+        log("Waiting for CONTINUE (pen up, motors on: do not push the carriage).")
+        go = ctl.wait_continue()
+        if go:
+            print("__RESUMED__:{}", flush=True)
+        return go
     if a.sim:
-        return
+        return True
     try:
         input("Pen swapped? Type CONTINUE to resume: ")
     except EOFError:
         raise SystemExit("input closed while waiting for a pen swap")
+    return True
 
 
 # --------------------------------------------------------------- SVG transforms
@@ -469,6 +562,8 @@ class Plotter:
         self.last_track = 0.0
         self.pen_state = True
         self.ser = None
+        self.ctl = getattr(args, "ctl", None)
+        self.sim_speed = getattr(args, "sim_speed", None) or 0.0
         if not self.sim:
             port = args.port
             if not port:
@@ -486,6 +581,8 @@ class Plotter:
             return
         if self.sim:
             self.vt += s
+            if self.sim_speed > 0:
+                time.sleep(s / self.sim_speed)
         else:
             time.sleep(s)
 
@@ -541,6 +638,8 @@ class Plotter:
             self.down = val
 
     def pen(self, up, delay=250):
+        if self.ctl:
+            self.ctl.check_stop()
         self.idle()
         self.pen_state = up
         self.cmd(f"SP,{1 if up else 0},{delay}")
@@ -563,6 +662,8 @@ class Plotter:
         wait = self.t_end - self.now() - LEAD
         if wait > 0:
             self.sleep(wait)
+        if self.ctl:
+            self.ctl.check_stop()   # nothing new is sent after STOP; the move in flight still runs out
         self.cmd(f"SM,{ms},{a1},{a2}", timeout=ms / 1000 + 3)
         self.t_end = max(self.t_end, self.now()) + ms / 1000
         self.sent[0] += a1
@@ -595,20 +696,27 @@ def to_steps(pt, spmm):
     return round(pt[0] * spmm[0]), round(pt[1] * spmm[1])
 
 
-def estimate(strokes, spmm, draw_v, trav_v, pen_s):
+def estimate(strokes, spmm, draw_v, trav_v, pen_s, speeds=None, per_stroke=None):
+    """-> drawing mm, travel mm, pen lifts, seconds. speeds: optional per-stroke drawing speed.
+    per_stroke: optional list that receives each stroke's estimated seconds (travel to it + draw + lifts)."""
     t = 0.0
     dist_d = dist_t = 0.0
     cur = (0.0, 0.0)
-    for s in strokes:
+    for i, s in enumerate(strokes):
         d = math.dist(cur, s[0])
         dist_t += d
-        for a, b in zip(s, s[1:]):
-            dist_d += math.dist(a, b)
+        sd = sum(math.dist(a, b) for a, b in zip(s, s[1:]))
+        dist_d += sd
+        v = speeds[i] if speeds else draw_v
+        st = sd / v + d / trav_v + 2 * pen_s
+        t += st
+        if per_stroke is not None:
+            per_stroke.append(st)
         cur = s[-1]
-    dist_t += math.dist(cur, (0.0, 0.0))
-    lifts = len(strokes)
-    t = dist_d / draw_v + dist_t / trav_v + lifts * 2 * pen_s
-    return dist_d, dist_t, lifts, t
+    back = math.dist(cur, (0.0, 0.0))
+    dist_t += back
+    t += back / trav_v
+    return dist_d, dist_t, len(strokes), t
 
 
 def fmt(sec):
@@ -649,7 +757,14 @@ def main():
     ap.add_argument("--pen-up", type=int, help="override servo pen-up value")
     ap.add_argument("--ignore-unsupported", action="store_true")
     ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web live tracker")
+    ap.add_argument("--control", action="store_true", help="read CONTINUE/PAUSE/STOP/RETURN from stdin (web UI)")
+    ap.add_argument("--sim-speed", type=float, help="with --sim: also run in real time at this speed factor")
+    ap.add_argument("--preview-json", help="dry run: write the plotted strokes (machine mm) and summary here")
+    ap.add_argument("--layers", help="JSON file: per ink layer settings (enabled, speed, pressure, pen)")
     a = ap.parse_args()
+    if a.sim_speed is not None and not (a.sim and 0 < a.sim_speed <= 1000):
+        sys.exit("--sim-speed needs --sim and a factor in (0, 1000]")
+    a.ctl = Control() if a.control else None
 
     def _sigterm(signum, frame):
         raise KeyboardInterrupt()   # run the same pen-up/motors-off cleanup as Ctrl-C
@@ -725,6 +840,38 @@ def main():
     if not strokes:
         sys.exit("no drawable geometry found")
     groups = color_groups(metas)
+    # Per-layer settings (web UI). Placement below uses ALL strokes, so switching a layer off never moves
+    # the others; disabled layers are dropped from the plot afterwards.
+    lset = [{} for _ in groups]
+    if a.layers:
+        raw_l = json.loads(pathlib.Path(a.layers).read_text())
+        if not isinstance(raw_l, list) or len(raw_l) > len(groups):
+            sys.exit(f"--layers must be a JSON list with at most {len(groups)} entries (one per ink layer)")
+        for gi, ent in enumerate(raw_l):
+            ent = ent or {}
+            sp_l, pr_l, pen_l = ent.get("speed"), ent.get("pressure"), ent.get("pen")
+            if sp_l is not None and not (0 < float(sp_l) <= MAX_SPEED):
+                sys.exit(f"layer {gi + 1}: speed must be in (0, {MAX_SPEED}] mm/s")
+            if pr_l is not None and not (0.0 <= float(pr_l) <= MAX_PRESSURE):
+                sys.exit(f"layer {gi + 1}: pressure must be in 0..{MAX_PRESSURE}")
+            if pen_l is not None and (not isinstance(pen_l, str) or len(pen_l) > 60):
+                sys.exit(f"layer {gi + 1}: pen must be a short name")
+            want = ent.get("key")
+            if want is not None and want != layer_key(groups[gi][0]):
+                sys.exit(f"layer {gi + 1}: settings are for {want!r} but this layer is {layer_key(groups[gi][0])!r}; "
+                         "re-run the preview")
+            lset[gi] = {"enabled": ent.get("enabled", True) is not False,
+                        "speed": float(sp_l) if sp_l is not None else None,
+                        "pressure": float(pr_l) if pr_l is not None else None, "pen": pen_l}
+            for i in groups[gi][1]:
+                if lset[gi]["pressure"] is not None and metas[i].get("pressure") is None:
+                    metas[i]["pressure"] = lset[gi]["pressure"]   # layer default; per-stroke data-pressure wins
+    if not any(ls.get("enabled", True) for ls in lset):
+        sys.exit("every layer is switched off: nothing to plot")
+    stroke_group = {}
+    for gi, (_, idxs) in enumerate(groups):
+        for i in idxs:
+            stroke_group[i] = gi
     x0, y0, x1, y1 = bbox(strokes)
     # The anchor is on the PAPER (where the operator places the carriage);
     # the drawing goes into the target rectangle — the region if chosen, else
@@ -752,14 +899,22 @@ def main():
     abs_x0, abs_y0 = a.start_x + gx0, a.start_y + gy0
     abs_x1, abs_y1 = a.start_x + gx1, a.start_y + gy1
     pts = sum(len(s) for s in strokes)
-    dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in s] for s in strokes], spmm, a.speed, a.travel_speed,
-                                   (a.pen_delay / 1000 + 0.15))
+    # Plot order: by ink layer when plotting several layers (one pen swap each), else file order.
+    # Disabled layers (--layers) are left out.
+    by_layer = a.mode in ("plot", "dry") and len(groups) > 1
+    order = [i for _, idxs in groups for i in idxs] if by_layer else list(range(len(strokes)))
+    order = [i for i in order if lset[stroke_group[i]].get("enabled", True)]
+    speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
+    per_stroke = []
+    dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
+                                   a.travel_speed, (a.pen_delay / 1000 + 0.15),
+                                   speeds=[speed_of[i] for i in order], per_stroke=per_stroke)
     problems = []
     # Only the inset canvas is reachable: stay away from every paper edge, and
     # do not rely on the outer bed margin where the canvas is tighter.
     if abs_x0 < min(EDGE_MARGIN, cx0) or abs_y0 < min(EDGE_MARGIN, cy0):
         problems.append(f"drawing starts at machine ({abs_x0:.1f},{abs_y0:.1f}) mm, inside the {EDGE_MARGIN} mm edge margin")
-    if abs_x1 > max(mx - EDGE_MARGIN, cx1) or abs_y1 > max(my - EDGE_MARGIN, cy1):
+    if abs_x1 > mx - EDGE_MARGIN or abs_y1 > my - EDGE_MARGIN:
         problems.append(f"drawing reaches machine ({abs_x1:.1f},{abs_y1:.1f}) mm; travel is {mx} x {my} mm (margin {EDGE_MARGIN})")
     # The carriage itself sits on the paper (it can be outside the canvas); the
     # drawing must stay inside the canvas.
@@ -814,11 +969,26 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                "paper_mm": [px0, py0, px1, py1], "canvas_mm": [cx0, cy0, cx1, cy1],
                "region_mm": list(region) if region else None,
                "on_paper": on_paper, "anchor": a.anchor,
-               "layers": [{"color": k[0], "label": k[1], "name": color_label(k), "strokes": len(ix)}
-                          for k, ix in groups], "swaps": max(0, len(groups) - 1)}
+               "layers": [{"key": layer_key(k), "color": k[0], "label": k[1], "name": color_label(k), "strokes": len(ix),
+                           "enabled": lset[gi].get("enabled", True), "speed": lset[gi].get("speed") or a.speed,
+                           "pressure": lset[gi].get("pressure"), "pen": lset[gi].get("pen")}
+                          for gi, (k, ix) in enumerate(groups)],
+               "swaps": max(0, sum(1 for ls in lset if ls.get("enabled", True)) - 1),
+               "drawing_mm": dd, "travel_mm": dt, "lifts": lifts, "doc_mm": [w_mm, h_mm], "scale": scale,
+               "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed}
+    summary["args"] = {k: v for k, v in vars(a).items() if k != "ctl"}
 
     if a.mode == "dry":
         (OUT / f"plot_{stamp}.json").write_text(json.dumps(summary, indent=2))
+        if a.preview_json:
+            pv = {"summary": summary,
+                  "placement": {"origin": [a.start_x + ox, a.start_y + oy], "size": [w_mm * scale, h_mm * scale],
+                                "bbox": [abs_x0, abs_y0, abs_x1, abs_y1], "canvas": [tx0, ty0, tx1, ty1]},
+                  "order": order,
+                  "strokes": [{"l": stroke_group[i], "p": metas[i].get("pressure"),
+                               "pts": [[round(a.start_x + x + ox, 2), round(a.start_y + y + oy, 2)] for x, y in s]}
+                              for i, s in enumerate(strokes)]}
+            pathlib.Path(a.preview_json).write_text(json.dumps(pv, separators=(",", ":")))
         log("Dry run only. Nothing was sent." + ("" if not problems else "  FIX THE PROBLEMS ABOVE before trace/plot."))
         return 1 if problems else 0
     if problems:
@@ -827,7 +997,12 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
     if not a.sim:
         print(f"\nCheck: motors off, carriage by hand at the paper's top-left "
               f"({a.start_x:.1f},{a.start_y:.1f}) mm, pen UP over the paper, power switch in reach.")
-        if input(f"Type {'PLOT' if a.mode == 'plot' else 'TRACE'} to start: ").strip() != ("PLOT" if a.mode == "plot" else "TRACE"):
+        word = "PLOT" if a.mode == "plot" else "TRACE"
+        try:
+            got = a.ctl.readline(f"Type {word} to start: ") if a.ctl else input(f"Type {word} to start: ")
+        except EOFError:
+            got = ""
+        if got.strip() != word:
             sys.exit("not confirmed, nothing sent")
     p = Plotter(cfg, a)
     status = "complete"
@@ -841,36 +1016,77 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 p.move_to(*to_steps((cx, cy), spmm), a.travel_speed)
             p.idle()
         else:
-            n = len(strokes)
+            n = len(order)
             next_report = 0.05
             drawn = 0
+            est_done = 0.0
+            last_prog = [-1.0]
+            ctl = a.ctl
+
+            def progress(gi, force=False):
+                if not a.track:
+                    return
+                now = p.now()
+                if not force and now - last_prog[0] < 0.25:
+                    return
+                last_prog[0] = now
+                el = now - t_start - (0.0 if a.sim or not ctl else ctl.paused_s)
+                print("__PROGRESS__:" + json.dumps({
+                    "done": drawn, "strokes": n, "layer": gi, "est_done_s": round(est_done, 2),
+                    "est_total_s": round(secs, 2), "elapsed_s": round(el, 2)}), flush=True)
 
             def draw_one(i):
-                nonlocal drawn, next_report
+                nonlocal drawn, next_report, est_done
                 s = strokes[i]
+                gi = stroke_group[i]
                 pts_s = [to_steps((x + ox, y + oy), spmm) for x, y in s]
                 p.move_to(*pts_s[0], a.travel_speed)
                 p.set_pressure(metas[i].get("pressure"))
                 p.pen(False, a.pen_delay)
                 for tx, ty in pts_s[1:]:
-                    p.move_to(tx, ty, a.speed)
+                    p.move_to(tx, ty, speed_of[i])
                 p.pen(True, a.pen_delay)
+                est_done += per_stroke[drawn]
                 drawn += 1
+                progress(gi, force=drawn == n)
                 if drawn / n >= next_report:
                     el = p.now() - t_start
                     log(f"{drawn}/{n} strokes  {100 * drawn / n:.0f}%  elapsed {fmt(el)}  "
                         f"eta {fmt(el / (drawn / n) - el)}")
                     next_report += 0.05
 
-            if a.mode == "plot" and len(groups) > 1:
-                for gi, (key, idxs) in enumerate(groups):
-                    if gi:
-                        pause_for_swap(key, a)
-                    for i in idxs:
-                        draw_one(i)
-            else:
-                for i in range(n):
-                    draw_one(i)
+            returned = False
+            cur_layer = None
+            for i in order:
+                gi = stroke_group[i]
+                if gi != cur_layer:
+                    key = groups[gi][0]
+                    info = {"index": gi, "label": color_label(key), "color": key[0], "pen": lset[gi].get("pen"),
+                            "speed": speed_of[i], "pressure": lset[gi].get("pressure"), "strokes": len(groups[gi][1])}
+                    if cur_layer is not None and by_layer:
+                        if not pause_for_swap(key, a, ctl, {"layer_index": gi, "pen": lset[gi].get("pen")}):
+                            returned = True
+                            break
+                    cur_layer = gi
+                    if a.track:
+                        print("__LAYER__:" + json.dumps(info), flush=True)
+                    log(f"Layer {gi + 1}: {info['label']}" + (f", pen {info['pen']}" if info["pen"] else "")
+                        + f", {info['speed']:g} mm/s")
+                if ctl and ctl.ret.is_set():
+                    returned = True
+                    break
+                if ctl and ctl.pause.is_set():
+                    log("Paused by the operator: pen up, motors on (do not push the carriage).")
+                    print("__PAUSE__:" + json.dumps({"kind": "operator", "layer_index": gi}), flush=True)
+                    if not ctl.wait_continue():
+                        returned = True
+                        break
+                    log("Resumed.")
+                    print("__RESUMED__:{}", flush=True)
+                draw_one(i)
+            if returned:
+                log("Return requested: pen up, travelling back to the start point S.")
+                status = "stopped, returned to start"
             p.move_to(0, 0, a.travel_speed)
             p.idle()
     except KeyboardInterrupt:
@@ -880,6 +1096,11 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
         status = f"error: {ex!r}"
         log(f"ERROR: {ex!r}")
     finally:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, signal.SIG_IGN)   # a second Ctrl-C/SIGTERM must not cut the cleanup short
+            except (ValueError, OSError):
+                pass
         if not p.shutdown():
             status += " (cleanup FAILED: pen may be down or motors still on, check the machine and cut power if needed)"
         el = p.now() - t_start
@@ -887,6 +1108,11 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                        final_world_steps=p.pos)
         (OUT / f"plot_{stamp}.json").write_text(json.dumps(summary, indent=2))
         log(f"\nStatus: {status}   elapsed {fmt(el)}   SM commands {p.nsm}   net steps sent {p.sent}   end position {p.pos}")
+        if a.track:
+            print("__RESULT__:" + json.dumps({
+                "status": status, "elapsed_s": round(el, 2),
+                "end_mm": [round(a.start_x + p.pos[0] / spmm[0], 2), round(a.start_y + p.pos[1] / spmm[1], 2)],
+                "at_start": p.pos == [0, 0] and not status.startswith(("interrupted", "error")) and "FAILED" not in status}), flush=True)
     return 0 if status == "complete" else 1
 
 
