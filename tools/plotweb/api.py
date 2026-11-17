@@ -252,12 +252,17 @@ class App:
             raise ApiError(400, f"Speed must be between {lim['speed']['min']:g} and {lim['speed']['max']:g} mm/s.")
         if pressure is not None and not lim["pressure"]["min"] <= pressure <= lim["pressure"]["max"]:
             raise ApiError(400, f"Pressure must be between {lim['pressure']['min']:g} and {lim['pressure']['max']:g}.")
+        sport = body.get("sport") is True
+        if sport and (body.get("confirm") or {}).get("sport") is not True:
+            raise ApiError(400, "Sport mode needs its own confirmation: it runs above the tested speed and can lose steps.")
         argv += ["--xheight", f"{xh:g}", "--speed", f"{speed:g}"]
+        if sport:
+            argv.append("--sport")
         if pressure is not None:
             argv += ["--pressure", f"{pressure:g}"]
         if sim:
             argv.append("--sim")
-        ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or "handwriting", "xheight": xh})
+        ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or "handwriting", "xheight": xh, "sport": sport})
         if not ok:
             raise ApiError(409, job_id)
         try:
@@ -674,8 +679,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, self.app.live_start(self.json_body()))
 
     def r_live_send(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        if n > 262144:
+            raise ApiError(413, "That message is too large.")
         b = self.json_body()
-        self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""))
+        self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""), b.get("phase"), b.get("pts"))
 
     def r_live_strokes(self):
         with self.app.runner.lock:

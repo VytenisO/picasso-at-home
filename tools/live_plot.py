@@ -27,6 +27,7 @@ Safety is plot_svg's: drawing speed <= 40 mm/s, pen-up <= 200 mm/s, pressure 0..
 (the paper minus its margin) and the machine travel, nothing off the paper. A line that would leave the canvas is refused whole.
 """
 import argparse
+import collections
 import datetime
 import json
 import pathlib
@@ -42,6 +43,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "handwriting"))
 import plot_svg as ps  # noqa: E402
 from engine import ReplayEngine  # noqa: E402
+from mirror import Mirror  # noqa: E402
 
 
 ASCENT_EM, DESCENT_EM, LINE_PITCH_EM = 2.0, 0.8, 3.5   # in x-heights, as on the capture page
@@ -169,9 +171,45 @@ class StopFlag:
 
 
 MAX_PENDING = 50      # typed-ahead items waiting; more are dropped with an error (STOP is never queued behind them)
+MAX_PENDING_POINTS = 20000   # mirror points waiting; more are dropped
+MAX_BATCH_POINTS = 2000
 
 
-def control_lines(q, flag):
+class Pending:
+    """Points waiting in the queue (reader adds, the main loop subtracts)."""
+
+    def __init__(self):
+        self.n = 0
+        self.lock = threading.Lock()
+
+    def add(self, k):
+        with self.lock:
+            self.n += k
+
+    def get(self):
+        with self.lock:
+            return self.n
+
+
+def parse_points(text):
+    """JSON [[x, y, t], ...] -> list of (x, y, t) floats, or None if anything is wrong."""
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(raw, list) or not 0 < len(raw) <= MAX_BATCH_POINTS:
+        return None
+    out = []
+    for pt in raw:
+        if not isinstance(pt, list) or len(pt) not in (2, 3):
+            return None
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e7 for v in pt):
+            return None
+        out.append((float(pt[0]), float(pt[1]), float(pt[2]) if len(pt) == 3 else 0.0))
+    return out
+
+
+def control_lines(q, flag, pending):
     """--control: TEXT/NEWPAGE/CONTINUE/QUIT/STOP/WRITE commands -> typed queue items. TEXT stays literal text:
     ':newpage', 'WRITE' and the like typed as text are just letters."""
     quit_seen = False
@@ -197,6 +235,16 @@ def control_lines(q, flag):
                 q.put(("quit",))
             elif word == "WRITE":
                 q.put(("write",))
+            elif word == "MIRROR":
+                phase, _, body = rest.partition(" ")
+                pts = parse_points(body) if phase in ("start", "move", "end", "stroke") else None
+                if pts is None:
+                    print(json.dumps({"event": "error", "message": "bad mirror message ignored"}), flush=True)
+                elif pending.get() + len(pts) > MAX_PENDING_POINTS and phase != "end":
+                    print(json.dumps({"event": "error", "message": "too many points waiting; some were dropped"}), flush=True)
+                else:
+                    pending.add(len(pts))
+                    q.put(("mirror", phase, pts))
     finally:
         if not quit_seen:
             flag.stop.set()     # the web server went away without finishing the session: stop
@@ -241,9 +289,13 @@ def main():
     ap.add_argument("--json", action="store_true", help="print JSON events")
     ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web tracker")
     ap.add_argument("--control", action="store_true", help="web server mode: commands on stdin (see above)")
+    ap.add_argument("--sport", action="store_true",
+                    help="mirror mode follows the speed of the hand, up to 100 mm/s: above the tested ceiling, steps may be lost")
     a = ap.parse_args()
     if a.control:
         a.json = a.track = True
+    if a.sport and not a.control:
+        sys.exit("--sport is only for the web mirror mode (--control)")
 
     if a.list_fonts:
         import fonts
@@ -282,6 +334,7 @@ def main():
 
     lines_in = queue.Queue()
     flag = StopFlag()
+    pending = Pending()
     if a.text is not None:
         for ln in a.text.split("\n"):
             lines_in.put(("text", ln))
@@ -291,7 +344,7 @@ def main():
             lines_in.put(("text", ln))
         lines_in.put(("eof",))
     elif a.control:
-        threading.Thread(target=control_lines, args=(lines_in, flag), daemon=True).start()
+        threading.Thread(target=control_lines, args=(lines_in, flag, pending), daemon=True).start()
     else:
         threading.Thread(target=stdin_lines, args=(lines_in,), daemon=True).start()
 
@@ -332,15 +385,59 @@ def main():
                 else:
                     s.write_text(ln)
 
+        mirror = Mirror(s)
+        peeked = collections.deque()      # items read ahead while merging a backlog, put back in order
+        last_status = [0.0]
+
+        def next_item():
+            return peeked.popleft() if peeked else lines_in.get()
+
+        def report():
+            import time as _t
+            now = _t.monotonic()
+            if now - last_status[0] >= 0.3:
+                last_status[0] = now
+                s.emit("mirror_status", pending_points=pending.get(), open=mirror.open, sport=a.sport)
+
+        def handle_mirror(item):
+            phase, pts = item[1], item[2]
+            pending.add(-len(pts))
+            if phase == "move":
+                # merge the moves of this stroke that are already waiting: a backlog is drawn in one go
+                while True:
+                    try:
+                        nxt = peeked.popleft() if peeked else lines_in.get_nowait()
+                    except queue.Empty:
+                        break
+                    if nxt[0] == "mirror" and nxt[1] in ("move", "end"):
+                        pending.add(-len(nxt[2]))
+                        pts = pts + nxt[2]
+                        if nxt[1] == "end":
+                            phase = "end"
+                            break
+                    else:
+                        peeked.appendleft(nxt)      # not part of this stroke: next, in its original place
+                        break
+            mirror.phase(phase, pts)
+            report()
+
         while True:
             flag.check_stop()
-            item = lines_in.get()
+            item = next_item()
             flag.check_stop()
             kind = item[0]
             if kind == "stop":
                 raise KeyboardInterrupt()
             if kind in ("quit", "eof"):
+                mirror.end()
                 break
+            if kind == "mirror":
+                if holding:
+                    pending.add(-len(item[2]))      # the paper is being changed: nothing is drawn
+                    continue
+                handle_mirror(item)
+                continue
+            mirror.end()                            # anything else after a stroke that never ended: pen up first
             if kind == "continue":
                 if holding:
                     holding = False

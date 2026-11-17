@@ -207,3 +207,11 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .check.inline { margin: 0; }
 .login.floating { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 60; margin: 0;
   box-shadow: 0 4px 16px rgba(0,0,0,.25); width: min(360px, 92vw); }
+
+/* ---- writing pad */
+.pad-dlg { width: min(96vw, 1100px); }
+.pad-head { display: flex; gap: 8px; align-items: center; }
+.pad-bar { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin: 8px 0; }
+#padCanvas { display: block; margin: 0 auto; border: 1px solid var(--line); border-radius: 6px; touch-action: none;
+  cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.warn-text { color: var(--err); }

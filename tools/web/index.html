@@ -141,6 +141,9 @@
             <label class="field"><span>Letter height (mm)</span><input id="liveSize" type="number" value="4.5" min="2" max="20" step="0.5"></label>
             <label class="field"><span>Speed (mm/s)</span><input id="liveSpeed" type="number" value="15" min="1" max="40" step="1"></label>
           </div>
+          <label class="check"><input type="checkbox" id="liveSport"> Sport mode (pad only): the plotter follows the speed of your hand, up to 100 mm/s</label>
+          <p class="hint warn-text">Sport mode is above the tested speed (40 mm/s). The motors can lose steps and the position
+            is not trusted afterwards. Use it rarely.</p>
           <div class="row"><button type="button" id="liveStart" class="primary">Start live writing</button>
             <button type="button" id="liveSim">Simulate</button></div>
         </form>
@@ -153,6 +156,8 @@
               <button id="liveContinue" type="button" class="primary" hidden>Paper changed: continue</button>
               <button id="liveFinish" type="button">Finish and return to S</button></div>
           </form>
+          <div class="row"><button id="padOpen" type="button">Open the writing pad (tablet or mouse)</button></div>
+          <p id="liveSportNote" class="note err" hidden>SPORT MODE: the pad drives the plotter at up to 100 mm/s. Re-park the carriage afterwards.</p>
         </div>
       </div>
       <div class="section">
@@ -304,6 +309,25 @@
       <button value="ok" class="primary" id="confirmGo" disabled>Start</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="padDlg" aria-labelledby="padTitle">
+  <div class="dlg pad-dlg">
+    <div class="pad-head">
+      <h2 id="padTitle">Writing pad</h2>
+      <span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button id="padClose" type="button">Close</button>
+    </div>
+    <div class="pad-bar">
+      <label class="field"><span>Mode</span><select id="padMode"><option value="point">Point by point (follows live)</option><option value="stroke">Stroke by stroke (after the pen lifts)</option></select></label>
+      <label class="field"><span>Pad covers (mm wide)</span><select id="padWidth"></select></label>
+      <label class="check"><input type="checkbox" id="padPenOnly" checked> Pen and mouse only (ignore touch)</label>
+      <button id="padClear" type="button">Clear pad</button>
+    </div>
+    <p id="padInfo" class="hint"></p>
+    <canvas id="padCanvas" aria-label="Writing pad: what you draw here is drawn on the paper"></canvas>
+  </div>
 </dialog>
 
 <dialog id="helpDlg" aria-labelledby="helpTitle">

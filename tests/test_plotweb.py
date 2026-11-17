@@ -172,6 +172,37 @@ class TestApi(SimServer):
         st = self.wait_state(["stopped", "interrupted", "complete", "error"])
         self.assertIn(st["job"]["state"], ("stopped", "interrupted"))
 
+    def test_01e_mirror_and_sport(self):
+        body = {"font": "Comic Neue", "mode": "simulate"}
+        code, d = self.call("POST", "/api/live/start", dict(body, sport=True))
+        self.assertEqual(code, 400)                       # sport needs its own confirmation
+        code, d = self.call("POST", "/api/live/start", dict(body, sport=True, confirm={"sport": True}))
+        self.assertEqual(code, 200, d)
+        job = d["job"]
+        self.wait_state(["running"])
+        send = lambda **kw: self.call("POST", "/api/live/send", dict({"job": job, "cmd": "mirror"}, **kw))
+        self.assertEqual(send(phase="start", pts=[[100, 100, 0]])[0], 200)
+        self.assertEqual(send(phase="move", pts=[[110, 102, 10], [120, 105, 20]])[0], 200)
+        self.assertEqual(send(phase="end", pts=[[130, 110, 30]])[0], 200)
+        self.assertEqual(send(phase="stroke", pts=[[150, 80, 0], [160, 90, 20], [170, 80, 40]])[0], 200)
+        for bad in ({"phase": "nope", "pts": [[1, 1]]}, {"phase": "move", "pts": []}, {"phase": "move", "pts": [[1]]},
+                    {"phase": "move", "pts": [["a", 1]]}, {"phase": "move", "pts": [[1e9, 1]]},
+                    {"phase": "move", "pts": [[float("nan"), 1]]}, {"phase": "move", "pts": [[1, 1]] * 2001}):
+            code, _ = send(**bad)
+            self.assertEqual(code, 409, bad)
+        end = time.time() + 30
+        while time.time() < end:
+            _, st = self.call("GET", "/api/state")
+            if (st["job"].get("live") or {}).get("strokes", 0) >= 2:
+                break
+            time.sleep(0.1)
+        self.assertEqual(st["job"]["live"]["strokes"], 2)
+        _, d = self.call("GET", "/api/live/strokes")
+        self.assertEqual(len(d["strokes"]), 2)
+        self.call("POST", "/api/live/send", {"job": job, "cmd": "quit"})
+        st = self.wait_state(["complete", "error", "stopped"])
+        self.assertEqual(st["job"]["state"], "complete", st["job"])
+
     def test_02_upload_rejects(self):
         code, d = self.call("POST", "/api/files/upload", raw=b"hello", headers={"X-Filename": "x.exe"})
         self.assertEqual(code, 400)

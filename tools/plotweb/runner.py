@@ -10,6 +10,7 @@ readback. After a run the server records whether the carriage should be back at 
 """
 import json
 import os
+import queue
 import signal
 import subprocess
 import threading
@@ -20,6 +21,7 @@ from . import hardware
 ACTIVE = ("starting", "running", "pausing", "paused", "stopping", "returning")
 STOP_GRACE_S = 30.0      # plot_svg needs at most one move chunk (3 s) plus pen-up and cleanup; this is generous
 KILL_GRACE_S = 15.0
+MIRROR_MAX_POINTS = 2000    # points in one pad message
 LIVE_MAX_POINTS = 150000   # points of written strokes kept for the page view
 
 
@@ -29,6 +31,20 @@ def _new_job(job_id, kind, mode, sim, meta):
             "progress": None, "layer": None, "pos": None, "pen": "up", "pause": None,
             "result": None, "message": "Preparing...", "plan_id": (meta or {}).get("plan_id"),
             "moved": False}
+
+
+def _clean_points(pts):
+    """Pad points [[x, y, t], ...] -> rounded lists, or None if the shape or any number is wrong."""
+    if not isinstance(pts, list) or not 0 < len(pts) <= MIRROR_MAX_POINTS:
+        return None
+    out = []
+    for pt in pts:
+        if not isinstance(pt, (list, tuple)) or len(pt) not in (2, 3):
+            return None
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e6 for v in pt):
+            return None
+        out.append([round(pt[0], 2), round(pt[1], 2)] + ([round(pt[2])] if len(pt) == 3 else []))
+    return out
 
 
 class JobRunner:
@@ -43,6 +59,7 @@ class JobRunner:
         self.preview = None           # the immutable preview of the running plot job
         self.live_strokes = []        # strokes written on the current page of a live session (machine mm)
         self.live_points = 0
+        self.live_wq = None           # commands to a live session, written by a thread of their own
         self.position = {"state": "unknown", "at": None,
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
         self._last_state_emit = 0.0
@@ -116,10 +133,28 @@ class JobRunner:
                                                                  for i, a in enumerate(argv)])
             if stdin_text:
                 self._write(stdin_text)
+            if j["kind"] == "live":
+                self.live_wq = queue.Queue(maxsize=300)
+                threading.Thread(target=self._live_writer, args=(proc, self.live_wq), daemon=True).start()
         self._log("debug", "command: " + " ".join(argv))
         threading.Thread(target=self._reader, args=(job_id, proc), daemon=True).start()
         self._emit_state()
         return True, job_id
+
+    def _write_to(self, proc, text):
+        try:
+            if proc.stdin is not None and proc.poll() is None:
+                proc.stdin.write(text.encode())
+                proc.stdin.flush()
+        except (OSError, ValueError):
+            pass
+
+    def _live_writer(self, proc, q):
+        while True:
+            word = q.get()
+            if word is None:
+                return
+            self._write_to(proc, word)
 
     def _write(self, text):
         proc = self.proc
@@ -206,8 +241,9 @@ class JobRunner:
                 return True, "Already stopping."
             j.update(state="stopping", message="Stopping: the move already sent finishes, then pen up, motors off.")
             word = "q\n" if j["kind"] == "pentest" else "STOP\n"
-            self._write(word)
             proc = self.proc
+            if proc is not None:      # written by a thread: a full pipe must never make Stop wait
+                threading.Thread(target=self._write_to, args=(proc, word), daemon=True).start()
         self._log("warn", "Stop requested.")
         self._emit_state()
         if proc is not None:
@@ -308,6 +344,11 @@ class JobRunner:
                     f.close()
             except OSError:
                 pass
+        if self.live_wq is not None:
+            try:
+                self.live_wq.put_nowait(None)
+            except queue.Full:
+                pass
         self._finish(job_id, rc)
 
     def _live_event(self, j, line):
@@ -344,12 +385,25 @@ class JobRunner:
                 self.live_strokes.clear()
                 self.live_points = 0
                 j["message"] = "New page: the carriage is at S. Change the paper without moving the carriage."
+            elif kind == "mirror_stroke":
+                live["strokes"] = ev.get("total", live.get("strokes", 0))
+                self.live_strokes.extend(ev.get("strokes") or [])
+                self.live_points = sum(len(s.get("pts", ())) for s in self.live_strokes)
+                while self.live_points > LIVE_MAX_POINTS and self.live_strokes:
+                    self.live_points -= len(self.live_strokes.pop(0).get("pts", ()))
+            elif kind == "mirror_status":
+                live["pending_points"] = ev.get("pending_points", 0)
+                live["pen_open"] = bool(ev.get("open"))
+                live["sport"] = bool(ev.get("sport"))
             elif kind == "resumed":
                 live["paper_change"] = False
                 j["message"] = "Live writing: type the next line."
             elif kind == "page_full":
                 live["busy"] = False
                 j["message"] = "The page is full. Press New page, change the paper, and continue."
+        if kind in ("mirror_stroke", "mirror_status"):
+            self._emit_state(force=kind == "mirror_stroke")
+            return
         text = {"line_start": "Writing a line", "line_done": f"Wrote: {ev.get('text', '')}",
                 "new_page": ev.get("message", "New page"), "page_full": "The page is full: the text did not fit, nothing was drawn.",
                 "warning": ev.get("message", ""), "error": ev.get("message", "")}.get(kind)
@@ -361,7 +415,7 @@ class JobRunner:
                     j["last_error"] = text
         self._emit_state()
 
-    def live_send(self, job_id, cmd, text=""):
+    def live_send(self, job_id, cmd, text="", phase=None, pts=None):
         """Commands for a running live session: text, newpage, quit. Refused while stopping."""
         with self.lock:
             err = self._check(job_id)
@@ -379,12 +433,21 @@ class JobRunner:
                 word = "NEWPAGE\n"
             elif cmd == "continue":
                 word = "CONTINUE\n"
+            elif cmd == "mirror":
+                clean = _clean_points(pts)
+                if phase not in ("start", "move", "end", "stroke") or clean is None:
+                    return False, "Bad pad message."
+                if (j.get("live") or {}).get("paper_change"):
+                    return False, "The paper is being changed: press Continue first."
+                word = "MIRROR " + phase + " " + json.dumps(clean, separators=(",", ":")) + "\n"
             elif cmd == "quit":
                 word = "QUIT\n"
             else:
                 return False, "Unknown live command."
-            if not self._write(word):
-                return False, "The session is not accepting commands."
+            try:
+                self.live_wq.put_nowait(word)
+            except (queue.Full, AttributeError):
+                return False, "Too many messages are waiting for the session. Slow down, or stop it."
         return True, ""
 
     def _marker(self, line, name):
@@ -533,6 +596,10 @@ class JobRunner:
                     detail = j.get("last_error") or j.get("last_line") or f"exit code {rc}"
                     j.update(state="error" if rc else "complete",
                              message=("Nothing was sent: " + detail) if rc else "Done.")
+            if j["kind"] == "live" and j["meta"].get("sport") and not j.get("sim"):
+                self.position = {"state": "unknown", "at": None,
+                                 "note": "Sport mode runs above the tested speed and can lose steps: check the carriage "
+                                         "and park it again before the next run."}
             if j.get("sim") and not self.s.sim:
                 self.position = saved_position     # simulated runs say nothing about the real carriage
             final = j["state"]

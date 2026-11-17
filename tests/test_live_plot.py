@@ -116,3 +116,78 @@ def test_eof_without_quit_stops():
     p = sp.Popen([sys.executable, str(LIVE), "--sim", "--control", "--font", "Comic Neue"], stdin=sp.PIPE, stdout=sp.PIPE, text=True)
     out, _ = p.communicate("", timeout=20)
     assert '"interrupted"' in out
+
+
+def test_mirror_stroke_and_point_modes():
+    import math
+    circle = [[150 + 20 * math.cos(i / 10 * 2 * math.pi), 80 + 20 * math.sin(i / 10 * 2 * math.pi), i * 20] for i in range(11)]
+    cmds = ["MIRROR stroke " + json.dumps(circle),
+            "MIRROR start " + json.dumps([[100, 100, 0]]),
+            "MIRROR move " + json.dumps([[110, 102, 10], [120, 105, 20]]),
+            "MIRROR move " + json.dumps([[130, 110, 30], [140, 118, 40]]),
+            "MIRROR end " + json.dumps([[150, 120, 50]]),
+            "MIRROR stroke " + json.dumps([[1, 1, 0], [2, 2, 5]]),      # outside the canvas: clamped onto it
+            "TEXT hi", "QUIT"]
+    for extra in ([], ["--sport"]):
+        ev, _ = control_args(cmds, extra)
+        strokes = [e for e in ev if e["event"] == "mirror_stroke"]
+        assert len(strokes) == 3 and ev[-1]["status"] == "complete" and ev[-1]["end_world_steps"] == [0, 0]
+        for s in strokes:
+            for x, y in s["strokes"][0]["pts"]:
+                assert 70 - 0.01 <= x <= 337 + 0.01 and 21 - 0.01 <= y <= 201 + 0.01
+        assert any(e["event"] == "line_done" for e in ev)             # text after the strokes
+
+
+def test_mirror_bad_messages_are_ignored():
+    ev, _ = control_args(["MIRROR move nonsense", "MIRROR bogus [[1,1]]", "MIRROR move [[1,1,1,1]]", "QUIT"], [])
+    assert sum(e["event"] == "error" for e in ev) == 3 and ev[-1]["status"] == "complete"
+
+
+def test_sport_speed_follows_the_hand_within_limits():
+    sys.path.insert(0, str(ROOT / "tools"))
+    sys.path.insert(0, str(ROOT / "tools" / "handwriting"))
+    import types
+    from mirror import Mirror, SPORT_MAX, SPORT_MIN
+    s = types.SimpleNamespace(a=types.SimpleNamespace(sport=True, speed=15.0, pen_delay=250))
+    m = Mirror(s)
+    slow = m.speed([(0, 0, 0), (1, 0, 4000)])           # a slow, short move: the floor
+    assert m.speed([(0, 0, 0), (10, 0, 4000)]) == 25.0   # a 10 mm backlog is caught up within 0.4 s
+    assert slow == SPORT_MIN
+    fast = m.speed([(0, 0, 0), (50, 0, 500)])           # 100 mm/s: at the ceiling
+    assert fast == SPORT_MAX
+    huge = m.speed([(0, 0, 0), (500, 0, 100)])          # 5000 mm/s of hand: still the ceiling
+    assert huge == SPORT_MAX
+    s.a.sport = False
+    assert m.speed([(0, 0, 0), (500, 0, 100)]) == 15.0   # normal mode is the session speed
+
+
+def control_args(cmds, extra):
+    import time
+    p = subprocess.Popen([sys.executable, str(LIVE), "--sim", "--control", "--font", "Comic Neue", *extra],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    out, _ = p.communicate(chr(10).join(cmds) + chr(10), timeout=60)
+    return [json.loads(ln) for ln in out.splitlines() if ln.startswith("{")], 0
+
+
+def test_mirror_order_is_strict():
+    m = lambda ph, pts: "MIRROR " + ph + " " + json.dumps(pts)
+    cmds = [m("start", [[100, 100, 0]]), m("move", [[110, 100, 10]]),
+            m("start", [[200, 150, 0]]),                      # the first stroke never ended
+            m("move", [[210, 150, 10], [220, 150, 20]]),
+            m("move", [[230, 150, 30]]),                      # and this one never ends either
+            "NEWPAGE", "TEXT hi", "CONTINUE", "TEXT ho", "QUIT"]
+    ev, _ = control_args(cmds, [])
+    st = [e["strokes"][0]["pts"] for e in ev if e["event"] == "mirror_stroke"]
+    assert len(st) == 2
+    assert st[0][0] == [100.0, 100.0] and st[0][-1] == [110.0, 100.0]       # not joined to the second stroke
+    assert st[1][0] == [200.0, 150.0] and st[1][-1] == [230.0, 150.0]
+    kinds = [e["event"] for e in ev]
+    assert kinds.index("new_page") < kinds.index("resumed") < kinds.index("line_done")
+    assert [e["text"] for e in ev if e["event"] == "line_done"] == ["hi", "ho"]
+    assert ev[-1]["status"] == "complete" and ev[-1]["end_world_steps"] == [0, 0]
+
+
+def test_quit_with_an_open_stroke_lifts_the_pen():
+    m = lambda ph, pts: "MIRROR " + ph + " " + json.dumps(pts)
+    ev, _ = control_args([m("start", [[100, 100, 0]]), m("move", [[120, 110, 10]]), "QUIT"], [])
+    assert [e["event"] for e in ev].count("mirror_stroke") == 1 and ev[-1]["status"] == "complete"
