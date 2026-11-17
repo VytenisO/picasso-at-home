@@ -8,6 +8,7 @@ import { initWorkspace, openFile, refreshFiles, changeSettings, runPreview } fro
 import { initRun, pause, resume, stop } from './run.js';
 import { initLibrary } from './library.js';
 import { initTools } from './tools.js';
+import { initLive } from './live.js';
 import { initConsole, addEvents, resetConsole } from './console.js';
 
 let stream = null;
@@ -47,6 +48,7 @@ function initOnce() {
   initRun();
   initLibrary();
   initTools();
+  initLive();
   initConsole();
   initTabs();
   initTheme();

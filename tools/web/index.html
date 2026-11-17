@@ -131,6 +131,30 @@
         <p class="hint">Test sheets and their results belong to one pen type. A result for a ballpoint says nothing about a marker.</p>
         <div id="toolList"></div>
       </div>
+      <div class="section" id="liveSection">
+        <h2>Live writing</h2>
+        <p class="hint">Type a line, press Write, and the plotter writes it as you go. Needs the carriage parked at S,
+          like a plot. Use a font, or your own handwriting once you have captured samples.</p>
+        <form id="liveStartForm">
+          <label class="field"><span>Writing</span><select id="liveFont"></select></label>
+          <div class="field-row">
+            <label class="field"><span>Letter height (mm)</span><input id="liveSize" type="number" value="4.5" min="2" max="20" step="0.5"></label>
+            <label class="field"><span>Speed (mm/s)</span><input id="liveSpeed" type="number" value="15" min="1" max="40" step="1"></label>
+          </div>
+          <div class="row"><button type="button" id="liveStart" class="primary">Start live writing</button>
+            <button type="button" id="liveSim">Simulate</button></div>
+        </form>
+        <div id="liveSession" hidden>
+          <p id="liveInfo" class="hint"></p>
+          <form id="liveForm" autocomplete="off">
+            <label class="field"><span>Next line</span><input id="liveText" maxlength="500" placeholder="Type a line, then Enter"></label>
+            <div class="row"><button id="liveWrite" class="primary" type="submit">Write</button>
+              <button id="liveNewPage" type="button">New page</button>
+              <button id="liveContinue" type="button" class="primary" hidden>Paper changed: continue</button>
+              <button id="liveFinish" type="button">Finish and return to S</button></div>
+          </form>
+        </div>
+      </div>
       <div class="section">
         <h2>Moving the carriage</h2>
         <p class="hint">There is no jog control: this firmware cannot report the carriage position, so the only

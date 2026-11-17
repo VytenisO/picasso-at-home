@@ -219,6 +219,65 @@ class App:
             self.runner.cancel(job_id, f"Server error before start: {ex!r}")
             raise
 
+    def live_start(self, body):
+        """Start a live writing session (tools/live_plot.py --control). Same gates as a plot: park confirmation,
+        plotter precheck, one job at a time. The carriage must be parked at S (the paper's top-left)."""
+        sim = self.s.sim or body.get("mode") == "simulate"
+        if not sim and not (body.get("confirm") or {}).get("parked") is True:
+            raise ApiError(400, "Confirm that the carriage is parked by hand at the paper's top-left with the pen up.")
+        import fonts
+        font = str(body.get("font") or "")[:80]
+        argv = [self.s.python, str(self.s.root / "tools" / "live_plot.py"), "--control",
+                "--config", str(self.s.machine_path)]
+        if font:
+            if font not in fonts.families() and not fonts.find(font):
+                raise ApiError(400, f"Unknown font {font!r}. Pick one from the list.")
+            argv += ["--font", font]
+        else:
+            samples = self.s.root / "handwriting" / "samples"
+            if not any(samples.glob("[a-z][0-9][0-9][0-9].json")):
+                raise ApiError(400, "No handwriting samples yet. Write some with tools/handwriting/capture_server.py, "
+                                    "or choose a font.")
+        try:
+            xh = float(body.get("xheight", 4.5))
+            speed = float(body.get("speed", 15))
+            pressure = body.get("pressure")
+            pressure = None if pressure in (None, "") else float(pressure)
+        except (TypeError, ValueError):
+            raise ApiError(400, "Size, speed and pressure must be numbers.")
+        lim = LIMITS
+        if not 2.0 <= xh <= 20.0:
+            raise ApiError(400, "Letter height must be between 2 and 20 mm.")
+        if not lim["speed"]["min"] <= speed <= lim["speed"]["max"]:
+            raise ApiError(400, f"Speed must be between {lim['speed']['min']:g} and {lim['speed']['max']:g} mm/s.")
+        if pressure is not None and not lim["pressure"]["min"] <= pressure <= lim["pressure"]["max"]:
+            raise ApiError(400, f"Pressure must be between {lim['pressure']['min']:g} and {lim['pressure']['max']:g}.")
+        argv += ["--xheight", f"{xh:g}", "--speed", f"{speed:g}"]
+        if pressure is not None:
+            argv += ["--pressure", f"{pressure:g}"]
+        if sim:
+            argv.append("--sim")
+        ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or "handwriting", "xheight": xh})
+        if not ok:
+            raise ApiError(409, job_id)
+        try:
+            if not sim:
+                with self.hw_lock:
+                    ready, msg = hardware.precheck(False)
+                if not ready:
+                    raise ApiError(409, "Plotter not ready: " + msg)
+                self.ev.log("info", "Plotter answered: " + msg)
+            launched, msg = self.runner.launch(job_id, argv, None if sim else "WRITE" + chr(10))
+            if not launched:
+                raise ApiError(409, msg)
+            return {"ok": True, "job": job_id}
+        except ApiError as ex:
+            self.runner.cancel(job_id, ex.msg)
+            raise
+        except Exception as ex:  # noqa: BLE001
+            self.runner.cancel(job_id, f"Server error before start: {ex!r}")
+            raise
+
     def run_tool(self, body):
         tool = tools.REGISTRY.get(body.get("tool"))
         if not tool:
@@ -543,7 +602,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_fonts(self):
         import fonts
-        self.send(200, {"fonts": fonts.families(), "bundled": sorted({f["family"] for f in fonts.bundled()})})
+        samples = self.app.s.root / "handwriting" / "samples"
+        self.send(200, {"fonts": fonts.families(), "bundled": sorted({f["family"] for f in fonts.bundled()}),
+                        "hand_samples": len(list(samples.glob("[a-z][0-9][0-9][0-9].json"))) if samples.is_dir() else 0})
 
     def r_text_page(self):
         """Paragraphs of text in a standard font, wrapped to the canvas, as a library drawing."""
@@ -609,6 +670,18 @@ class Handler(BaseHTTPRequestHandler):
             job = None
         self._control(self.app.runner.stop, job)
 
+    def r_live_start(self):
+        self.send(200, self.app.live_start(self.json_body()))
+
+    def r_live_send(self):
+        b = self.json_body()
+        self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""))
+
+    def r_live_strokes(self):
+        with self.app.runner.lock:
+            strokes = list(self.app.runner.live_strokes)
+        self.send(200, {"strokes": strokes})   # sent outside the lock: a slow client must never delay Stop
+
     def r_tool(self):
         self.send(200, self.app.run_tool(self.json_body()))
 
@@ -639,6 +712,7 @@ ROUTES_GET = {
     "/api/files/mask": (Handler.r_file_mask, True),
     "/api/converters": (Handler.r_converters, True),
     "/api/fonts": (Handler.r_fonts, True),
+    "/api/live/strokes": (Handler.r_live_strokes, True),
     "/api/tools": (Handler.r_tools, True),
     "/api/pens": (Handler.r_pens, True),
     "/api/job/preview": (Handler.r_job_preview, True),
@@ -653,6 +727,8 @@ ROUTES_POST = {
     "/api/files/delete": (Handler.r_delete, True),
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),
+    "/api/live/start": (Handler.r_live_start, True),
+    "/api/live/send": (Handler.r_live_send, True),
     "/api/preview": (Handler.r_preview, True),
     "/api/job/start": (Handler.r_start, True),
     "/api/job/pause": (Handler.r_pause, True),

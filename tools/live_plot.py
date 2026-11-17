@@ -11,10 +11,17 @@ Unlike plot_svg.py this process stays alive between lines, so the tracked carria
 the carriage parked BY HAND at the paper's top-left (S), motors off, exactly as for a plot. Nothing can be read back from
 the firmware: after any stop or crash the position is unknown and the carriage must be parked again.
 
-Commands (typed on a line of their own):   :newpage  park for a paper change      :quit  finish (pen up, return to S)
+Commands (typed on a line of their own):   :newpage  park for a paper change, then :go when the paper is changed
+                                           :quit  finish (pen up, return to S)
 An empty line leaves a blank line. Ctrl-C raises the pen and releases the motors. --json prints one JSON event per line
 (session, line_start, line_done, page_full, error, done) for a UI; --track also emits the __POS__ lines the web tracker reads.
 Every written line is saved with its strokes in results/live_<time>.json so a session can be replotted.
+
+--control is the web server's mode: one command per stdin line, TEXT <text> (literal text, written as one or more lines),
+NEWPAGE (then nothing is drawn until CONTINUE), QUIT,
+STOP (honoured before the next move is sent), and WRITE as the first line to confirm a real run. End of input without a
+QUIT counts as STOP.
+It implies --json and --track, and line_done events carry the strokes in machine mm.
 
 Safety is plot_svg's: drawing speed <= 40 mm/s, pen-up <= 200 mm/s, pressure 0..0.9, every stroke inside the canvas
 (the paper minus its margin) and the machine travel, nothing off the paper. A line that would leave the canvas is refused whole.
@@ -57,6 +64,8 @@ class Session:
             sys.exit(f"the canvas ({self.cx0:.0f}..{self.cx1:.0f} x {self.cy0:.0f}..{self.cy1:.0f} mm) is outside the machine "
                      f"travel {mx} x {my} mm with its {ps.EDGE_MARGIN} mm edge margin")
         self.sx, self.sy = self.px0, self.py0        # S: the carriage is parked at the paper's top-left
+        if not (0 <= self.sx <= mx and 0 <= self.sy <= my):
+            sys.exit(f"carriage start S=({self.sx:.1f},{self.sy:.1f}) mm is outside the machine travel {mx} x {my} mm")
         self.xh = a.xheight
         self.pitch = a.line_pitch or LINE_PITCH_EM * self.xh
         self.width = self.cx1 - self.cx0
@@ -133,7 +142,10 @@ class Session:
             p.pen(True, a.pen_delay)
             saved.append({"p": st["p"], "pts": [[round(x, 2), round(y, 2)] for x, y in pts]})
         self.lines_done.append({"page": self.page, "text": text, "baseline_mm": round(self.baseline, 2), "strokes": saved})
-        self.emit("line_done", page=self.page, text=text)
+        if len(self.lines_done) > 200:
+            self.lines_done[-201]["strokes"] = None     # keep the text of every line but the strokes of the last 200
+        extra = {"strokes": saved} if self.a.control else {}
+        self.emit("line_done", page=self.page, text=text, **extra)
 
     def new_page(self):
         p = self.plotter
@@ -141,14 +153,70 @@ class Session:
         p.idle()
         self.page += 1
         self.baseline = self.cy0 + ASCENT_EM * self.xh
-        self.emit("new_page", page=self.page,
-                  message="pen up at S; change the paper without moving the carriage, then continue")
+        self.emit("new_page", page=self.page, hold=True,
+                  message="pen up at S; change the paper without moving the carriage, then press Continue")
+
+
+class StopFlag:
+    """The Plotter's ctl hook: nothing new is sent to the firmware once STOP is in."""
+
+    def __init__(self):
+        self.stop = threading.Event()
+
+    def check_stop(self):
+        if self.stop.is_set():
+            raise KeyboardInterrupt()
+
+
+MAX_PENDING = 50      # typed-ahead items waiting; more are dropped with an error (STOP is never queued behind them)
+
+
+def control_lines(q, flag):
+    """--control: TEXT/NEWPAGE/CONTINUE/QUIT/STOP/WRITE commands -> typed queue items. TEXT stays literal text:
+    ':newpage', 'WRITE' and the like typed as text are just letters."""
+    quit_seen = False
+    try:
+        for raw in sys.stdin:
+            ln = raw.rstrip(chr(13) + chr(10))
+            word, _, rest = ln.partition(" ")
+            word = word.upper()
+            if word == "STOP":
+                flag.stop.set()
+                q.put(("stop",))            # also wakes a main loop that is waiting for input
+            elif word == "TEXT":
+                if q.qsize() >= MAX_PENDING:
+                    print(json.dumps({"event": "error", "message": "too many lines waiting; this one was dropped"}), flush=True)
+                else:
+                    q.put(("text", rest[:500]))
+            elif word == "NEWPAGE":
+                q.put(("newpage",))
+            elif word == "CONTINUE":
+                q.put(("continue",))
+            elif word == "QUIT":
+                quit_seen = True
+                q.put(("quit",))
+            elif word == "WRITE":
+                q.put(("write",))
+    finally:
+        if not quit_seen:
+            flag.stop.set()     # the web server went away without finishing the session: stop
+        q.put(("stop",) if not quit_seen else ("eof",))
 
 
 def stdin_lines(q):
+    """Interactive input: :newpage, :go (paper changed, carry on) and :quit are commands; any other line is text."""
     for ln in sys.stdin:
-        q.put(ln.rstrip("\r\n"))
-    q.put(None)
+        ln = ln.rstrip(chr(13) + chr(10))
+        cmd = ln.strip()
+        if cmd == ":newpage":
+            q.put(("newpage",))
+        elif cmd == ":go":
+            q.put(("continue",))
+        elif cmd in (":q", ":quit"):
+            q.put(("quit",))
+        else:
+            q.put(("text", ln))
+    q.put(("eof",))
 
 
 def main():
@@ -172,7 +240,10 @@ def main():
     ap.add_argument("--file", help="write this file (one line per line) and finish")
     ap.add_argument("--json", action="store_true", help="print JSON events")
     ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web tracker")
+    ap.add_argument("--control", action="store_true", help="web server mode: commands on stdin (see above)")
     a = ap.parse_args()
+    if a.control:
+        a.json = a.track = True
 
     if a.list_fonts:
         import fonts
@@ -210,48 +281,80 @@ def main():
            words=len(getattr(engine, "words", ())), glyphs=len(getattr(engine, "glyphs", ())))
 
     lines_in = queue.Queue()
+    flag = StopFlag()
     if a.text is not None:
         for ln in a.text.split("\n"):
-            lines_in.put(ln)
-        lines_in.put(None)
+            lines_in.put(("text", ln))
+        lines_in.put(("eof",))
     elif a.file:
         for ln in pathlib.Path(a.file).read_text(encoding="utf-8").splitlines():
-            lines_in.put(ln)
-        lines_in.put(None)
+            lines_in.put(("text", ln))
+        lines_in.put(("eof",))
+    elif a.control:
+        threading.Thread(target=control_lines, args=(lines_in, flag), daemon=True).start()
     else:
         threading.Thread(target=stdin_lines, args=(lines_in,), daemon=True).start()
 
     if not a.sim:
         print(f"\nCheck: motors off, carriage by hand at the paper's top-left ({s.sx:.1f},{s.sy:.1f}) mm, "
               "pen UP over the paper, power switch in reach.", flush=True)
-        try:
-            got = input("Type WRITE to start: ")
-        except EOFError:
-            got = ""
+        if a.control:
+            got = "WRITE" if lines_in.get() == ("write",) else ""
+        else:
+            try:
+                got = input("Type WRITE to start: ")
+            except EOFError:
+                got = ""
         if got.strip() != "WRITE":
             sys.exit("not confirmed, nothing sent")
 
-    pargs = types.SimpleNamespace(sim=a.sim, port=a.port, track=a.track, start_x=s.sx, start_y=s.sy, ctl=None, sim_speed=0)
+    pargs = types.SimpleNamespace(sim=a.sim, port=a.port, track=a.track, start_x=s.sx, start_y=s.sy,
+                                  ctl=flag if a.control else None, sim_speed=0)
     p = ps.Plotter(cfg, pargs)
     s.plotter = p
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     status = "complete"
     try:
         p.setup()
-        while True:
-            ln = lines_in.get()
-            if ln is None or ln.strip() in (":q", ":quit"):
-                break
-            if ln.strip() == ":newpage":
+        holding, held = False, []      # after NEWPAGE nothing is drawn until the paper has been changed (CONTINUE)
+
+        def handle(item):
+            nonlocal holding
+            if item[0] == "newpage":
                 s.new_page()
+                holding = True
+            elif item[0] == "text":
+                ln = item[1]
+                if not ln.strip():
+                    s.baseline += s.pitch
+                    if not s.fits():
+                        s.emit("page_full", page=s.page)
+                else:
+                    s.write_text(ln)
+
+        while True:
+            flag.check_stop()
+            item = lines_in.get()
+            flag.check_stop()
+            kind = item[0]
+            if kind == "stop":
+                raise KeyboardInterrupt()
+            if kind in ("quit", "eof"):
+                break
+            if kind == "continue":
+                if holding:
+                    holding = False
+                    s.emit("resumed", page=s.page)
+                    queued, held = held, []
+                    for it in queued:
+                        flag.check_stop()
+                        handle(it)
                 continue
-            if not ln.strip():
-                s.baseline += s.pitch
-                if not s.fits():
-                    s.emit("page_full", page=s.page)
-                continue
-            if not s.write_text(ln):
-                continue
+            if kind in ("text", "newpage"):
+                if holding:
+                    held.append(item)
+                else:
+                    handle(item)
         p.move_to(0, 0, a.travel_speed)
         p.idle()
     except KeyboardInterrupt:
@@ -273,6 +376,12 @@ def main():
         f = out / f"live_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         f.write_text(json.dumps({"status": status, "xheight_mm": s.xh, "start_mm": [s.sx, s.sy], "args": vars(a),
                                  "end_world_steps": p.pos, "lines": s.lines_done}, indent=1))
+        if a.track:
+            end = [round(s.sx + p.pos[0] / s.spmm[0], 2), round(s.sy + p.pos[1] / s.spmm[1], 2)]
+            print("__RESULT__:" + json.dumps({
+                "status": status, "elapsed_s": 0, "end_mm": end,
+                "at_start": p.pos == [0, 0] and not status.startswith(("interrupted", "error")) and "FAILED" not in status}),
+                flush=True)
         s.emit("done", status=status, lines=len(s.lines_done), end_world_steps=p.pos, saved=str(f))
     return 0 if status == "complete" else 1
 

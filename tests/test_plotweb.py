@@ -120,6 +120,58 @@ class TestApi(SimServer):
         code, d = self.call("POST", "/api/text_page", {"text": "x" * 70, "font": "Comic Neue", "xheight": 20})
         self.assertEqual(code, 400)   # one word wider than the page
 
+    def test_01c_live_writing(self):
+        body = {"font": "Comic Neue", "xheight": 4.5, "speed": 15, "mode": "simulate"}
+        code, d = self.call("POST", "/api/live/start", dict(body, font="No Such Font"))
+        self.assertEqual(code, 400)
+        code, d = self.call("POST", "/api/live/start", dict(body, speed=80))
+        self.assertEqual(code, 400)
+        code, d = self.call("POST", "/api/live/start", dict(body, pressure=0.95))
+        self.assertEqual(code, 400)
+        code, d = self.call("POST", "/api/live/start", body)
+        self.assertEqual(code, 200, d)
+        job = d["job"]
+        self.wait_state(["running"])
+        code, d = self.call("POST", "/api/live/send", {"job": job, "cmd": "text", "text": "Hello there"})
+        self.assertEqual(code, 200, d)
+        end = time.time() + 30
+        while time.time() < end:
+            _, st = self.call("GET", "/api/state")
+            if (st["job"].get("live") or {}).get("lines", 0) >= 1:
+                break
+            time.sleep(0.1)
+        self.assertEqual(st["job"]["live"]["lines"], 1)
+        code, d = self.call("GET", "/api/live/strokes")
+        self.assertGreater(len(d["strokes"]), 3)
+        n1 = len(d["strokes"])
+        long_text = "A much longer line, written to make one event larger than a read chunk of 4096 bytes"
+        self.call("POST", "/api/live/send", {"job": job, "cmd": "text", "text": long_text})
+        end = time.time() + 30
+        while time.time() < end:
+            _, st = self.call("GET", "/api/state")
+            if st["job"]["live"]["lines"] >= 2:
+                break
+            time.sleep(0.1)
+        self.assertGreaterEqual(st["job"]["live"]["lines"], 2)
+        code, d = self.call("GET", "/api/live/strokes")
+        self.assertGreater(len(d["strokes"]), n1 + 50)
+        code, d = self.call("POST", "/api/live/send", {"job": "wrong", "cmd": "text", "text": "x"})
+        self.assertEqual(code, 409)
+        code, d = self.call("POST", "/api/live/send", {"job": job, "cmd": "quit"})
+        self.assertEqual(code, 200, d)
+        st = self.wait_state(["complete", "error", "stopped"])
+        self.assertEqual(st["job"]["state"], "complete", st["job"])
+        self.assertTrue(st["job"]["result"]["at_start"])
+
+    def test_01d_live_stop(self):
+        code, d = self.call("POST", "/api/live/start", {"font": "Comic Neue", "mode": "simulate"})
+        self.assertEqual(code, 200, d)
+        self.wait_state(["running"])
+        code, d = self.call("POST", "/api/job/stop", {})
+        self.assertEqual(code, 200, d)
+        st = self.wait_state(["stopped", "interrupted", "complete", "error"])
+        self.assertIn(st["job"]["state"], ("stopped", "interrupted"))
+
     def test_02_upload_rejects(self):
         code, d = self.call("POST", "/api/files/upload", raw=b"hello", headers={"X-Filename": "x.exe"})
         self.assertEqual(code, 400)

@@ -15,6 +15,7 @@ export const state = {
   job: null,           // runner snapshot job
   position: null,      // {state: at_start|moved|unknown, at, note}
   jobPreview: null,    // immutable preview of the running/last job (strokes, order)
+  liveStrokes: [],     // strokes written on the current page of a live session (machine mm)
   pos: null,           // live carriage position {x, y, pen}
   link: 'connecting',
   lastEventAt: 0,

@@ -29,7 +29,7 @@ export function initBed(placeCallback) {
   $('zoomIn').onclick = () => zoomBy(1.25);
   $('zoomOut').onclick = () => zoomBy(0.8);
   $('zoomFit').onclick = fit;
-  on(['me', 'settings', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'current'], redraw);
+  on(['me', 'settings', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'current', 'liveStrokes'], redraw);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { colors = {}; redraw(); });
 }
 
@@ -169,7 +169,7 @@ function render() {
     const n = job.progress ? job.progress.done : 0;
     ctx.strokeStyle = css('--done'); ctx.lineWidth = lw * 1.3;
     ctx.stroke(donePath(jp, n));
-  } else if (state.preview && state.preview.strokes) {
+  } else if (state.preview && state.preview.strokes && !(job && job.kind === 'live' && jobActive())) {
     const pv = state.preview, b = pv.summary.bbox_machine_mm, box = designBox();
     // A finished preview is drawn exactly as planned; only a stale one is stretched to follow the box being dragged.
     const k = state.previewStale && box && (b[2] - b[0]) > 1e-6 ? box.w / (b[2] - b[0]) : 1;
@@ -205,6 +205,14 @@ function render() {
   ctx.fillText('S', sx + 4 * px, sy + 14 * px);
 
   // carriage (commanded position)
+  if (job && job.kind === 'live' && state.liveStrokes && state.liveStrokes.length && (jobActive() || !state.current)) {
+    ctx.strokeStyle = css('--done'); ctx.lineWidth = lw; ctx.globalAlpha = 1;
+    for (const s of state.liveStrokes) {
+      ctx.beginPath();
+      s.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+    }
+  }
   const pos = state.pos || (job && jobActive() ? job.pos : null);
   if (pos && pos.x !== null && pos.x !== undefined) {
     const r = 6 * px;

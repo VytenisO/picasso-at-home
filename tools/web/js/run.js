@@ -48,6 +48,7 @@ function nextStep(job) {
     if (!state.preview.ok) return 'Fix the problems listed under Run, then preview again.';
     return 'Ready. Start plot when the carriage is parked at S with the pen up.';
   }
+  if (job.kind === 'live' && job.state === 'running') return 'Type a line under Tools, Live writing, and press Write. Finish returns to S; Stop finishes the move already sent, then lifts the pen.';
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
       ? 'Change the pen, check it is up and seated, then press Continue.'
@@ -62,7 +63,7 @@ function nextStep(job) {
 function renderStatus() {
   const job = state.job;
   const active = jobActive();
-  $('stTitle').textContent = job ? (job.kind === 'pentest' ? 'Pen test: ' : '') + title(job) : 'Idle';
+  $('stTitle').textContent = job ? (job.kind === 'pentest' ? 'Pen test: ' : job.kind === 'live' ? 'Live writing: ' : '') + title(job) : 'Idle';
   $('stDot').className = 'state-dot ' + dotClass(job);
   $('stMsg').textContent = job ? job.message || '' : '';
   $('stNext').textContent = nextStep(job);
@@ -94,7 +95,7 @@ function renderStatus() {
   const p = state.position;
   const pn = $('stPos');
   pn.className = 'note ' + (p && p.state === 'at_start' ? 'ok' : p && p.state === 'unknown' ? 'err' : 'warn');
-  if (active && job.kind === 'plot') {
+  if (active && (job.kind === 'plot' || job.kind === 'live')) {
     pn.className = 'note';
     pn.textContent = 'Carriage: under the job\'s control. The position above is the commanded one (no readback).';
   } else pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
@@ -142,9 +143,10 @@ function renderRun() {
   $('previewBtn').textContent = state.previewing ? 'Checking...' : 'Preview';
   for (const b of ['simBtn', 'traceBtn', 'plotBtn']) $(b).disabled = !ready;
   if (active && !isPentest) {
-    $('pauseBtn').disabled = job.state !== 'running';
+    const live = job.kind === 'live';   // a live session has no pause or return: finish it or stop it
+    $('pauseBtn').disabled = job.state !== 'running' || live;
     $('continueBtn').disabled = job.state !== 'paused' || (job.pause && job.pause.resuming);
-    $('returnBtn').disabled = !['running', 'pausing', 'paused'].includes(job.state);
+    $('returnBtn').disabled = live || !['running', 'pausing', 'paused'].includes(job.state);
     $('stopBtn').disabled = job.state === 'stopping';
   }
   const ps = $('previewState'), list = $('problemList'), kv = $('planKv');
@@ -209,9 +211,9 @@ async function start(mode) {
 
 function confirmStart(mode, pv) {
   return new Promise((resolve) => {
-    const d = $('confirmDlg'), m = state.me.machine, s = pv.summary;
+    const m = state.me.machine, s = pv.summary;
     const first = s.layers.find((l) => l.enabled !== false);
-    $('confirmTitle').textContent = mode === 'trace' ? 'Trace the frame (pen up)' : `Start plot${state.me.sim ? ' (simulator)' : ''}`;
+    const title = mode === 'trace' ? 'Trace the frame (pen up)' : `Start plot${state.me.sim ? ' (simulator)' : ''}`;
     const b = s.bbox_machine_mm;
     const rows = [['Drawing', state.current.name],
       ['Area', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])}) mm`]];
@@ -221,16 +223,25 @@ function confirmStart(mode, pv) {
         (l.pressure !== null && l.pressure !== undefined ? `, pressure ${l.pressure}` : '')).join('; ')]);
       if (s.swaps) rows.push(['Pen changes', `${s.swaps}: the plot pauses and asks for each one`]);
     } else rows.push(['Moves', 'Pen up around the drawing\'s frame and back to S. Nothing is drawn.']);
-    $('confirmKv').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
     const checks = [
       `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${(s.start_mm || m.start)[0]}, ${(s.start_mm || m.start)[1]}) mm. It was slid there with the motors off.`,
       mode === 'plot' ? `The pen is up and the first pen is in${first && first.pen ? `: ${first.pen}` : ''}.` : 'The pen is up.',
       'The paper is taped down, nothing is in the carriage\'s way, and the power switch is within reach.',
     ];
+    return confirmDialog(title, rows, checks, mode === 'trace' ? 'Start trace' : 'Start plot').then(resolve);
+  });
+}
+
+// The shared start dialog: a title, facts, the checklist that must all be ticked, and a go button.
+export function confirmDialog(titleText, rows, checks, goLabel) {
+  return new Promise((resolve) => {
+    const d = $('confirmDlg');
+    $('confirmTitle').textContent = titleText;
+    $('confirmKv').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
     const box = $('confirmChecks');
     box.replaceChildren(...checks.map((t, i) => el('label', { class: 'check' }, el('input', { type: 'checkbox', id: `cc${i}` }), ' ', t)));
     const go = $('confirmGo');
-    go.textContent = mode === 'trace' ? 'Start trace' : 'Start plot';
+    go.textContent = goLabel;
     go.disabled = true;
     box.onchange = () => { go.disabled = ![...box.querySelectorAll('input')].every((c) => c.checked); };
     d.returnValue = '';

@@ -20,6 +20,7 @@ from . import hardware
 ACTIVE = ("starting", "running", "pausing", "paused", "stopping", "returning")
 STOP_GRACE_S = 30.0      # plot_svg needs at most one move chunk (3 s) plus pen-up and cleanup; this is generous
 KILL_GRACE_S = 15.0
+LIVE_MAX_POINTS = 150000   # points of written strokes kept for the page view
 
 
 def _new_job(job_id, kind, mode, sim, meta):
@@ -40,6 +41,8 @@ class JobRunner:
         self.pause_seq = 0
         self.recovered = None         # Event while an escalated stop is still making the machine safe
         self.preview = None           # the immutable preview of the running plot job
+        self.live_strokes = []        # strokes written on the current page of a live session (machine mm)
+        self.live_points = 0
         self.position = {"state": "unknown", "at": None,
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
         self._last_state_emit = 0.0
@@ -74,6 +77,7 @@ class JobRunner:
             job_id = time.strftime("%Y%m%d_%H%M%S") + "_" + os.urandom(2).hex()
             self.job = _new_job(job_id, kind, mode, sim, meta)
             self.preview = None
+            self.live_strokes = []
         self._log("info", f"Job {job_id}: {kind} ({'simulated' if sim else mode}) reserved, running checks.")
         self._emit_state()
         return True, job_id
@@ -284,7 +288,7 @@ class JobRunner:
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
                     self._line(job_id, line.decode("utf-8", "replace").rstrip("\r"))
-                if buf.endswith((b": ", b"> ")):      # an input() prompt has no newline
+                if buf.endswith((b": ", b"> ")) and not buf.lstrip().startswith((b"{", b"__")):   # an input() prompt has no newline
                     self._line(job_id, buf.decode("utf-8", "replace"))
                     buf = b""
             if buf:
@@ -305,6 +309,83 @@ class JobRunner:
             except OSError:
                 pass
         self._finish(job_id, rc)
+
+    def _live_event(self, j, line):
+        """JSON events from live_plot.py --control: keep the page's strokes server side, tell the UI what happened."""
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            self._log("debug", line, "live")
+            return
+        kind = ev.get("event")
+        with self.lock:
+            live = j.setdefault("live", {"page": 1, "lines": 0, "busy": False, "last": ""})
+            if kind == "session":
+                live["canvas"] = ev.get("canvas_mm")
+                live["font"] = ev.get("font")
+                j["message"] = "Live writing: type a line and press Write."
+            elif kind == "line_start":
+                live["busy"] = True
+                live["page"] = ev.get("page", live["page"])
+                j["message"] = "Writing a line..."
+            elif kind == "line_done":
+                live["busy"] = False
+                live["lines"] += 1
+                live["last"] = str(ev.get("text", ""))[:80]
+                self.live_strokes.extend(ev.get("strokes") or [])
+                self.live_points = sum(len(s.get("pts", ())) for s in self.live_strokes)
+                while self.live_points > LIVE_MAX_POINTS and self.live_strokes:
+                    self.live_points -= len(self.live_strokes.pop(0).get("pts", ()))
+                j["message"] = "Live writing: type the next line."
+            elif kind == "new_page":
+                live["page"] = ev.get("page", live["page"] + 1)
+                live["busy"] = False
+                live["paper_change"] = True
+                self.live_strokes.clear()
+                self.live_points = 0
+                j["message"] = "New page: the carriage is at S. Change the paper without moving the carriage."
+            elif kind == "resumed":
+                live["paper_change"] = False
+                j["message"] = "Live writing: type the next line."
+            elif kind == "page_full":
+                live["busy"] = False
+                j["message"] = "The page is full. Press New page, change the paper, and continue."
+        text = {"line_start": "Writing a line", "line_done": f"Wrote: {ev.get('text', '')}",
+                "new_page": ev.get("message", "New page"), "page_full": "The page is full: the text did not fit, nothing was drawn.",
+                "warning": ev.get("message", ""), "error": ev.get("message", "")}.get(kind)
+        if text:
+            level = "error" if kind == "error" else "warn" if kind in ("warning", "page_full") else "info"
+            self._log(level, text, "live")
+            if level == "error":
+                with self.lock:
+                    j["last_error"] = text
+        self._emit_state()
+
+    def live_send(self, job_id, cmd, text=""):
+        """Commands for a running live session: text, newpage, quit. Refused while stopping."""
+        with self.lock:
+            err = self._check(job_id)
+            if err:
+                return False, err
+            j = self.job
+            if j["kind"] != "live" or j["state"] != "running":
+                return False, "There is no live writing session running."
+            if cmd == "text":
+                text = " ".join(str(text).replace("\r", "\n").split("\n"))[:500].strip()
+                if not text:
+                    return False, "Type something to write."
+                word = "TEXT " + text + "\n"
+            elif cmd == "newpage":
+                word = "NEWPAGE\n"
+            elif cmd == "continue":
+                word = "CONTINUE\n"
+            elif cmd == "quit":
+                word = "QUIT\n"
+            else:
+                return False, "Unknown live command."
+            if not self._write(word):
+                return False, "The session is not accepting commands."
+        return True, ""
 
     def _marker(self, line, name):
         try:
@@ -333,6 +414,9 @@ class JobRunner:
             with self.lock:
                 j["progress"] = pr
             self._emit_state(force=False)
+            return
+        if j["kind"] == "live" and line.startswith('{"event"'):
+            self._live_event(j, line)
             return
         self._log("debug", line, "plot")    # raw protocol lines stay visible under Debug
         if line.startswith("__LAYER__:"):
@@ -385,7 +469,7 @@ class JobRunner:
                 level = "error"
                 with self.lock:
                     j["cleanup_failed"] = True
-            self._log(level, line, "plot" if j["kind"] == "plot" else "tool")
+            self._log(level, line, "plot" if j["kind"] in ("plot", "live") else "tool")
             with self.lock:
                 j["last_line"] = line
                 if level == "error":
