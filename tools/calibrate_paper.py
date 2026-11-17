@@ -49,8 +49,10 @@ def main():
     a = ap.parse_args()
     a.track, a.start_x, a.start_y = False, 0.0, 0.0   # Plotter fields; no live tracker here, origin is the park corner
 
-    if not (0 < a.speed <= a.max_speed and 0 < a.travel_speed <= a.max_speed):
-        sys.exit(f"speeds must be in (0, {a.max_speed}] mm/s")
+    edge_cap = ps.MAX_SPEED if a.draw else a.max_speed   # drawing never exceeds the plotter's drawing ceiling
+    if not (0 < a.speed <= edge_cap and 0 < a.travel_speed <= a.max_speed):
+        sys.exit(f"edge speed must be in (0, {edge_cap}] mm/s{' (pen down)' if a.draw else ''}, "
+                 f"travel speed in (0, {a.max_speed}] mm/s")
     cfg = json.loads(pathlib.Path(a.config).read_text())
     for k in ("pen_up", "pen_down"):
         if not 7500 <= cfg["servo"][k] <= 22000:
@@ -131,11 +133,12 @@ Route          : park (0,0) -> {route_txt}""")
         status = f"error: {ex!r}"
         ps.log(f"ERROR: {ex!r}")
     finally:
-        p.shutdown()
+        if not p.shutdown():
+            status += " (cleanup FAILED: check the machine and cut power if needed)"
         ps.log(f"\nStatus: {status}   elapsed {ps.fmt(p.now() - t_start)}   SM commands {p.nsm}")
-        ps.log(f"Net steps sent {p.sent}, expected {want} (paper start)" + ("  OK" if p.sent == want else "  MISMATCH"))
+        ps.log(f"End position {p.pos} steps, expected {want} (paper start)" + ("  OK" if p.pos == want else "  MISMATCH"))
         ps.log("The carriage should rest on the paper start. How far it is off, if at all, is the calibration error.")
-    return 0 if status == "complete" and p.sent == want else 1
+    return 0 if status == "complete" and p.pos == want else 1
 
 
 if __name__ == "__main__":

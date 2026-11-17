@@ -100,12 +100,25 @@ def build(pen, sheet="both", colour=(None, None)):
                  "size_mm": [w, h], "rows": layout}
 
 
+def plot_cmd(svg_path, config):
+    """plot_svg.py command line for a sheet: real path (relative to the repo when inside it), and --config when not the default."""
+    try:
+        shown = svg_path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        shown = str(svg_path.resolve())
+    cmd = f"python3 tools/plot_svg.py {shown}"
+    if config and pathlib.Path(config).resolve() != (ROOT / "config" / "machine.json").resolve():
+        cmd += f" --config {config}"
+    return cmd
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pen", required=True, help="pen type this test is for; a profile name in config/pens.json")
     ap.add_argument("--sheet", choices=["lines", "circles", "both"], default="both", help="which part to generate")
     ap.add_argument("--pens-file", default=str(ROOT / "config" / "pens.json"))
     ap.add_argument("--out-dir", default=str(ROOT / "input"))
+    ap.add_argument("--config", help="machine config to put in the printed plot commands (default: config/machine.json)")
     ap.add_argument("--record-single", type=float, metavar="MM", help="shortest single-pass line that came out clearly")
     ap.add_argument("--record-double", type=float, metavar="MM", help="shortest forward+back line that came out clearly")
     ap.add_argument("--record-circle-single", type=float, metavar="MM", help="smallest diameter closing with one loop")
@@ -151,7 +164,7 @@ def main():
         print("Circle diameters, mm, left to right: " + ", ".join(str(x) for x in DIAMETERS))
     for r in layout["rows"]:
         print(f"  row {r['row']}: {r['block']}, repeat {r['repeat']}")
-    base = f"python3 tools/plot_svg.py input/{svg_path.name}"
+    base = plot_cmd(svg_path, a.config)
     print(f"\nDry run : {base} --mode dry\nTrace   : {base} --mode trace\nPlot    : {base} --mode plot")
     print(f"\nThen record what came out, e.g.: stroke_test.py --pen {a.pen} --record-single 1.0 "
           "--record-double 0.5 --record-circle-single 3")

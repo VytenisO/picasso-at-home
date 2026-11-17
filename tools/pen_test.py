@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--pen-down", type=int, help="override servo pen-down value")
     ap.add_argument("--delay", type=int, default=250, help="ms per servo move")
     a = ap.parse_args()
+    a.track, a.start_x, a.start_y = False, 0.0, 0.0   # Plotter fields; unused here
 
     cfg = json.loads(pathlib.Path(a.config).read_text())
     up = a.pen_up or cfg["servo"]["pen_up"]
@@ -45,7 +46,12 @@ def main():
         p.cmd(f"SP,0,{delay}")
         p.sleep(delay / 1000 + 0.05)
 
-    print(f"pen up {up}, pen down {down}. Enter = toggle, s = sweep, q = quit.")
+    print(f"pen up {up}, pen down {down}. Enter = toggle, s = sweep, q = quit; anything else is ignored.")
+    try:
+        input("Nothing has moved yet. Press Enter to raise the pen and start (Ctrl-C to cancel): ")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return 0
     p.cmd(f"SC,4,{up}")
     p.cmd(f"SC,5,{down}")
     p.cmd(f"SP,1,{a.delay}")
@@ -63,9 +69,11 @@ def main():
                 p.cmd(f"SC,5,{down}")
                 p.cmd(f"SP,1,{a.delay}")
                 is_up = True
-            else:
+            elif key == "":
                 p.cmd(f"SP,{1 if not is_up else 0},{a.delay}")
                 is_up = not is_up
+            else:
+                print("  unknown input, ignored (Enter, s or q)")
     except (KeyboardInterrupt, EOFError):
         print()
     finally:

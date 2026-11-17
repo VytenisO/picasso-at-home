@@ -24,10 +24,10 @@ open), whether the edges look clean (play shows as ragged ends), and whether zig
 
 PRESSURE SHEET. A small sheet (three styles x five spacings) that you plot several times on the same paper, each
 time at a different pen-down servo value, so a lighter touch gives milder, softer lines that can read as tone.
-The pen-down value is a whole-run setting (--pen-down on plot_svg.py), so the levels are separate runs, placed
-side by side; the tool prints one command per level. A value closer to pen-up means a lighter touch. The levels
-only ever go LIGHTER than the configured pen-down (never deeper: a too-deep value can gouge the paper or hurt the
-servo). The point where lines stop marking at all is the lightest usable value for that pen.
+Each block is drawn at its own pen pressure (data-pressure in the SVG, set per stroke by plot_svg.py), so one run
+covers every level. A value closer to pen-up means a lighter touch. The levels only ever go LIGHTER than the
+configured pen-down (never deeper: a too-deep value can gouge the paper or hurt the servo). The lightest block that
+still marks cleanly is the lightest usable value for that pen.
 
 Plot with the pen you are testing, at the speed you will use for real work.
 """
@@ -168,6 +168,18 @@ def build_pressure(pen, levels, colour=(None, None)):
                  "strokes": sum(len(p) for _, p in groups) + 1}
 
 
+def plot_cmd(svg_path, config):
+    """plot_svg.py command line for a sheet: real path (relative to the repo when inside it), and --config when not the default."""
+    try:
+        shown = svg_path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        shown = str(svg_path.resolve())
+    cmd = f"python3 tools/plot_svg.py {shown}"
+    if config and pathlib.Path(config).resolve() != (ROOT / "config" / "machine.json").resolve():
+        cmd += f" --config {config}"
+    return cmd
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pen", required=True, help="pen type this test is for; a profile name in config/pens.json")
@@ -229,7 +241,7 @@ def main():
         print(f"  row {r['row']}: {r['style']}")
 
     if not a.pressure:
-        base = f"python3 tools/plot_svg.py input/{svg_path.name}"
+        base = plot_cmd(svg_path, a.config)
         print(f"\nDry run : {base} --mode dry\nTrace   : {base} --mode trace\nPlot    : {base} --mode plot")
         print(f"\nThen record what held up, e.g.: fill_test.py --pen {a.pen} --record-min-spacing 0.6 "
               "--record-best-style zigzag")
@@ -237,14 +249,14 @@ def main():
 
     servo = json.loads(pathlib.Path(a.config).read_text())["servo"]
     up, down = servo["pen_up"], servo["pen_down"]
-    base = f"python3 tools/plot_svg.py input/{svg_path.name}"
+    base = plot_cmd(svg_path, a.config)
     print(f"\nConfigured servo: pen-up {up}, pen-down {down}. One run draws every block, each at its own pen-down value "
           "(fraction from pen-down toward pen-up; larger = lighter). Blocks, two across, row by row:")
     for b in layout["blocks"]:
         val = round(down + b["pressure"] * (up - down))
         print(f"  block {b['block']}: pressure {b['pressure']:g} -> pen-down {val}")
     print(f"\nDry run : {base} --mode dry\nTrace   : {base} --mode trace\nPlot    : {base} --mode plot")
-    print("\nNote which block first stops marking, and which gives the best soft infill, then record the servo values, e.g.: "
+    print("\nNote the lightest block that still marks cleanly, and which gives the best soft infill, then record the servo values, e.g.: "
           f"fill_test.py --pen {a.pen} --record-lightest-marking 13700 --record-soft-fill 13450")
     return 0
 
