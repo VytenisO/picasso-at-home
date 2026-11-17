@@ -1,0 +1,623 @@
+"""HTTP API and the orchestration between library, previews and the job runner.
+
+Routes are listed in ROUTES_GET / ROUTES_POST; docs/ui-design.md documents them. Everything returns JSON
+({"ok": false, "error": "..."} on failure) except static files, file downloads and the event stream.
+"""
+import hashlib
+import http.cookies
+import json
+import mimetypes
+import pathlib
+import threading
+import time
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from . import converters, hardware, plotjob, tools
+from .auth import COOKIE, SESSION_AGE, Auth
+from .config import LIMITS, WEB
+from .events import EventLog
+from .library import MAX_UPLOAD, Library
+from .runner import JobRunner
+
+MAX_DISPLAY_POINTS = 300_000     # preview strokes sent to the browser are thinned beyond this (display only)
+STATIC = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css"}
+
+
+class ApiError(Exception):
+    def __init__(self, code, msg, **extra):
+        super().__init__(msg)
+        self.code, self.msg, self.extra = code, msg, extra
+
+
+class App:
+    def __init__(self, settings, web_cfg):
+        self.s = settings
+        self.ev = EventLog()
+        self.auth = Auth(web_cfg)
+        self.lib = Library(settings, self.ev)
+        self.runner = JobRunner(settings, self.ev)
+        self.plans = {}
+        self.plans_lock = threading.Lock()
+        self.plan_dir = settings.cache / "plans"
+        self.plan_dir.mkdir(parents=True, exist_ok=True)
+        self.ev.log("info", "Server started" + (" in SIMULATOR mode: no hardware is ever touched." if settings.sim
+                                                else "."))
+
+    # ------------------------------------------------------------ helpers
+    def me(self, authed):
+        bed = self.s.bed()
+        return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
+                "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch}
+
+    def state(self):
+        snap = self.runner.snapshot()
+        snap.update(epoch=self.ev.epoch, seq=self.ev.seq, files_rev=self.lib.rev, sim=self.s.sim)
+        return snap
+
+    def _entry(self, ident):
+        e = self.lib.get(ident or "")
+        if not e:
+            raise ApiError(404, "That file is no longer in the library. Reload the file list.")
+        p = self.lib.path(e)
+        if not p:
+            raise ApiError(404, "The file's plot data is missing on the server. Upload it again.")
+        return e, p
+
+    def geometry(self, e, svg_path):
+        """Natural-size geometry and the layer list of a file, cached in its manifest entry."""
+        data = svg_path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        g = e.get("geom")
+        if g and g.get("svg_hash") == digest and e.get("layers_keys") is not None:
+            return g, e["layers_keys"], e.get("layers") or []
+        tmp = self.plan_dir / f"geom_{digest}.json"
+        if tmp.exists():
+            tmp.unlink()
+        v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"],
+             "x": None, "y": None, "w": None, "paper": None, "layers": []}
+        rc, out = plotjob.run_dry(plotjob.build_argv(self.s, svg_path, v, "dry", None, preview_json=tmp))
+        if not tmp.exists():
+            tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
+            raise ApiError(400, "This drawing cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"),
+                           output=out[-4000:])
+        pv = json.loads(tmp.read_text())
+        tmp.unlink()
+        sm = pv["summary"]
+        b, sc = sm["bbox_machine_mm"], sm["scale"] or 1.0
+        g = {"svg_hash": digest, "raw_w": (b[2] - b[0]) / sc, "raw_h": (b[3] - b[1]) / sc,
+             "doc_w": sm["doc_mm"][0], "doc_h": sm["doc_mm"][1]}
+        layers = [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]]
+        keys = [ly["key"] for ly in layers]
+        self.lib.update(e["id"], geom=g, layers_keys=keys, layers=layers)
+        return g, keys, layers
+
+    def _resolve(self, e, svg_path, raw_settings):
+        g, keys, layers = self.geometry(e, svg_path)
+        bed = self.s.bed()
+        try:
+            v = plotjob.validate(raw_settings, bed, self.s.pens(), keys)
+        except plotjob.SettingsError as ex:
+            raise ApiError(400, str(ex))
+        plotjob.resolve_placement(v, bed, g)
+        pid = plotjob.plan_id(svg_path.read_bytes(), self.s.machine_path.read_bytes(), v)
+        return v, g, pid, layers
+
+    def _dry(self, svg_path, v, g, pid):
+        d = self.plan_dir / pid
+        d.mkdir(exist_ok=True)
+        layers_json = d / "layers.json"
+        layers_json.write_text(json.dumps(v["layers"]))
+        pv_path = d / "preview.json"
+        if pv_path.exists():
+            pv_path.unlink()
+        argv = plotjob.build_argv(self.s, svg_path, v, "dry", g, preview_json=pv_path, layers_json=layers_json)
+        rc, out = plotjob.run_dry(argv)
+        pv = json.loads(pv_path.read_text()) if pv_path.exists() else None
+        ok = rc == 0 and pv is not None and not pv["summary"]["problems"]
+        problems = [] if ok else plotjob.friendly_problems(pv["summary"] if pv else None, out)
+        return ok, problems, pv, out, layers_json
+
+    def preview(self, body):
+        e, svg_path = self._entry(body.get("id"))
+        v, g, pid, layers = self._resolve(e, svg_path, body.get("settings"))
+        ok, problems, pv, out, _ = self._dry(svg_path, v, g, pid)
+        with self.plans_lock:
+            self.plans[pid] = {"file": e["id"], "ok": ok, "created": time.time()}
+            for k in [k for k, p in self.plans.items() if time.time() - p["created"] > 24 * 3600]:
+                self.plans.pop(k, None)
+        self.lib.update(e["id"], settings=v)
+        self.ev.log("info" if ok else "warn",
+                    f"Preview of {e['name']}: " + ("ready to plot." if ok else "; ".join(problems)))
+        for ln in out.splitlines():
+            if ln.strip() and not ln.startswith("__"):
+                self.ev.log("debug", ln, "plot")
+        res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "file": e["id"],
+               "file_layers": layers}
+        if pv:
+            res.update(summary=_public_summary(pv["summary"]), placement=pv["placement"], order=pv["order"],
+                       strokes=_thin(pv["strokes"]))
+        return res
+
+    def start(self, body):
+        mode = body.get("mode")
+        if mode not in ("plot", "trace", "simulate"):
+            raise ApiError(400, "mode must be plot, trace or simulate")
+        sim = self.s.sim or mode == "simulate"
+        if mode != "simulate" and not (body.get("confirm") or {}).get("parked") is True:
+            raise ApiError(400, "Confirm that the carriage is parked by hand at the paper's top-left with the pen up.")
+        pid = body.get("plan_id") or ""
+        with self.plans_lock:
+            plan = self.plans.get(pid)
+        if not plan or plan.get("used"):
+            raise ApiError(409, "This preview has expired or was already used. Preview again, then start.")
+        e, svg_path = self._entry(body.get("id"))
+        ok, job_id = self.runner.reserve("plot", mode, sim, {"file": e["id"], "name": e["name"], "plan_id": pid})
+        if not ok:
+            raise ApiError(409, job_id)
+        try:
+            v, g, now_pid, _ = self._resolve(e, svg_path, body.get("settings"))
+            if now_pid != pid:
+                raise ApiError(409, "The drawing, its settings or the machine calibration changed since the preview. "
+                                    "Preview again and re-check before starting.")
+            if not sim:
+                ready, msg = hardware.precheck(False)
+                if not ready:
+                    raise ApiError(409, "Plotter not ready: " + msg)
+                self.ev.log("info", "Plotter answered: " + msg)
+            ok2, problems, pv, out, layers_json = self._dry(svg_path, v, g, pid)   # fresh preflight
+            if not ok2:
+                raise ApiError(409, "Preflight failed: " + "; ".join(problems), problems=problems)
+            if mode != "simulate":
+                with self.plans_lock:
+                    self.plans[pid]["used"] = True
+            argv = plotjob.build_argv(self.s, svg_path, v, "trace" if mode == "trace" else "plot", g,
+                                      layers_json=layers_json, sim=sim, sim_speed=self.s.sim_speed if sim else None,
+                                      control=True)
+            word = None if sim else ("TRACE\n" if mode == "trace" else "PLOT\n")
+            job_pv = {"order": pv["order"], "strokes": _thin(pv["strokes"]), "placement": pv["placement"],
+                      "summary": _public_summary(pv["summary"]), "file": e["id"], "plan_id": pid}
+            launched, msg = self.runner.launch(job_id, argv, word, preview=job_pv)
+            if not launched:
+                raise ApiError(409, msg)
+            return {"ok": True, "job": job_id}
+        except ApiError as ex:
+            self.runner.cancel(job_id, ex.msg)
+            raise
+        except Exception as ex:  # noqa: BLE001
+            self.runner.cancel(job_id, f"Server error before start: {ex!r}")
+            raise
+
+    def run_tool(self, body):
+        tool = tools.REGISTRY.get(body.get("tool"))
+        if not tool:
+            raise ApiError(404, "Unknown tool.")
+        try:
+            p = tools.clamp_tool_params(tool, body.get("params"), self.s.pens())
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        argv = tool.argv(self.s, p)
+        if tool.kind == "machine":
+            if not (body.get("confirm") or {}).get("ok") is True:
+                raise ApiError(400, "Confirm the safety note before starting this tool.")
+            ok, job_id = self.runner.reserve("pentest", "pentest", self.s.sim, {"tool": tool.id})
+            if not ok:
+                raise ApiError(409, job_id)
+            try:
+                if self.s.sim:
+                    argv = argv + ["--sim"]
+                else:
+                    ready, msg = hardware.precheck(False)
+                    if not ready:
+                        raise ApiError(409, "Plotter not ready: " + msg)
+                launched, msg = self.runner.launch(job_id, argv, "\n")
+                if not launched:
+                    raise ApiError(409, msg)
+            except ApiError as ex:
+                self.runner.cancel(job_id, ex.msg)
+                raise
+            return {"ok": True, "job": job_id}
+        rc, out = tools.run_sync(argv)
+        for ln in out.splitlines():
+            if ln.strip():
+                self.ev.log("info" if rc == 0 else "error", ln, "tool")
+        if rc != 0:
+            raise ApiError(400, f"{tool.title} failed: " + (out.strip().splitlines() or ["no output"])[-1],
+                           output=out)
+        if tool.kind == "record":
+            return {"ok": True, "output": out}
+        path = tools.written_svg(out)
+        if not path or not pathlib.Path(path).is_file():
+            raise ApiError(500, "The sheet was generated but its SVG could not be found.", output=out)
+        text = pathlib.Path(path).read_text(encoding="utf-8")
+        pen = p["pen"]
+        entry = self.lib.add_svg_text(text, pathlib.Path(path).name, kind="sheet", pen=pen, test=tool.id,
+                                      notes=out)
+        return {"ok": True, "file": {k: entry.get(k) for k in ("id", "name", "kind", "pen", "test")}, "output": out}
+
+
+def _thin(strokes):
+    total = sum(len(s["pts"]) for s in strokes)
+    if total <= MAX_DISPLAY_POINTS:
+        return strokes
+    k = -(-total // MAX_DISPLAY_POINTS)
+    return [dict(s, pts=s["pts"][::k] + ([s["pts"][-1]] if (len(s["pts"]) - 1) % k else [])) for s in strokes]
+
+
+def _public_summary(sm):
+    keep = ("strokes", "points", "est_seconds", "bbox_machine_mm", "paper_mm", "canvas_mm", "layers", "swaps",
+            "drawing_mm", "travel_mm", "lifts", "doc_mm", "scale", "start_mm", "speed", "travel_speed", "problems")
+    return {k: sm.get(k) for k in keep}
+
+
+# ---------------------------------------------------------------------- HTTP
+class Handler(BaseHTTPRequestHandler):
+    server_version = "PlotterWeb/2.0"
+    protocol_version = "HTTP/1.1"
+
+    @property
+    def app(self):
+        return self.server.app
+
+    def log_message(self, fmt, *args):
+        if not self.path.startswith("/api/events"):
+            self.app.ev.log("debug", f"{self.address_string()} {fmt % args}", "http")
+
+    # ---- helpers
+    def send(self, code, body, ctype="application/json; charset=utf-8", headers=None):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body).encode()
+        elif isinstance(body, str):
+            body = body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def err(self, code, msg, **extra):
+        out = {"ok": False, "error": str(msg)}
+        out.update(extra)
+        self.send(code, out)
+
+    def raw_body(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        if n > MAX_UPLOAD + 4096:
+            raise ApiError(413, f"The upload is larger than {MAX_UPLOAD // (1024 * 1024)} MB.")
+        return self.rfile.read(n) if n > 0 else b""
+
+    def json_body(self):
+        try:
+            data = json.loads(self.raw_body().decode("utf-8") or "{}")
+            return data if isinstance(data, dict) else {}
+        except (ValueError, UnicodeDecodeError):
+            raise ApiError(400, "The request body is not valid JSON.")
+
+    def authed(self):
+        if not self.app.auth.enabled:
+            return True
+        c = http.cookies.SimpleCookie()
+        try:
+            c.load(self.headers.get("Cookie", ""))
+            return self.app.auth.check_session(c[COOKIE].value)
+        except (KeyError, http.cookies.CookieError):
+            return False
+
+    def query(self):
+        return {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
+
+    # ---- dispatch
+    def do_GET(self):
+        self._dispatch("GET")
+
+    def do_POST(self):
+        self._dispatch("POST")
+
+    def _dispatch(self, method):
+        path = urllib.parse.urlparse(self.path).path
+        try:
+            if method == "GET" and (path in STATIC or path.startswith("/js/")):
+                return self.static(path)
+            table = ROUTES_GET if method == "GET" else ROUTES_POST
+            route = table.get(path)
+            if not route:
+                raise ApiError(404, "Not found.")
+            fn, needs_auth = route
+            if needs_auth and not self.authed():
+                raise ApiError(401, "Not logged in.")
+            return fn(self)
+        except ApiError as ex:
+            return self.err(ex.code, ex.msg, **ex.extra)
+        except (BrokenPipeError, ConnectionResetError):
+            return None
+        except Exception as ex:  # noqa: BLE001
+            self.app.ev.log("error", f"Server error on {method} {path}: {ex!r}")
+            return self.err(500, f"Server error: {ex}. Details are in the console (Debug).")
+
+    def static(self, path):
+        rel = STATIC.get(path) or path.lstrip("/")
+        p = (WEB / rel).resolve()
+        if WEB.resolve() not in p.parents or not p.is_file() or p.suffix not in (".html", ".css", ".js", ".svg"):
+            raise ApiError(404, "Not found.")
+        ctype = {".js": "text/javascript", ".css": "text/css", ".html": "text/html",
+                 ".svg": "image/svg+xml"}[p.suffix] + "; charset=utf-8"
+        csp = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; "
+               "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.send(200, p.read_bytes(), ctype, {"Content-Security-Policy": csp})
+
+    # ---- routes: session
+    def r_me(self):
+        self.send(200, self.app.me(self.authed()))
+
+    def r_login(self):
+        if not self.app.auth.enabled:
+            return self.send(200, {"ok": True})
+        ok, msg, code = self.app.auth.login(self.client_address[0], self.json_body().get("password"))
+        if not ok:
+            raise ApiError(code, msg)
+        cookie = (f"{COOKIE}={self.app.auth.make_session()}; Path=/; HttpOnly; SameSite=Strict; "
+                  f"Max-Age={SESSION_AGE}")
+        self.send(200, {"ok": True}, headers={"Set-Cookie": cookie})
+
+    def r_logout(self):
+        self.send(200, {"ok": True}, headers={"Set-Cookie": f"{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"})
+
+    # ---- routes: state and events
+    def r_state(self):
+        self.send(200, self.app.state())
+
+    def r_log(self):
+        try:
+            since = int(self.query().get("since", 0))
+        except ValueError:
+            since = 0
+        evs, seq = self.app.ev.log_since(since)
+        self.send(200, {"epoch": self.app.ev.epoch, "seq": seq, "events": evs})
+
+    def r_events(self):
+        ev = self.app.ev
+        q = self.query()
+        since, epoch = q.get("since", "0"), q.get("epoch", "")
+        last = self.headers.get("Last-Event-ID")
+        if last and ":" in last:
+            epoch, since = last.split(":", 1)
+        try:
+            cursor = int(since)
+        except ValueError:
+            cursor = 0
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        def write(obj, eid=None):
+            data = (f"id: {ev.epoch}:{eid}\n" if eid is not None else "") + "data: " + json.dumps(obj) + "\n\n"
+            self.wfile.write(data.encode())
+
+        try:
+            self.wfile.write(b"retry: 2000\n\n")
+            if epoch != ev.epoch or cursor > ev.seq:
+                write({"type": "reset", "epoch": ev.epoch, "seq": ev.seq}, ev.seq)
+                cursor = ev.seq
+            self.wfile.flush()
+            while not self.server.stopping:
+                evs, cursor_new, reset = ev.wait(cursor, 15.0)
+                if reset:
+                    write({"type": "reset", "epoch": ev.epoch, "seq": cursor_new}, cursor_new)
+                for e in evs:
+                    write(e, e["seq"])
+                if not evs and not reset:
+                    write({"type": "ping", "t": time.time(), "seq": ev.seq})
+                cursor = cursor_new
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            return
+
+    # ---- routes: files
+    def r_files(self):
+        self.send(200, {"files": self.app.lib.list(), "rev": self.app.lib.rev})
+
+    def _file_out(self, field, ctype, inline):
+        e = self.app.lib.get(self.query().get("id", ""))
+        if not e:
+            raise ApiError(404, "Unknown file.")
+        p = self.app.lib.path(e, field)
+        if not p:
+            raise ApiError(404, "File missing.")
+        ctype = ctype or mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        headers = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"}
+        if not inline:
+            headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
+        self.send(200, p.read_bytes(), ctype, headers)
+
+    def r_file_svg(self):
+        self._file_out("svg", "image/svg+xml", True)
+
+    def r_file_orig(self):
+        self._file_out("orig", None, False)
+
+    def r_file_mask(self):
+        self._file_out("mask", "image/png", True)
+
+    def _upload_meta(self):
+        name = urllib.parse.unquote(self.headers.get("X-Filename", ""))
+        try:
+            params = json.loads(urllib.parse.unquote(self.headers.get("X-Params", "") or "{}"))
+        except ValueError:
+            params = {}
+        return name, params
+
+    def r_upload(self):
+        name, params = self._upload_meta()
+        raw = self.raw_body()
+        try:
+            e = self.app.lib.upload(raw, name, params, self.app.s.bed()["canvas"])
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        self.app.ev.log("info", f"Added {e['name']} to the library.")
+        self.send(200, {"ok": True, "file": {k: e.get(k) for k in ("id", "name", "kind")}})
+
+    def r_convert_preview(self):
+        name, params = self._upload_meta()
+        try:
+            out = self.app.lib.convert_preview(self.raw_body(), name, params, self.app.s.bed()["canvas"])
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, dict(out, ok=True))
+
+    def r_delete(self):
+        ident = self.json_body().get("id", "")
+        job = self.app.runner.snapshot()["job"]
+        if self.app.runner.busy() and job and job["meta"].get("file") == ident:
+            raise ApiError(409, "This file is being plotted. Stop the job first.")
+        if not self.app.lib.delete(ident):
+            raise ApiError(404, "Unknown file.")
+        self.send(200, {"ok": True})
+
+    def r_text_art(self):
+        from svg_vector import text_art_svg
+        d = self.json_body()
+        effect = d.get("effect") if d.get("effect") in ("plain", "arc", "wave", "rise", "circle", "twist") else "arc"
+        try:
+            size = max(5.0, min(150.0, float(d.get("size", 20))))
+            bend = max(0.0, min(100.0, float(d.get("bend", 40))))
+            text = str(d.get("text", ""))[:60]
+            if not text.strip():
+                raise ApiError(400, "Type some text first.")
+            svg, stats = text_art_svg(text, size, str(d.get("font", "DejaVu Sans"))[:60],
+                                      "bold" if d.get("bold") else "normal", "normal", effect, bend)
+        except ApiError:
+            raise
+        except Exception as ex:  # noqa: BLE001
+            raise ApiError(400, f"Text art failed: {ex}")
+        if d.get("add"):
+            e = self.app.lib.add_svg_text(svg, f"text-{text[:20]}.svg", kind="text")
+            return self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}})
+        self.send(200, {"ok": True, "svg": svg, "stats": stats})
+
+    # ---- routes: catalogue
+    def r_converters(self):
+        self.send(200, {"converters": [c.public() for c in converters.REGISTRY.values()]})
+
+    def r_tools(self):
+        self.send(200, {"tools": [t.public() for t in tools.REGISTRY.values()]})
+
+    def r_pens(self):
+        self.send(200, {"pens": self.app.s.pens()})
+
+    # ---- routes: plotting
+    def r_preview(self):
+        self.send(200, self.app.preview(self.json_body()))
+
+    def r_start(self):
+        self.send(200, self.app.start(self.json_body()))
+
+    def r_job_preview(self):
+        pv = self.app.runner.preview
+        if not pv:
+            raise ApiError(404, "No job preview.")
+        self.send(200, pv)
+
+    def _control(self, fn, *args):
+        ok, msg = fn(*args)
+        if not ok:
+            raise ApiError(409, msg)
+        self.send(200, {"ok": True, "message": msg})
+
+    def r_pause(self):
+        self._control(self.app.runner.pause, self.json_body().get("job"))
+
+    def r_continue(self):
+        b = self.json_body()
+        self._control(self.app.runner.resume, b.get("job"), b.get("pause"))
+
+    def r_return(self):
+        self._control(self.app.runner.return_to_start, self.json_body().get("job"))
+
+    def r_stop(self):
+        try:
+            job = self.json_body().get("job")
+        except ApiError:
+            job = None
+        self._control(self.app.runner.stop, job)
+
+    def r_tool(self):
+        self.send(200, self.app.run_tool(self.json_body()))
+
+    def r_pentest(self):
+        b = self.json_body()
+        self._control(self.app.runner.pentest, b.get("job"), b.get("cmd"))
+
+    def r_plotter(self):
+        if self.app.runner.busy():
+            return self.send(200, {"ok": True, "message": "A job is using the plotter."})
+        ok, msg = hardware.precheck(self.app.s.sim)
+        self.send(200, {"ok": ok, "message": msg})
+
+
+ROUTES_GET = {
+    "/api/me": (Handler.r_me, False),
+    "/api/state": (Handler.r_state, True),
+    "/api/log": (Handler.r_log, True),
+    "/api/events": (Handler.r_events, True),
+    "/api/files": (Handler.r_files, True),
+    "/api/files/svg": (Handler.r_file_svg, True),
+    "/api/files/orig": (Handler.r_file_orig, True),
+    "/api/files/mask": (Handler.r_file_mask, True),
+    "/api/converters": (Handler.r_converters, True),
+    "/api/tools": (Handler.r_tools, True),
+    "/api/pens": (Handler.r_pens, True),
+    "/api/job/preview": (Handler.r_job_preview, True),
+    "/api/plotter": (Handler.r_plotter, True),
+}
+ROUTES_POST = {
+    "/api/login": (Handler.r_login, False),
+    "/api/logout": (Handler.r_logout, False),
+    "/api/job/stop": (Handler.r_stop, False),     # stopping is always allowed, even with an expired session
+    "/api/files/upload": (Handler.r_upload, True),
+    "/api/files/convert_preview": (Handler.r_convert_preview, True),
+    "/api/files/delete": (Handler.r_delete, True),
+    "/api/text_art": (Handler.r_text_art, True),
+    "/api/preview": (Handler.r_preview, True),
+    "/api/job/start": (Handler.r_start, True),
+    "/api/job/pause": (Handler.r_pause, True),
+    "/api/job/continue": (Handler.r_continue, True),
+    "/api/job/return": (Handler.r_return, True),
+    "/api/tools/run": (Handler.r_tool, True),
+    "/api/pentest": (Handler.r_pentest, True),
+}
+
+
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, addr, app):
+        super().__init__(addr, Handler)
+        self.app = app
+        self.stopping = False
+
+
+def shutdown_job(app, timeout=40.0):
+    """On server shutdown: stop a running job and wait for its cleanup."""
+    if app.runner.busy():
+        app.runner.stop()
+        end = time.time() + timeout
+        while app.runner.busy() and time.time() < end:
+            time.sleep(0.2)
+
+
+def serve(app, host, port):
+    srv = Server((host, port), app)
+    return srv
+
