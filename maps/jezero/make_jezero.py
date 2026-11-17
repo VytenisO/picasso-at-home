@@ -351,8 +351,9 @@ def plot_stats(strokes, draw_v=15.0, trav_v=25.0, pen_s=0.25):
 
 # ---------------------------------------------------------------- map content
 class Drawing:
-    def __init__(self, mf):
+    def __init__(self, mf, page=(PAGE_W, PAGE_H)):
         self.mf = mf
+        self.page = page
         self.layers = {"black": [], "red": []}
         self.keepout = []       # polygons black terrain lines must avoid
         self.red_keepout = []   # polygons red lines must avoid (e.g. their own labels)
@@ -676,10 +677,11 @@ def locator(dr, dem, x0, y0, w, h, view_mf, cap, fname):
 
 
 # ---------------------------------------------------------------- SVG out
-def write_svg(path, layers, colors, widths):
+def write_svg(path, layers, colors, widths, page=(PAGE_W, PAGE_H)):
+    pw, ph = page
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PAGE_W}mm" height="{PAGE_H}mm" '
-                f'viewBox="0 0 {PAGE_W} {PAGE_H}">\n')
+        f.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="{pw}mm" height="{ph}mm" '
+                f'viewBox="0 0 {pw} {ph}">\n')
         for name, lines in layers.items():
             f.write(f'<g id="{name}" fill="none" stroke="{colors[name]}" stroke-width="{widths[name]}" '
                     f'stroke-linecap="round" stroke-linejoin="round">\n')
@@ -926,13 +928,49 @@ def sample_clusters(samples, wps, mf, radius_mm):
     return groups
 
 
+def sample_markers(dr, samples, wps, radius_mm, cap, F, rings=(4.5, 6.5, 9.0, 12.0)):
+    """Red ring per sample site (sites closer than radius_mm share one), numbered with a
+    short leader; each label takes the first free spot on rings around its site."""
+    groups = sample_clusters(samples, wps, dr.mf, radius_mm)
+    for g in groups:
+        x, y = g["x"], g["y"]
+        dr.add([circle(x, y, 0.55, 10)], "red")
+        dr.keepout.append(Point(x, y).buffer(0.9))
+    for g in sorted(groups, key=lambda g: min(g["n"])):
+        x, y = g["x"], g["y"]
+        t = num_range(g["n"])
+        w = text_width(t, cap, F)
+        ko = unary_union(dr.keepout)
+        best = None
+        for r in rings:
+            for deg in (-90, -60, -120, -30, -150, 0, 180, 90, 60, 120, 30, 150):
+                a = math.radians(deg)
+                tx, ty = x + r * math.cos(a), y + r * math.sin(a)
+                cand = box(tx - w / 2 - 0.4, ty - cap, tx + w / 2 + 0.4, ty + cap)
+                if not ko.intersects(cand) and dr.mf.box.buffer(-2).contains(cand):
+                    best = (tx, ty, a)
+                    break
+            if best:
+                break
+        if not best:
+            best = (x, y - 5, -math.pi / 2)
+        tx, ty, a = best
+        dr.add([[(x + 0.9 * math.cos(a), y + 0.9 * math.sin(a)),
+                 (tx - 1.4 * math.cos(a), ty - 1.4 * math.sin(a))]], "red")
+        dr.keepout.append(LineString([(x, y), (tx, ty)]).buffer(0.4))
+        dr.label(t, tx, ty + cap / 2, cap, F, layer="red", anchor="middle", pad=0.4)
+    return groups
+
+
 def num_range(ns):
     ns = sorted(ns)
-    if len(ns) == 1:
-        return str(ns[0])
-    if ns[-1] - ns[0] == len(ns) - 1:
-        return f"{ns[0]}–{ns[-1]}"
-    return ",".join(map(str, ns))
+    runs = [[ns[0]]]
+    for n in ns[1:]:
+        if n == runs[-1][-1] + 1:
+            runs[-1].append(n)
+        else:
+            runs.append([n])
+    return ",".join(str(r[0]) if len(r) == 1 else f"{r[0]}–{r[-1]}" for r in runs)
 
 
 def boxed(dr, x0, y0, x1, y1, edges="all"):
@@ -1026,35 +1064,7 @@ def design_nasa_full(dem, lines, wps, raw_lines, scale=225000, center=(77.66, 18
         landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 10, 13, 1.6, F, "flag")
         landmark(dr, ["THREE FORKS DEPOT"], L["three_forks"][1], L["three_forks"][2], 3, 20, 1.5, F, "ring")
         landmark(dr, ["SOL 2022"], wps[-1][1], wps[-1][2], -3, 10, 1.6, F, "triangle", layer="red")
-        groups = sample_clusters(samples, wps, mf, 2.0)
-        for g in groups:
-            x, y = g["x"], g["y"]
-            dr.add([circle(x, y, 0.55, 10)], "red")
-            dr.keepout.append(Point(x, y).buffer(0.9))
-        # place each cluster label on a ring around it, first free spot wins
-        for g in sorted(groups, key=lambda g: min(g["n"])):
-            x, y = g["x"], g["y"]
-            t = num_range(g["n"])
-            w = text_width(t, 1.3, F)
-            ko = unary_union(dr.keepout)
-            best = None
-            for r in (4.5, 6.5, 9.0, 12.0):
-                for deg in (-90, -60, -120, -30, -150, 0, 180, 90, 60, 120, 30, 150):
-                    a = math.radians(deg)
-                    tx, ty = x + r * math.cos(a), y + r * math.sin(a)
-                    cand = box(tx - w / 2 - 0.4, ty - 1.2, tx + w / 2 + 0.4, ty + 1.2)
-                    if not ko.intersects(cand) and dr.mf.box.buffer(-2).contains(cand):
-                        best = (tx, ty, a)
-                        break
-                if best:
-                    break
-            if not best:
-                best = (x, y - 5, -math.pi / 2)
-            tx, ty, a = best
-            dr.add([[(x + 0.9 * math.cos(a), y + 0.9 * math.sin(a)),
-                     (tx - 1.4 * math.cos(a), ty - 1.4 * math.sin(a))]], "red")
-            dr.keepout.append(LineString([(x, y), (tx, ty)]).buffer(0.4))
-            dr.label(t, tx, ty + 0.65, 1.3, F, layer="red", anchor="middle", pad=0.4)
+        sample_markers(dr, samples, wps, 2.0, 1.3, F)
     else:
         landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 8, 8, 1.6, F, "flag")
         landmark(dr, ["THREE FORKS", "SAMPLE DEPOT"], L["three_forks"][1], L["three_forks"][2], 2, 15, 1.5, F, "ring")
@@ -1174,30 +1184,28 @@ def design_nasa_full(dem, lines, wps, raw_lines, scale=225000, center=(77.66, 18
     return dr
 
 
-def design_ridgeline(dem, lines, wps, rows=64, exag=0.030, scale=240000, center=(77.66, 18.36)):
-    """Stacked east-west elevation profiles with hidden lines removed; traverse in red.
-    exag is page mm per metre of height."""
-    fr = (20.0, 22.0, 277.0, 180.0)
+def design_ridgeline(dem, rows=64, exag=0.030, scale=240000, center=(77.66, 18.36)):
+    """Stacked east-west elevation profiles with hidden lines removed. Stylised, one pen,
+    name only. exag is page mm per metre of height. Rows are spread evenly down the frame,
+    with the back row pushed down just far enough that its peaks clear the top edge."""
+    fr = (20.0, 14.0, 277.0, 182.0)
+    x0, y0, x1, y1 = fr
     mf = MapFrame(fr, scale, center)
     ter = Terrain(dem, mf, 80.0, 160.0, pad_mm=2)
     dr = Drawing(mf)
-    F, FM = "futural", "futuram"
-    x0, y0, x1, y1 = fr
-    xs = np.linspace(x0, x1, 1000)
-    top = y0 + 14
-    base = np.linspace(top, y1, rows)
+    xs = np.linspace(x0, x1, 1200)
     zref = np.nanpercentile(ter.z, 2)
-    prof = []
-    for by in base:
-        z = ter.sample_mm(ter.z, np.column_stack([xs, np.full_like(xs, by)]))
-        prof.append(by - (z - zref) * exag)
-    prof = np.array(prof)
-    # hidden lines: front row (bottom) first, keep the running horizon (smallest y so far)
+    lift = np.array([(ter.sample_mm(ter.z, np.column_stack([xs, np.full_like(xs, m)])) - zref) * exag
+                     for m in np.linspace(y0, y1, rows)])
+    u = np.clip(np.minimum(xs - x0, x1 - xs) / ((x1 - x0) * 0.10), 0, 1)
+    lift = np.maximum(lift, 0) * (0.5 - 0.5 * np.cos(np.pi * u))
+    frac = np.linspace(0, 1, rows)
+    peak = lift.max(axis=1)
+    top = max([y0] + [(y0 + peak[i] - frac[i] * y1) / (1 - frac[i]) for i in range(rows - 1)])
+    prof = (top + frac * (y1 - top))[:, None] - lift
     horizon = np.full_like(xs, np.inf)
-    horizons = [None] * rows
-    for i in range(rows - 1, -1, -1):
+    for i in range(rows - 1, -1, -1):  # front row first, keep the running horizon
         yv = prof[i]
-        horizons[i] = horizon.copy()
         vis = yv <= horizon + 1e-6
         seg = []
         for k in range(len(xs)):
@@ -1205,37 +1213,190 @@ def design_ridgeline(dem, lines, wps, rows=64, exag=0.030, scale=240000, center=
                 seg.append((float(xs[k]), float(yv[k])))
             else:
                 if len(seg) > 1:
-                    dr.add([seg])
+                    dr.add([list(LineString(seg).simplify(0.03).coords)])
                 seg = []
         if len(seg) > 1:
-            dr.add([seg])
+            dr.add([list(LineString(seg).simplify(0.03).coords)])
         horizon = np.minimum(horizon, yv)
-    # traverse: lifted the same way, hidden where a nearer ridge covers it
-    red, seg = [], []
-    for l in lines:
-        for lon, lat in l:
-            mx, my = (float(v) for v in mf.ll_mm(lon, lat))
-            z = float(ter.sample_mm(ter.z, np.array([[mx, my]]))[0])
-            py = my - (z - zref) * exag
-            r = (my - top) / (y1 - top) * (rows - 1)
-            ri = int(min(max(math.floor(r) + 1, 0), rows - 1))
-            k = int(np.clip(np.searchsorted(xs, mx), 0, len(xs) - 1))
-            hz = horizons[ri][k]
-            if not np.isfinite(hz) or py <= hz + 0.1:
-                if not seg or math.dist(seg[-1], (mx, py)) > 0.02:
-                    seg.append((mx, py))
-            else:
-                if len(seg) > 1:
-                    red.append(seg)
-                seg = []
-    if len(seg) > 1:
-        red.append(seg)
-    dr.add([list(LineString(r).simplify(0.05).coords) for r in red], "red")
-    vx = exag * mf.scale / 1000
-    dr.label("J E Z E R O", (x0 + x1) / 2, 194, 7.5, FM, anchor="middle", track=3.0)
-    dr.label("MARS 2020 PERSEVERANCE ROVER TRAVERSE  ·  LANDING THROUGH SOL 2022  ·  "
-             f"{rows} EAST-WEST PROFILES  ·  VERTICAL EXAGGERATION {vx:.1f}X",
-             (x0 + x1) / 2, 201, 1.35, F, anchor="middle", track=0.35)
+    dr.label("J E Z E R O", (x0 + x1) / 2, 198, 7.5, "futuram", anchor="middle", track=3.0)
+    return dr
+
+
+def design_clean(dem, lines, wps, scale=225000, center=(77.66, 18.35), tanaka=0.0):
+    """Whole sheet is map: contours with their heights and the traverse, nothing else inside
+    the neat line. Name, scale and sources sit in one line under the frame."""
+    mf = MapFrame((14, 14, 283, 190), scale, center)
+    ter = Terrain(dem, mf, 80.0, 220.0)
+    dr = Drawing(mf)
+    F = "futural"
+    draw_traverse(dr, lines, wps, 10 ** 6, 10 ** 6, 0.9, 1.6, F)
+    contour_set(dr, ter, 50, 250, 4.0, 1.4, F, double_index=True, label_spacing=60, tanaka=tanaka)
+    dr.finish()
+    fx0, fy0, fx1, fy1 = mf.fx0, mf.fy0, mf.fx1, mf.fy1
+    dr.add([[(fx0, fy0), (fx1, fy0), (fx1, fy1), (fx0, fy1), (fx0, fy0)]])
+    gl, glab = graticule_ticks(mf, 5, 10, 1.2)
+    dr.add(gl)
+    for s_, pos, kind in glab:
+        if kind == "lon":
+            dr.label(s_, pos, fy0 - 3.0, 1.4, F, anchor="middle")
+        else:
+            dr.label(s_, fx0 - 3.0, pos + 0.7, 1.4, F, anchor="end")
+    t = "JEZERO CRATER, MARS"
+    dr.label(t, fx0, fy1 + 8.5, 2.6, "futuram", track=0.9)
+    dr.label("PERSEVERANCE TRAVERSE, LANDING TO SOL 2022  ·  CONTOURS 50 M  ·  1:225 000",
+             fx0 + text_width(t, 2.6, "futuram", 0.9) + 8, fy1 + 8.5, 1.3, F, track=0.3)
+    scale_bar(dr, fx1 - 10000 * mf.k, fy1 + 7.0, mf, 10, 2, 0.8, F, 1.0, units="KM")
+    return dr
+
+
+# Section along the drive, east to west: rover positions on these sols, one per area,
+# so it follows the route without its back-and-forth (and has no time axis).
+SECTION_SOLS = [13, 298, 575, 749, 913, 1088, 1215, 1401, 1700, 1900]
+
+
+def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)):
+    """Portrait sheet, about 2.5x the full-crater map: western fan and rim with every sample
+    site, a terrain section along the route, and the tube key."""
+    page = (PAGE_H, PAGE_W)
+    mf = MapFrame((18, 18, 192, 172), scale, center)
+    ter = Terrain(dem, mf, 40.0, 100.0)
+    dr = Drawing(mf, page)
+    F, FM = "futural", "futuram"
+    fx0, fy0, fx1, fy1 = mf.fx0, mf.fy0, mf.fx1, mf.fy1
+
+    draw_traverse(dr, lines, wps, 10 ** 6, 10 ** 6, 0.9, 1.6, F, knock=0.6)
+    L = {k: at_sol(wps, s) for k, s in LANDMARKS.items() if s}
+    landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 10, -21, 1.5, F, "flag",
+             anchor="end")
+    landmark(dr, ["THREE FORKS DEPOT"], L["three_forks"][1], L["three_forks"][2], -2, 10, 1.5, F, "ring")
+    landmark(dr, ["CHEYAVA FALLS"], L["cheyava"][1], L["cheyava"][2], 2, -10, 1.5, F, "ring")
+    landmark(dr, ["WITCH HAZEL HILL"], L["witch_hazel"][1], L["witch_hazel"][2], 3, 11, 1.5, F, "ring")
+    landmark(dr, ["SOL 2022"], wps[-1][1], wps[-1][2], 4, 9, 1.5, F, "triangle", layer="red")
+    sample_markers(dr, samples, wps, 1.2, 1.25, F, rings=(3.5, 5.0, 7.0, 9.5))
+
+    # section ends on the map
+    sec_ll = [at_sol(wps, s)[1:3] for s in SECTION_SOLS]
+    sec_mm = [tuple(float(v) for v in mf.ll_mm(lo, la)) for lo, la in sec_ll]
+    for (x, y), t, dx, dy in ((sec_mm[0], "A", -3.0, -2.5), (sec_mm[-1], "A'", -3.0, 1.0)):
+        dr.add([circle(x, y, 0.35, 8)])
+        dr.label(t, x + dx, y + dy, 2.0, FM, anchor="start" if dx > 0 else "end")
+
+    for nm, lon, lat, cap, ang in (("Séítah", 77.432, 18.416, 2.2, 0), ("Western fan", 77.385, 18.50, 2.6, -8),
+                                   ("Belva", 77.372, 18.474, 1.7, 0)):
+        x, y = mf.ll_mm(lon, lat)
+        dr.label(nm, float(x), float(y), cap, "timesi", anchor="middle", track=0.6, angle=ang)
+    x, y = mf.ll_mm(77.232, 18.488)
+    dr.label("JEZERO RIM", float(x), float(y), 2.0, F, anchor="middle", track=1.4, angle=-62)
+
+    for sx, sy, z in spot_heights(ter, mf, 4, 40, 3000):
+        if any(k.intersects(box(sx - 1, sy - 2, sx + 10, sy + 1.5)) for k in dr.keepout):
+            continue
+        dr.add([circle(sx, sy, 0.3, 8)])
+        dr.label(f"{int(round(z))}".replace("-", "−"), sx + 1.0, sy + 0.8, 1.25, F)
+        dr.keepout.append(Point(sx, sy).buffer(0.8))
+    contour_set(dr, ter, 20, 100, 3.0, 1.3, F, double_index=True, label_spacing=50)
+    grid_crosses(dr, mf, 5)
+    dr.finish()
+
+    dr.add([[(fx0, fy0), (fx1, fy0), (fx1, fy1), (fx0, fy1), (fx0, fy0)]])
+    gl, glab = graticule_ticks(mf, 1, 5, 1.2)
+    dr.add(gl)
+    for s_, pos, kind in glab:
+        if kind == "lon":
+            dr.label(s_, pos, fy0 - 3.0, 1.4, F, anchor="middle")
+        else:
+            dr.label(s_, fx0 - 3.0, pos, 1.4, F, anchor="middle", angle=-90)
+
+    # --- terrain section along the route
+    path = LineString(chaikin(sec_mm, 3))
+    n = 600
+    pts = np.array([path.interpolate(t, normalized=True).coords[0] for t in np.linspace(0, 1, n)])
+    z = ter.sample_mm(ter.z, pts)
+    km = np.linspace(0, path.length / mf.k / 1000, n)
+    sx0, sy0, sx1, sy1 = fx0, 180.0, fx1, 232.0
+    px0, px1, py0, py1 = sx0 + 10, sx1 - 2, sy0 + 9, sy1 - 7
+    zmin, zmax = math.floor(z.min() / 100) * 100, math.ceil(z.max() / 100) * 100
+
+    def X(v):
+        return px0 + v / km[-1] * (px1 - px0)
+
+    def Y(v):
+        return py1 - (v - zmin) / (zmax - zmin) * (py1 - py0)
+
+    ve = ((py1 - py0) / (zmax - zmin)) / ((px1 - px0) / (km[-1] * 1000))
+    dr.label("A", sx0, sy0 + 3.0, 2.0, FM)
+    dr.label("A'", sx1, sy0 + 3.0, 2.0, FM, anchor="end")
+    dr.label(f"SECTION ALONG THE ROUTE, EAST TO WEST  ·  VERTICAL EXAGGERATION {ve:.0f}X",
+             (sx0 + sx1) / 2, sy0 + 2.6, 1.3, F, anchor="middle", track=0.3)
+    dr.add([[(px0, py0), (px0, py1), (px1, py1)]])
+    for v in range(int(zmin), int(zmax) + 1, 200):
+        yy = Y(v)
+        dr.add([[(px0 - 1, yy), (px0, yy)]])
+        dr.add([[(px0 + 2.0 * i, yy), (px0 + 2.0 * i + 0.3, yy)] for i in range(1, int((px1 - px0) / 2.0))])
+        dr.label(f"{v}".replace("-", "−"), px0 - 1.6, yy + 0.55, 1.1, F, anchor="end")
+    for k in range(0, int(km[-1]) + 1, 2):
+        xx = X(k)
+        dr.add([[(xx, py1), (xx, py1 + 1)]])
+        dr.label(str(k), xx, py1 + 3.0, 1.1, F, anchor="middle")
+    dr.label("KM", px1, py1 + 5.6, 1.1, F, anchor="end", track=0.3)
+    # ground line in black, shaded under with sparse verticals like an old section
+    gl_pts = [(X(a), Y(b)) for a, b in zip(km, z)]
+    dr.add([list(LineString(gl_pts).simplify(0.05).coords)])
+    for a, b in zip(km[::8], z[::8]):
+        if Y(b) < py1 - 0.6:
+            dr.add([[(X(a), Y(b) + 0.5), (X(a), py1)]])
+
+    def along(lon, lat):
+        p = Point(*(float(v) for v in mf.ll_mm(lon, lat)))
+        d = path.project(p)
+        return d / path.length * km[-1]
+
+    marks = [(L["landing"], "LANDING"), (at_sol(wps, 298), "SÉÍTAH"), (L["three_forks"], "DELTA FRONT"),
+             (L["cheyava"], "CHEYAVA FALLS"), (L["witch_hazel"], "WITCH HAZEL HILL")]
+    prev = None
+    for w, lab in marks:
+        k = along(w[1], w[2])
+        xx = X(k)
+        yy = Y(float(np.interp(k, km, z)))
+        top = min(yy - 2.5, py0 + 2.0)
+        wl = text_width(lab, 1.05, F, 0.2)
+        if prev and xx - wl / 2 < prev[0] + 1.5 and top - 2.4 > sy0 + 3:
+            top -= 2.4  # stagger a label that would run into the previous one
+        dr.add([[(xx, yy - 0.8), (xx, top)]])
+        dr.label(lab, xx, top - 0.7, 1.05, F, anchor="middle", track=0.2, pad=0.2)
+        prev = (xx + wl / 2, top)
+    # samples projected onto the section as red dots
+    for n_, name, sol, kind, loc in samples:
+        w = at_sol(wps, sol)
+        k = along(w[1], w[2])
+        xx = X(k)
+        yy = Y(float(np.interp(k, km, z)))
+        dr.add([circle(xx, yy, 0.45, 8)], "red")
+    # --- sample key
+    ky0, ky1 = 240.0, 268.0
+    dr.add([[(fx0, ky0 - 2.5), (fx1, ky0 - 2.5)]])
+    dr.label("SAMPLE TUBES", fx0, ky0 + 1.5, 1.4, F, track=0.35)
+    dr.label("NUMBER, NAME, SOL.  A ATMOSPHERIC, R REGOLITH", fx0 + 26, ky0 + 1.5, 1.0, F, track=0.25)
+    cols = 4
+    per = math.ceil(len(samples) / cols)
+    colw = (fx1 - fx0) / cols
+    step = (ky1 - ky0 - 5) / (per - 1)
+    for i, (n_, name, sol, kind, loc) in enumerate(samples):
+        cx = fx0 + (i // per) * colw
+        yy = ky0 + 5.5 + (i % per) * step
+        dr.label(f"{n_}", cx + 3, yy, 1.1, F, anchor="end", layer="red")
+        nm = name.upper() + (" (A)" if kind == "Atmospheric" else " (R)" if kind == "Regolith" else "")
+        dr.label(nm, cx + 4.5, yy, 1.1, F, track=0.12)
+        dr.label(f"{sol}", cx + colw - 3, yy, 1.1, F, anchor="end")
+    # --- footer
+    fy = 279.0
+    dr.add([[(fx0, fy - 6.0), (fx1, fy - 6.0)]])
+    dr.label("JEZERO CRATER", fx0, fy, 3.4, FM, track=1.0)
+    dr.label("WESTERN FAN AND RIM  ·  PERSEVERANCE, LANDING TO SOL 2022  ·  CONTOURS 20 M  ·  1:90 000",
+             fx0, fy + 5.0, 1.1, F, track=0.25)
+    dr.label("CTX DEM 20 M/PX, USGS  ·  TRAVERSE NASA/JPL-CALTECH  ·  ELEVATIONS M, MARS 2000 AREOID",
+             fx0, fy + 8.0, 1.0, F, track=0.2)
+    scale_bar(dr, fx1 - 5000 * mf.k, fy - 1.0, mf, 5, 1, 0.8, F, 1.0, units="KM")
     return dr
 
 
@@ -1258,7 +1419,14 @@ def main():
         "b1-relief-profile": lambda: design_nasa_full(dem, lines, wps, raw, tanaka=0.32, profile=True),
         "b2-drawing": lambda: design_nasa_full(dem, lines, wps, raw, tanaka=0.32, profile=True, titleblock=True),
         "b3-samples": lambda: design_nasa_full(dem, lines, wps, raw, tanaka=0.32, samples=samples),
-        "e-ridgeline": lambda: design_ridgeline(dem, lines, wps),
+        "c-clean": lambda: design_clean(dem, lines, wps),
+        "c1-clean-relief": lambda: design_clean(dem, lines, wps, tanaka=0.32),
+        "d-detail": lambda: design_detail(dem, lines, wps, samples),
+        "e-ridgeline": lambda: design_ridgeline(dem),
+        "e1-ridge-96": lambda: design_ridgeline(dem, rows=96),
+        "e2-ridge-x2": lambda: design_ridgeline(dem, exag=0.06),
+        "e3-ridge-128": lambda: design_ridgeline(dem, rows=128, exag=0.045),
+        "e4-ridge-160": lambda: design_ridgeline(dem, rows=160, exag=0.05),
     }
     only = args.only.split(",") if args.only else list(designs)
     summary = {}
@@ -1269,9 +1437,18 @@ def main():
         layers = {"black": black, "red": red}
         colors = {"black": "#1a1a1a", "red": "#c8102e"}
         widths = {"black": 0.25, "red": 0.35}
-        write_svg(os.path.join(args.out, f"{name}.svg"), layers, colors, widths)
-        write_svg(os.path.join(args.out, f"{name}-pen1-black.svg"), {"black": black}, colors, widths)
-        write_svg(os.path.join(args.out, f"{name}-pen2-red.svg"), {"red": red}, colors, widths)
+        write_svg(os.path.join(args.out, f"{name}.svg"), layers, colors, widths, dr.page)
+        # the plotter's travel is landscape only: portrait sheets go in turned 90 degrees
+        pw, ph = dr.page
+        if ph > pw:
+            def turn(ls):
+                return [[(y, pw - x) for x, y in l] for l in ls]
+            pen_page, pb, pr = (ph, pw), turn(black), turn(red)
+        else:
+            pen_page, pb, pr = dr.page, black, red
+        write_svg(os.path.join(args.out, f"{name}-pen1-black.svg"), {"black": pb}, colors, widths, pen_page)
+        if red:
+            write_svg(os.path.join(args.out, f"{name}-pen2-red.svg"), {"red": pr}, colors, widths, pen_page)
         summary[name] = {"black": plot_stats(black), "red": plot_stats(red)}
         print(name, json.dumps(summary[name]))
     with open(os.path.join(args.out, "stats.json"), "w") as f:
