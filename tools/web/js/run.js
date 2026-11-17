@@ -28,6 +28,9 @@ export function initRun() {
   $('ptToggle').onclick = () => pentest('toggle');
   $('ptSweep').onclick = () => pentest('sweep');
   $('ptQuit').onclick = () => pentest('quit');
+  // Modal dialogs make the page behind them inert, so each carries its own Stop while a job runs.
+  document.querySelectorAll('.dlg-stop').forEach((b) => { b.onclick = stop; });
+  on('job', () => document.querySelectorAll('.dlg-stop').forEach((b) => { b.hidden = !jobActive(); }));
   on(['job', 'position', 'link', 'me', 'lastEventAt'], renderStatus);
   on(['job', 'preview', 'previewStale', 'previewing', 'current', 'me'], renderRun);
   setInterval(renderStale, 2000);
@@ -184,14 +187,18 @@ async function start(mode) {
   if (mode !== 'simulate') {
     const ok = await confirmStart(mode, pv);
     if (!ok) return;
-    // the dialog may have been open a while: preview again so the plan is current
+    // The dialog may have been open a while: check again, and start only if it is still the plan confirmed.
+    const confirmed = pv.plan_id;
     pv = await runPreview();
     if (!pv || !pv.ok) { toast('The plan changed and has problems now. Nothing was started.', true); return; }
+    if (pv.plan_id !== confirmed) {
+      toast('The drawing, settings or calibration changed while the dialog was open. Nothing was started: check and start again.', true);
+      return;
+    }
   }
   try {
-    const r = await post('/api/job/start', { id: state.current.id, settings: state.settings, plan_id: pv.plan_id, mode,
+    const r = await post('/api/job/start', { id: pv.file, settings: pv.settings, plan_id: pv.plan_id, mode,
       confirm: mode === 'simulate' ? undefined : { parked: true } });
-    set({ jobPreview: null });
     toast(mode === 'simulate' ? 'Simulation started: nothing moves.' : 'Started.');
     return r;
   } catch (e) {

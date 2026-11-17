@@ -12,6 +12,7 @@
 
 <div id="loginView" class="login" hidden>
   <h2>Pen plotter</h2>
+  <p id="loginNote" class="note warn" hidden>Your session expired. Log in again to keep working. Stop works without logging in.</p>
   <form id="loginForm">
     <label class="field"><span>Password</span><input id="loginPw" type="password" autocomplete="current-password" required></label>
     <p id="loginErr" class="problems" hidden></p>
@@ -27,7 +28,7 @@
   <span id="statePill" class="pill" aria-live="polite">Idle</span>
   <span class="spacer"></span>
   <button id="stopTop" class="danger" hidden title="Stop the job (Shift+S)">Stop</button>
-  <button id="themeBtn" class="icon hide-narrow" title="Theme: system, light, dark">Theme</button>
+  <button id="themeBtn" class="icon" title="Theme: system, light, dark">Theme</button>
   <button id="helpBtn" class="icon" title="Help and shortcuts (?)" aria-label="Help">?</button>
   <button id="logoutBtn" class="icon hide-narrow" hidden>Log out</button>
 </header>
@@ -237,6 +238,7 @@
   <button data-view="bed" aria-selected="true">Bed</button>
   <button data-view="library">Library</button>
   <button data-view="layers">Layers</button>
+  <button data-view="tools">Tools</button>
   <button data-view="run">Run</button>
   <button data-view="console">Console</button>
 </nav>
@@ -282,7 +284,8 @@
       Return to start finishes the current stroke and travels back to S. For an instant stop, switch the plotter off.</p>
     <p class="hint">The carriage position shown is the commanded one, counted from S. If the carriage was bumped or
       the motors were off, it is wrong until you park it again.</p>
-    <div class="actions"><button id="helpClose" class="primary">Close</button></div>
+    <div class="actions"><button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button id="helpClose" class="primary">Close</button></div>
   </div>
 </dialog>
 
@@ -290,7 +293,8 @@
   <form method="dialog" class="dlg">
     <h2 id="askTitle"></h2>
     <p id="askText"></p>
-    <div class="actions"><button value="cancel">Cancel</button><button value="ok" class="primary" id="askOk">OK</button></div>
+    <div class="actions"><button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button value="cancel">Cancel</button><button value="ok" class="primary" id="askOk">OK</button></div>
   </form>
 </dialog>
 

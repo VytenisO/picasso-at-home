@@ -18,19 +18,24 @@ async function boot() {
   try { me = await api('/api/me'); }
   catch (e) { document.body.textContent = e.message; return; }
   if (me.auth_required && !me.auth) return showLogin();
-  set({ me });
   $('loginView').hidden = true;
   $('appView').hidden = false;
+  initOnce();
+  await loadServerInfo(me);
+  await syncState();
+  fit();
+}
+
+// Everything that can differ between server runs (simulator or hardware, machine, pens, catalogue).
+async function loadServerInfo(me) {
+  set({ me });
   $('logoutBtn').hidden = !me.auth_required;
   $('modeBadge').textContent = me.sim ? 'Simulator' : 'Hardware';
   $('modeBadge').className = 'badge ' + (me.sim ? 'sim' : 'hw');
   $('modeBadge').title = me.sim ? 'Server runs in simulator mode: nothing ever moves.' : 'Jobs move the real plotter.';
-  initOnce();
   const [conv, tools] = await Promise.all([api('/api/converters'), api('/api/tools')]);
   set({ converters: conv.converters, tools: tools.tools });
   await refreshFiles();
-  await syncState();
-  fit();
 }
 
 let inited = false;
@@ -52,7 +57,14 @@ function initOnce() {
 
 // Snapshot + console history, then the live stream from that point on.
 async function syncState() {
-  const st = await api('/api/state');
+  let st = await api('/api/state');
+  if (state.me && st.epoch !== state.me.epoch) {
+    // The server restarted (maybe in another mode, with another calibration): reload everything it serves.
+    await loadServerInfo(await api('/api/me'));
+    set({ preview: null, previewStale: true, jobPreview: null });
+    toast('The server restarted. The view was reloaded.');
+    st = await api('/api/state');
+  }
   applyState(st);
   const log = await api('/api/log?since=0');
   resetConsole();
@@ -99,17 +111,21 @@ function onEvent(ev) {
 
 // ----------------------------------------------------------------- login
 function showLogin() {
-  if (stream) { stream.close(); stream = null; }
-  $('appView').hidden = true;
+  // Mid-session (expired cookie) the workspace stays visible: Stop works without a session.
+  const midSession = inited && !$('appView').hidden;
+  $('loginView').classList.toggle('floating', midSession);
+  $('loginNote').hidden = !midSession;
+  if (!midSession) $('appView').hidden = true;
   $('loginView').hidden = false;
-  $('loginPw').focus();
+  if (!midSession) $('loginPw').focus();
   $('loginForm').onsubmit = async (e) => {
     e.preventDefault();
     try {
       await post('/api/login', { password: $('loginPw').value });
       $('loginErr').hidden = true;
       $('loginPw').value = '';
-      boot();
+      $('loginView').hidden = true;
+      if (midSession) syncState().catch((err) => toast(err.message, true)); else boot();
     } catch (err) { $('loginErr').textContent = err.message; $('loginErr').hidden = false; }
   };
 }
@@ -138,7 +154,7 @@ function initTabs() {
       const v = b.dataset.view;
       document.body.dataset.view = v;
       document.querySelectorAll('.mobile-tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-      if (v === 'library' || v === 'layers') show(v);
+      if (v === 'library' || v === 'layers' || v === 'tools') show(v);
       if (v === 'bed') requestAnimationFrame(fit);
     };
   });
@@ -163,10 +179,10 @@ function initKeys() {
     const t = e.target;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (e.key === 'S' && e.shiftKey && !e.ctrlKey && !e.metaKey && !typing) { e.preventDefault(); stop(); return; }
-    if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+    if (typing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
     if (e.key === '?') { $('helpDlg').showModal(); e.preventDefault(); }
     else if (e.key === 'p' || e.key === 'P') { if (!jobActive()) runPreview(); }
-    else if (e.key === ' ' && t.tagName !== 'BUTTON') {
+    else if (e.key === ' ' && !e.repeat && !(t && t.closest && t.closest('button, a, summary, [role=button], [role=tab]'))) {
       e.preventDefault();
       if (state.job && state.job.state === 'running') pause();
       else if (state.job && state.job.state === 'paused') resume();

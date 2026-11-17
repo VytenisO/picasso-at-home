@@ -158,8 +158,8 @@ function render() {
 
   // the drawing
   const jp = state.jobPreview, job = state.job;
-  const showJob = jp && job && job.kind === 'plot' && (jobActive() || (!state.preview && job.meta?.plan_id === jp.plan_id)) &&
-    (!state.current || state.current.id === jp.file);
+  const showJob = jp && job && job.kind === 'plot' && job.meta?.plan_id === jp.plan_id &&
+    (jobActive() || (!state.preview && (!state.current || state.current.id === jp.file)));
   const lw = Math.max(0.3, 1.2 * px);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (showJob) {

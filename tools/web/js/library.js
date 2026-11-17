@@ -52,12 +52,15 @@ function headers() {
   return { 'X-Filename': encodeURIComponent(pending.file.name), 'X-Params': encodeURIComponent(JSON.stringify(params)) };
 }
 
+let convGen = 0;
 async function convPreview() {
   if (!pending) return;
+  const gen = ++convGen, mine = pending;
   $('convPreviewBtn').disabled = true;
   $('convStats').textContent = 'Converting...';
   try {
     const r = await api('/api/files/convert_preview', { method: 'POST', raw: pending.file, headers: headers() });
+    if (gen !== convGen || pending !== mine) return;     // a newer preview or another file took over
     const img = $('convImg');
     img.src = URL.createObjectURL(new Blob([r.svg], { type: 'image/svg+xml' }));
     img.hidden = false;

@@ -63,7 +63,8 @@ export function schemaForm(form, params, pens, values = {}) {
     } else if (p.type === 'bool') {
       input = el('input', { id, name: p.key, type: 'checkbox' });
       input.checked = !!(values[p.key] ?? p.default);
-      form.append(el('label', { class: 'check' }, input, ' ', p.label), p.help ? el('p', { class: 'hint', text: p.help }) : null);
+      form.append(el('label', { class: 'check' }, input, ' ', p.label));
+      if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
       continue;
     } else if (p.type === 'number') {
       input = el('input', { id, name: p.key, type: 'number', min: p.min, max: p.max, step: p.step || 'any',
@@ -76,8 +77,8 @@ export function schemaForm(form, params, pens, values = {}) {
     }
     const unit = p.unit ? ` (${p.unit})` : '';
     const range = p.type === 'number' && p.min !== undefined ? ` ${p.min}-${p.max}` : '';
-    form.append(el('label', { class: 'field', for: id }, el('span', { text: p.label + unit + (range ? ',' + range : '') }), input),
-      p.help ? el('p', { class: 'hint', text: p.help }) : null);
+    form.append(el('label', { class: 'field', for: id }, el('span', { text: p.label + unit + (range ? ',' + range : '') }), input));
+    if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
   }
 }
 

@@ -41,6 +41,7 @@ export async function openFile(id, { quiet = false } = {}) {
 
 export function changeSettings(patch, { now = false } = {}) {
   if (!state.settings || jobActive()) return;
+  seq++;                                   // an older preview still in flight must not overwrite this change
   set({ settings: { ...state.settings, ...patch }, previewStale: true });
   clearTimeout(timer);
   timer = setTimeout(runPreview, now ? 0 : 500);
@@ -145,7 +146,8 @@ function renderLayers() {
   list.replaceChildren(...fileLayers.map((fl, i) => {
     const s = (st.layers || []).find((x) => x.key === fl.key) || { key: fl.key, enabled: true };
     const upd = (patch) => {
-      const layers = fileLayers.map((x) => ({ ...((st.layers || []).find((y) => y.key === x.key) || { key: x.key, enabled: true, pen: null, speed: null, pressure: null }) }));
+      const cur = (state.settings && state.settings.layers) || [];
+      const layers = fileLayers.map((x) => ({ ...(cur.find((y) => y.key === x.key) || { key: x.key, enabled: true, pen: null, speed: null, pressure: null }) }));
       Object.assign(layers[i], patch);
       changeSettings({ layers });
     };

@@ -191,7 +191,7 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
   .workspace { display: block; height: auto; padding-bottom: 60px; }
   .panel, .center, .console { display: none; border: none; }
   body[data-view="bed"] .center { display: flex; height: calc(100vh - 48px - 60px); }
-  body[data-view="library"] .left, body[data-view="layers"] .left { display: block; }
+  body[data-view="library"] .left, body[data-view="layers"] .left, body[data-view="tools"] .left { display: block; }
   body[data-view="run"] .right { display: block; }
   body[data-view="console"] .console { display: flex; height: calc(100vh - 48px - 60px); }
   body[data-view="console"] .console.collapsed .console-body { display: block; }
@@ -205,3 +205,5 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
   .toast { bottom: 72px; }
 }
 .check.inline { margin: 0; }
+.login.floating { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 60; margin: 0;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25); width: min(360px, 92vw); }

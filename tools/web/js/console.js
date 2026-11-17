@@ -51,7 +51,7 @@ export function addEvents(evs) {
   if (!raf) raf = requestAnimationFrame(flush);
 }
 
-export function resetConsole() { lines = []; seen = new Set(); queue = []; rebuild(); }
+export function resetConsole() { lines = []; seen = new Set(); queue = []; clearedAt = 0; rebuild(); }
 
 const match = (ev) => ev.seq > clearedAt && RANK[ev.level] >= RANK[minLevel] && (!term || ev.text.toLowerCase().includes(term));
 
@@ -89,8 +89,11 @@ function count() {
 
 function toBottom() {
   const body = $('conBody');
-  body.dataset.programmatic = '1';
-  body.scrollTop = body.scrollHeight;
+  const target = body.scrollHeight - body.clientHeight;
+  if (Math.abs(body.scrollTop - target) > 1) {     // only a real scroll fires the event that clears the flag
+    body.dataset.programmatic = '1';
+    body.scrollTop = body.scrollHeight;
+  }
   $('conJump').hidden = true;
 }
 
