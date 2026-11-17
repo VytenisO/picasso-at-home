@@ -7,14 +7,20 @@
   add --sim to run any mode on a virtual machine and virtual clock
 
 Setup before trace/plot: motors off, slide the carriage by hand to the start point S
-(pen up, over the paper), tell the script where S is on the machine with --start-x/--start-y
-(mm from the machine's top-left corner; default 20,20). The drawing's top-left lands at
-S + (--x0, --y0). X is right, Y is toward you. Calibration comes from ../config/machine.json.
+(pen up, ON the paper), tell the script where S is on the machine with --start-x/--start-y
+(mm from the machine's top-left corner; default: the paper's top-left corner). S is the
+chosen anchor on the PAPER (top-left, top-centre or centre, see --anchor); the drawing is
+placed on the inset canvas automatically, margin_mm clear of every paper edge. The paper
+rectangle (paper.x0/y0/width/height in config/machine.json, or --paper-*) is checked in
+dry runs: S must be on the paper and the whole drawing inside the canvas. X is right, Y
+is toward you. Calibration comes from ../config/machine.json.
 
-This firmware has no e-stop: cut power to abort immediately. Ctrl-C stops sending, raises
-the pen and releases the motors, but a move already sent still finishes (<= ~3 s).
-Supported SVG: path (M L H V C S Q T Z, no arcs), line, polyline, polygon, rect, circle.
-Anything else, or any transform, is an error unless --ignore-unsupported.
+Ctrl-C is the software e-stop: it raises the pen and releases the motors. Firmware 2.0.1
+cannot stop a move already sent, so cutting power is the only instant stop.
+Supported SVG: path (M L H V C S Q T Z, no arcs), line, polyline, polygon, rect, circle,
+ellipse, and translate/scale/rotate/skew/matrix transforms. Text is outlined via
+tools/svg_vector.py at upload time (or here when fonttools is available). Other unknown
+elements are an error unless --ignore-unsupported.
 """
 import argparse
 import datetime
@@ -22,6 +28,7 @@ import json
 import math
 import pathlib
 import re
+import signal
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -35,6 +42,14 @@ except ImportError:
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EBB_VID, EBB_PID = 0x04D8, 0xFD92
 UNIT_MM = {"mm": 1.0, "cm": 10.0, "in": 25.4, "pt": 25.4 / 72, "pc": 25.4 / 6, "px": 25.4 / 96, "": 25.4 / 96}
+INKNS = "{http://www.inkscape.org/namespaces/inkscape}"
+INK_NAMES = {"#000000": "Black", "#111111": "Black", "#2463a6": "Blue", "#c0392b": "Red",
+             "#c2187e": "Magenta", "#00a0b0": "Cyan", "#d9a400": "Yellow"}
+CSS_COLORS = {"black": "#000000", "white": "#ffffff", "red": "#ff0000", "green": "#008000",
+              "blue": "#0000ff", "yellow": "#ffff00", "cyan": "#00ffff", "magenta": "#ff00ff",
+              "grey": "#808080", "gray": "#808080", "orange": "#ffa500", "purple": "#800080",
+              "pink": "#ffc0cb", "lime": "#00ff00", "navy": "#000080", "teal": "#008080",
+              "brown": "#a52a2a"}
 MAX_SPEED = 40.0        # mm/s hard ceiling
 CHUNK_STEPS = 3000      # longest single SM leg (per vector), keeps any in-flight move < ~3 s
 LEAD = 0.05             # s: feed the next SM this long before the current one ends
@@ -49,6 +64,126 @@ def log(msg, echo=True):
     if LOGF:
         LOGF.write(f"{datetime.datetime.now():%H:%M:%S} {msg}\n")
         LOGF.flush()
+
+
+# --------------------------------------------------------------- ink / layers
+def normalize_color(s):
+    """Accept common SVG colour syntaxes; -> '#rrggbb' or None."""
+    if not s:
+        return None
+    s = s.strip().lower()
+    if s.startswith("#"):
+        h = s[1:]
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        return "#" + h if re.fullmatch(r"[0-9a-f]{6}", h) else None
+    m = re.fullmatch(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", s)
+    if m:
+        return "#%02x%02x%02x" % tuple(min(255, int(v)) for v in m.groups())
+    return CSS_COLORS.get(s)
+
+
+def element_color(el):
+    style = el.get("style") or ""
+
+    def find(prop):
+        c = el.get(prop)
+        if not c:
+            m = re.search(r"(?:^|;)\s*" + prop + r"\s*:\s*([^;]+)", style)
+            c = m.group(1) if m else None
+        return c
+
+    c = find("stroke")
+    if not c or c.strip().lower() == "none":
+        c = find("fill")
+    if not c or c.strip().lower() == "none":
+        return "#000000"   # unstyled geometry uses the default black pen
+    return normalize_color(c) or "#000000"
+
+
+def element_layer(el):
+    if el.get(INKNS + "groupmode") == "layer":
+        return el.get(INKNS + "label") or el.get("id") or None
+    return None
+
+
+def color_label(key):
+    color, layer = key
+    return layer or INK_NAMES.get(color) or color or "Ink"
+
+
+def color_groups(metas):
+    """Group stroke indices by ink, in order of first appearance."""
+    groups, by_key = [], {}
+    for i, m in enumerate(metas):
+        key = (m.get("color"), m.get("layer"))
+        if key not in by_key:
+            by_key[key] = len(groups)
+            groups.append((key, []))
+        groups[by_key[key]][1].append(i)
+    return groups
+
+
+def pause_for_swap(key, a):
+    """Tell the operator (and the web UI) to change pens, then wait for CONTINUE."""
+    info = {"color": key[0], "layer": key[1], "label": color_label(key)}
+    log("")
+    log(f"*** PEN CHANGE: swap to {color_label(key)} ***")
+    print("__PAUSE__:" + json.dumps(info), flush=True)
+    if a.sim:
+        return
+    try:
+        input("Pen swapped? Type CONTINUE to resume: ")
+    except EOFError:
+        raise SystemExit("input closed while waiting for a pen swap")
+
+
+# --------------------------------------------------------------- SVG transforms
+IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def mat_mul(m, n):
+    """Compose two 2x3 affine matrices (apply n first, then m)."""
+    a, b, c, d, e, f = m
+    A, B, C, D, E, F = n
+    return (a * A + c * B, b * A + d * B, a * C + c * D, b * C + d * D,
+            a * E + c * F + e, b * E + d * F + f)
+
+
+def mat_apply(m, p):
+    return (m[0] * p[0] + m[2] * p[1] + m[4], m[1] * p[0] + m[3] * p[1] + m[5])
+
+
+def parse_transform(s):
+    m = IDENTITY
+    if not s or s.strip() in ("", "none"):
+        return m
+    for name, raw in re.findall(r"([A-Za-z]+)\s*\(([^)]*)\)", s):
+        v = [float(x) for x in re.findall(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", raw)]
+        name = name.lower()
+        if name == "matrix" and len(v) >= 6:
+            t = tuple(v[:6])
+        elif name == "translate":
+            t = (1.0, 0.0, 0.0, 1.0, v[0], v[1] if len(v) > 1 else 0.0)
+        elif name == "scale":
+            sy = v[1] if len(v) > 1 else v[0]
+            t = (v[0], 0.0, 0.0, sy, 0.0, 0.0)
+        elif name == "rotate":
+            ang = math.radians(v[0])
+            co, si = math.cos(ang), math.sin(ang)
+            rot = (co, si, -si, co, 0.0, 0.0)
+            if len(v) >= 3:
+                cx, cy = v[1], v[2]
+                t = mat_mul(mat_mul((1, 0, 0, 1, cx, cy), rot), (1, 0, 0, 1, -cx, -cy))
+            else:
+                t = rot
+        elif name in ("skewx", "skewy"):
+            q = math.tan(math.radians(v[0]))
+            t = (1.0, 0.0, q, 1.0, 0.0, 0.0) if name == "skewx" else (1.0, q, 0.0, 1.0, 0.0, 0.0)
+        else:
+            continue
+        m = mat_mul(m, t)
+    return m
 
 
 # ---------------------------------------------------------------- SVG parsing
@@ -177,48 +312,83 @@ def load_svg(path, ignore_unsupported):
         log(f"WARNING: width/height ratio differs from viewBox by >1% ({sx:.4f} vs {sy:.4f} mm/unit); using min")
     scale = min(sx, sy)
 
-    polys, skipped = [], {}
+    polys, metas, skipped = [], [], {}
 
-    def walk(el):
+    def walk(el, ctx, parent_xform):
         tag = el.tag.split("}")[-1]
         if tag in ("defs", "metadata", "title", "desc", "style", "namedview"):
             return
-        t = (el.get("transform") or "").strip()
-        if t and t not in ("none",):
-            raise ValueError(f"<{tag}> has a transform ({t!r}); flatten the SVG first (e.g. vpype)")
+        xform = mat_mul(parent_xform, parse_transform(el.get("transform")))
+        cur = dict(ctx)
+        c = element_color(el)
+        layer = element_layer(el)
+        if c:
+            cur["color"] = c
+        if layer:
+            cur["layer"] = layer
+        meta = {"color": cur.get("color"), "layer": cur.get("layer")}
+
+        def add(poly):
+            if len(poly) >= 2:
+                polys.append([mat_apply(xform, p) for p in poly])
+                metas.append(dict(meta))
+
         f = lambda k, dflt=0.0: float(el.get(k, dflt))  # noqa: E731
         if tag == "path":
-            polys.extend(parse_path(el.get("d", "")))
+            for poly in parse_path(el.get("d", "")):
+                add(poly)
         elif tag == "line":
-            polys.append([(f("x1"), f("y1")), (f("x2"), f("y2"))])
+            add([(f("x1"), f("y1")), (f("x2"), f("y2"))])
         elif tag in ("polyline", "polygon"):
             nums = [float(v) for v in re.findall(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", el.get("points", ""))]
             pts = list(zip(nums[0::2], nums[1::2]))
             if tag == "polygon" and pts:
                 pts.append(pts[0])
-            if len(pts) >= 2:
-                polys.append(pts)
+            add(pts)
         elif tag == "rect":
             x0, y0, w, h = f("x"), f("y"), f("width"), f("height")
-            polys.append([(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h), (x0, y0)])
+            add([(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h), (x0, y0)])
         elif tag == "circle":
             cx, cy, r = f("cx"), f("cy"), f("r")
-            polys.append([(cx + r * math.cos(2 * math.pi * k / 72), cy + r * math.sin(2 * math.pi * k / 72)) for k in range(73)])
-        elif tag in ("g", "svg", "a"):
+            add([(cx + r * math.cos(2 * math.pi * k / 72), cy + r * math.sin(2 * math.pi * k / 72)) for k in range(73)])
+        elif tag == "ellipse":
+            cx, cy, rx, ry = f("cx"), f("cy"), f("rx"), f("ry")
+            add([(cx + rx * math.cos(2 * math.pi * k / 72), cy + ry * math.sin(2 * math.pi * k / 72)) for k in range(73)])
+        elif tag == "text":
+            # Normally outlined at upload time; support it here too if fonttools is present.
+            try:
+                import svg_vector
+                st = dict(svg_vector.style_of(el))
+                txt = "".join(el.itertext())
+                d = svg_vector.text_to_d(txt, svg_vector.length(el.get("x", "0"), 0.0),
+                                         svg_vector.length(el.get("y", "0"), 0.0),
+                                         svg_vector.length(st.get("font-size")),
+                                         st.get("font-family", "DejaVu Sans"),
+                                         st.get("font-weight", "normal"), st.get("font-style", "normal"),
+                                         st.get("text-anchor", "start"),
+                                         svg_vector.length(st.get("letter-spacing"), 0.0))
+                if d:
+                    for poly in parse_path(d):
+                        add(poly)
+                else:
+                    skipped[tag] = skipped.get(tag, 0) + 1
+            except Exception:  # noqa: BLE001
+                skipped[tag] = skipped.get(tag, 0) + 1
+        elif tag in ("g", "svg", "a", "tspan"):
             pass
         else:
             skipped[tag] = skipped.get(tag, 0) + 1
-        for c in el:
-            walk(c)
+        for child in el:
+            walk(child, cur, xform)
 
-    walk(root)
+    walk(root, {"color": None, "layer": None}, IDENTITY)
     if skipped:
         msg = f"unsupported elements: {skipped}"
         if not ignore_unsupported:
             raise ValueError(msg + " (use --ignore-unsupported to skip them)")
         log("WARNING: " + msg + " -- skipped")
     mm = [[((px - vx) * scale, (py - vy) * scale) for px, py in p] for p in polys]
-    return mm, (vw * scale, vh * scale)
+    return mm, metas, (vw * scale, vh * scale)
 
 
 # ------------------------------------------------------------ path processing
@@ -245,16 +415,25 @@ def rdp(pts, eps):
     return [p for p, k in zip(pts, keep) if k]
 
 
-def prepare(polys, eps, join_tol, scale, dx, dy):
-    """scale/offset to mm, join touching strokes, simplify."""
+def prepare(polys, metas, eps, join_tol, scale, dx, dy):
+    """Scale/offset to mm, join touching strokes (same ink only), simplify."""
     sp = [[(x * scale + dx, y * scale + dy) for x, y in p] for p in polys]
-    merged = []
-    for p in sp:
-        if merged and math.dist(merged[-1][-1], p[0]) <= join_tol:
+    merged, mmeta = [], []
+    for p, m in zip(sp, metas):
+        same_ink = merged and (m.get("color"), m.get("layer")) == \
+                   (mmeta[-1].get("color"), mmeta[-1].get("layer"))
+        if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
         else:
             merged.append(list(p))
-    return [rdp(p, eps) for p in merged if len(p) >= 2]
+            mmeta.append(dict(m))
+    out, outm = [], []
+    for p, m in zip(merged, mmeta):
+        q = rdp(p, eps)
+        if len(q) >= 2:
+            out.append(q)
+            outm.append(m)
+    return out, outm
 
 
 def bbox(strokes):
@@ -274,6 +453,10 @@ class Plotter:
         self.vt = 0.0                # virtual clock for --sim
         self.t_end = self.now()
         self.nsm = 0
+        self.tracking = args.track
+        self.origin = (args.start_x, args.start_y)
+        self.last_track = 0.0
+        self.pen_state = True
         self.ser = None
         if not self.sim:
             port = args.port
@@ -316,6 +499,19 @@ class Plotter:
         self.sleep(self.t_end - self.now() + 0.1)
         self.t_end = max(self.t_end, self.now())
 
+    def track(self, force=False):
+        """Emit the current machine position for the web UI's live tracker."""
+        if not self.tracking:
+            return
+        now = self.now()
+        if not force and now - self.last_track < 0.2:
+            return
+        self.last_track = now
+        info = {"x": round(self.origin[0] + self.pos[0] / self.spmm[0], 2),
+                "y": round(self.origin[1] + self.pos[1] / self.spmm[1], 2),
+                "pen": "up" if self.pen_state else "down"}
+        print("__POS__:" + json.dumps(info), flush=True)
+
     def setup(self):
         s = self.cfg["servo"]
         self.cmd("EM,1,1")
@@ -325,9 +521,11 @@ class Plotter:
 
     def pen(self, up, delay=250):
         self.idle()
+        self.pen_state = up
         self.cmd(f"SP,{1 if up else 0},{delay}")
         self.sleep(delay / 1000 + 0.05)
         self.t_end = max(self.t_end, self.now())
+        self.track(force=True)
 
     def shutdown(self):
         try:
@@ -365,6 +563,7 @@ class Plotter:
             self._sm(a[0], a[1], ms)
             self.pos[0] += sx
             self.pos[1] += sy
+            self.track()
 
 
 def to_steps(pt, spmm):
@@ -404,8 +603,18 @@ def main():
     ap.add_argument("--scale", type=float, default=1.0, help="extra uniform scale factor")
     ap.add_argument("--x0", type=float, default=0.0, help="drawing offset right of S, mm")
     ap.add_argument("--y0", type=float, default=0.0, help="drawing offset toward you from S, mm")
-    ap.add_argument("--start-x", type=float, default=20.0, help="S distance from machine left edge, mm")
-    ap.add_argument("--start-y", type=float, default=20.0, help="S distance from machine top edge, mm")
+    ap.add_argument("--anchor", choices=["top-left", "top-center", "center"], default="top-left",
+                    help="which point of the drawing is placed at S (default: top-left)")
+    ap.add_argument("--start-x", type=float, help="S distance from machine left edge, mm (default: paper x0)")
+    ap.add_argument("--start-y", type=float, help="S distance from machine top edge, mm (default: paper y0)")
+    ap.add_argument("--paper-x0", type=float, help="paper top-left X on the bed, mm (overrides config)")
+    ap.add_argument("--paper-y0", type=float, help="paper top-left Y on the bed, mm (overrides config)")
+    ap.add_argument("--paper-width", type=float, help="paper width in mm (overrides config)")
+    ap.add_argument("--paper-height", type=float, help="paper height in mm (overrides config)")
+    ap.add_argument("--region-x", type=float, help="plot region left edge, mm (inside the canvas)")
+    ap.add_argument("--region-y", type=float, help="plot region top edge, mm")
+    ap.add_argument("--region-width", type=float, help="plot region width, mm")
+    ap.add_argument("--region-height", type=float, help="plot region height, mm")
     ap.add_argument("--speed", type=float, default=15.0, help="drawing speed mm/s")
     ap.add_argument("--travel-speed", type=float, default=25.0, help="pen-up speed mm/s")
     ap.add_argument("--simplify", type=float, default=0.05, help="RDP tolerance mm")
@@ -414,7 +623,13 @@ def main():
     ap.add_argument("--pen-down", type=int, help="override servo pen-down value")
     ap.add_argument("--pen-up", type=int, help="override servo pen-up value")
     ap.add_argument("--ignore-unsupported", action="store_true")
+    ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web live tracker")
     a = ap.parse_args()
+
+    def _sigterm(signum, frame):
+        raise KeyboardInterrupt()   # run the same pen-up/motors-off cleanup as Ctrl-C
+
+    signal.signal(signal.SIGTERM, _sigterm)
 
     if not (0 < a.speed <= MAX_SPEED and 0 < a.travel_speed <= MAX_SPEED):
         sys.exit(f"speeds must be in (0, {MAX_SPEED}] mm/s")
@@ -427,44 +642,138 @@ def main():
         if not 7500 <= cfg["servo"][k] <= 22000:
             sys.exit(f"servo {k}={cfg['servo'][k]} outside 7500..22000")
     spmm = (cfg["steps_per_mm"]["x"], cfg["steps_per_mm"]["y"])
+    mx, my = cfg["travel_mm"]["x"], cfg["travel_mm"]["y"]
+
+    # Paper rectangle: the region the drawing is allowed to occupy. CLI flags
+    # override config/machine.json; start position defaults to the paper corner.
+    paper = cfg.get("paper") or {}
+    px0 = a.paper_x0 if a.paper_x0 is not None else float(paper.get("x0", 0.0))
+    py0 = a.paper_y0 if a.paper_y0 is not None else float(paper.get("y0", 0.0))
+    pw = a.paper_width if a.paper_width is not None else float(paper.get("width", mx))
+    ph = a.paper_height if a.paper_height is not None else float(paper.get("height", my))
+    if pw <= 0 or ph <= 0:
+        sys.exit("paper width and height must be positive")
+    px1, py1 = px0 + pw, py0 + ph
+    margin = max(0.0, float(paper.get("margin_mm", 0.0)))
+    cx0, cy0, cx1, cy1 = px0 + margin, py0 + margin, px1 - margin, py1 - margin
+    if cx1 <= cx0 or cy1 <= cy0:
+        sys.exit("paper margin leaves no reachable canvas")
+    region = None
+    if None not in (a.region_x, a.region_y, a.region_width, a.region_height):
+        rx, ry, rw, rh = a.region_x, a.region_y, a.region_width, a.region_height
+        if rw <= 0 or rh <= 0 or rx < cx0 - 0.5 or ry < cy0 - 0.5 or rx + rw > cx1 + 0.5 or ry + rh > cy1 + 0.5:
+            sys.exit(f"region ({rx},{ry},{rw},{rh}) must lie inside the canvas "
+                     f"({cx0:.1f}..{cx1:.1f} x {cy0:.1f}..{cy1:.1f} mm)")
+        region = (rx, ry, rx + rw, ry + rh)
+        # The carriage goes to the matching anchor of the chosen region.
+        if a.anchor == "top-left":
+            a.start_x, a.start_y = rx, ry
+        elif a.anchor == "top-center":
+            a.start_x, a.start_y = rx + rw / 2, ry
+        else:
+            a.start_x, a.start_y = rx + rw / 2, ry + rh / 2
+    if a.start_x is None:
+        a.start_x = px0
+    if a.start_y is None:
+        a.start_y = py0
 
     OUT.mkdir(exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     LOGF = open(OUT / f"plot_{stamp}.log", "w")
     log(f"mode={a.mode} sim={a.sim} svg={a.svg}")
 
-    polys, (w_mm, h_mm) = load_svg(a.svg, a.ignore_unsupported)
-    scale = a.scale * (a.width / w_mm if a.width else 1.0)
-    strokes = prepare(polys, a.simplify, a.join, scale, 0.0, 0.0)
+    polys, metas, (w_mm, h_mm) = load_svg(a.svg, a.ignore_unsupported)
+    base_scale = a.scale * (a.width / w_mm if a.width else 1.0)
+    scale = base_scale
+    if region:
+        rx0, ry0, rx1, ry1 = region
+        raw = bbox(polys)
+        fit = min((rx1 - rx0) / max(1e-9, (raw[2] - raw[0]) * base_scale),
+                  (ry1 - ry0) / max(1e-9, (raw[3] - raw[1]) * base_scale))
+        scale = base_scale * fit   # fit the whole drawing into the chosen region
+    strokes, metas = prepare(polys, metas, a.simplify, a.join, scale, 0.0, 0.0)
     if not strokes:
         sys.exit("no drawable geometry found")
+    groups = color_groups(metas)
     x0, y0, x1, y1 = bbox(strokes)
-    # offsets are applied to the placement, not the geometry, so the drawing's own origin stays (0,0)
+    # The anchor is on the PAPER (where the operator places the carriage);
+    # the drawing goes into the target rectangle — the region if chosen, else
+    # the inset canvas. Shift by the difference between the two anchor points.
+    tx0, ty0, tx1, ty1 = region if region else (cx0, cy0, cx1, cy1)
+    if region:
+        shift_x = shift_y = 0.0   # S is already the region's anchor point
+    elif a.anchor == "top-left":
+        shift_x, shift_y = tx0 - px0, ty0 - py0
+    elif a.anchor == "top-center":
+        shift_x, shift_y = (tx0 + tx1) / 2 - (px0 + px1) / 2, ty0 - py0
+    else:
+        shift_x, shift_y = (tx0 + tx1) / 2 - (px0 + px1) / 2, (ty0 + ty1) / 2 - (py0 + py1) / 2
     ox, oy = a.x0, a.y0
+    if a.anchor == "top-left":
+        ox += shift_x - x0
+        oy += shift_y - y0
+    elif a.anchor == "top-center":
+        ox += shift_x - (x0 + x1) / 2
+        oy += shift_y - y0
+    else:
+        ox += shift_x - (x0 + x1) / 2
+        oy += shift_y - (y0 + y1) / 2
     gx0, gy0, gx1, gy1 = x0 + ox, y0 + oy, x1 + ox, y1 + oy
-    mx, my = cfg["travel_mm"]["x"], cfg["travel_mm"]["y"]
     abs_x0, abs_y0 = a.start_x + gx0, a.start_y + gy0
     abs_x1, abs_y1 = a.start_x + gx1, a.start_y + gy1
     pts = sum(len(s) for s in strokes)
     dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in s] for s in strokes], spmm, a.speed, a.travel_speed,
                                    (a.pen_delay / 1000 + 0.15))
     problems = []
-    if abs_x0 < EDGE_MARGIN or abs_y0 < EDGE_MARGIN:
+    # Only the inset canvas is reachable: stay away from every paper edge, and
+    # do not rely on the outer bed margin where the canvas is tighter.
+    if abs_x0 < min(EDGE_MARGIN, cx0) or abs_y0 < min(EDGE_MARGIN, cy0):
         problems.append(f"drawing starts at machine ({abs_x0:.1f},{abs_y0:.1f}) mm, inside the {EDGE_MARGIN} mm edge margin")
-    if abs_x1 > mx - EDGE_MARGIN or abs_y1 > my - EDGE_MARGIN:
+    if abs_x1 > max(mx - EDGE_MARGIN, cx1) or abs_y1 > max(my - EDGE_MARGIN, cy1):
         problems.append(f"drawing reaches machine ({abs_x1:.1f},{abs_y1:.1f}) mm; travel is {mx} x {my} mm (margin {EDGE_MARGIN})")
+    # The carriage itself sits on the paper (it can be outside the canvas); the
+    # drawing must stay inside the canvas.
+    if a.start_x < px0 - 0.5 or a.start_y < py0 - 0.5:
+        problems.append(f"carriage start S=({a.start_x:.1f},{a.start_y:.1f}) mm is OFF the paper "
+                        f"(paper starts at {px0:.1f},{py0:.1f}) — slide the carriage onto the paper before starting")
+    if a.start_x > px1 + 0.5 or a.start_y > py1 + 0.5:
+        problems.append(f"carriage start S=({a.start_x:.1f},{a.start_y:.1f}) mm is past the paper "
+                        f"({px0:.1f}..{px1:.1f} x {py0:.1f}..{py1:.1f} mm)")
+    if abs_x0 < tx0 - 0.5 or abs_y0 < ty0 - 0.5 or abs_x1 > tx1 + 0.5 or abs_y1 > ty1 + 0.5:
+        rname = "region" if region else f"{margin:.0f} mm canvas"
+        problems.append(f"drawing would leave the {rname} ({tx0:.1f}..{tx1:.1f} x {ty0:.1f}..{ty1:.1f} mm); "
+                        f"it covers {abs_x0:.1f}..{abs_x1:.1f} x {abs_y0:.1f}..{abs_y1:.1f} mm — adjust the region or --width/--x0/--y0")
     log(f"""
 Drawing        : {w_mm * scale:.1f} x {h_mm * scale:.1f} mm ({len(polys)} source paths -> {len(strokes)} strokes, {pts} points after simplify {a.simplify} mm)
+Placement      : {a.anchor} at S
 Geometry bbox  : x {gx0:.1f}..{gx1:.1f}  y {gy0:.1f}..{gy1:.1f} mm relative to S
 On the machine : x {abs_x0:.1f}..{abs_x1:.1f} of {mx}   y {abs_y0:.1f}..{abs_y1:.1f} of {my} mm  (S at {a.start_x},{a.start_y})
+Paper          : x {px0:.1f}..{px1:.1f}  y {py0:.1f}..{py1:.1f} mm  (carriage must start on the paper)
+Canvas         : x {cx0:.1f}..{cx1:.1f}  y {cy0:.1f}..{cy1:.1f} mm  ({margin:.0f} mm clear of every paper edge)""" +
+        (f"\nRegion         : x {tx0:.1f}..{tx1:.1f}  y {ty0:.1f}..{ty1:.1f} mm  (drawing fitted to region)" if region else "") + f"""
 Steps          : x {round(gx0 * spmm[0])}..{round(gx1 * spmm[0])}  y {round(gy0 * spmm[1])}..{round(gy1 * spmm[1])}
 Drawing length : {dd / 1000:.2f} m at {a.speed} mm/s    pen-up travel {dt / 1000:.2f} m at {a.travel_speed} mm/s    pen lifts {lifts}
 Estimated time : {fmt(secs)}
+Ink layers     : {len(groups)}  ({', '.join(f'{color_label(k)}: {len(ix)} strokes' for k, ix in groups)})""" +
+        (f"  -> {len(groups) - 1} pen swap(s) during Plot" if len(groups) > 1 else "") + f"""
 Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}""")
     for p in problems:
         log("PROBLEM: " + p)
+    on_paper = not any("paper" in p or "canvas" in p or "region" in p for p in problems)
+    if a.mode == "dry":
+        # Machine-space placement of the whole SVG canvas, for the web tracker overlay.
+        print("__PLACEMENT__:" + json.dumps({
+            "origin": [a.start_x + ox, a.start_y + oy],
+            "size": [w_mm * scale, h_mm * scale],
+            "bbox": [abs_x0, abs_y0, abs_x1, abs_y1],
+            "canvas": [tx0, ty0, tx1, ty1]}), flush=True)
     summary = {"svg": a.svg, "mode": a.mode, "strokes": len(strokes), "points": pts, "est_seconds": secs,
-               "bbox_machine_mm": [abs_x0, abs_y0, abs_x1, abs_y1], "problems": problems, "args": vars(a)}
+               "bbox_machine_mm": [abs_x0, abs_y0, abs_x1, abs_y1], "problems": problems, "args": vars(a),
+               "paper_mm": [px0, py0, px1, py1], "canvas_mm": [cx0, cy0, cx1, cy1],
+               "region_mm": list(region) if region else None,
+               "on_paper": on_paper, "anchor": a.anchor,
+               "layers": [{"color": k[0], "label": k[1], "name": color_label(k), "strokes": len(ix)}
+                          for k, ix in groups], "swaps": max(0, len(groups) - 1)}
 
     if a.mode == "dry":
         (OUT / f"plot_{stamp}.json").write_text(json.dumps(summary, indent=2))
@@ -474,7 +783,8 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
         sys.exit("refusing to move: fix the problems above (adjust --width/--x0/--y0/--start-x/--start-y)")
 
     if not a.sim:
-        print("\nCheck: motors off, carriage by hand at S, pen UP over the paper, power switch in reach.")
+        print(f"\nCheck: motors off, carriage by hand at the paper's top-left "
+              f"({a.start_x:.1f},{a.start_y:.1f}) mm, pen UP over the paper, power switch in reach.")
         if input(f"Type {'PLOT' if a.mode == 'plot' else 'TRACE'} to start: ").strip() != ("PLOT" if a.mode == "plot" else "TRACE"):
             sys.exit("not confirmed, nothing sent")
     p = Plotter(cfg, a)
@@ -491,17 +801,33 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
         else:
             n = len(strokes)
             next_report = 0.05
-            for i, s in enumerate(strokes, 1):
+            drawn = 0
+
+            def draw_one(i):
+                nonlocal drawn, next_report
+                s = strokes[i]
                 pts_s = [to_steps((x + ox, y + oy), spmm) for x, y in s]
                 p.move_to(*pts_s[0], a.travel_speed)
                 p.pen(False, a.pen_delay)
                 for tx, ty in pts_s[1:]:
                     p.move_to(tx, ty, a.speed)
                 p.pen(True, a.pen_delay)
-                if i / n >= next_report:
+                drawn += 1
+                if drawn / n >= next_report:
                     el = p.now() - t_start
-                    log(f"{i}/{n} strokes  {100 * i / n:.0f}%  elapsed {fmt(el)}  eta {fmt(el / (i / n) - el)}")
+                    log(f"{drawn}/{n} strokes  {100 * drawn / n:.0f}%  elapsed {fmt(el)}  "
+                        f"eta {fmt(el / (drawn / n) - el)}")
                     next_report += 0.05
+
+            if a.mode == "plot" and len(groups) > 1:
+                for gi, (key, idxs) in enumerate(groups):
+                    if gi:
+                        pause_for_swap(key, a)
+                    for i in idxs:
+                        draw_one(i)
+            else:
+                for i in range(n):
+                    draw_one(i)
             p.move_to(0, 0, a.travel_speed)
             p.idle()
     except KeyboardInterrupt:

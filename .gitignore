@@ -10,3 +10,4 @@ input/
 *.tif
 maps/*/data/
 maps/*/out/
+config/web.json

@@ -1,0 +1,20 @@
+[Unit]
+Description=Pen plotter web UI (Tailscale)
+Documentation=https://github.com/VytenisO/picasso-at-home
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/robotlab/picasso-at-home
+# Optional: PLOTTER_WEB_PASSWORD, PLOTTER_WEB_HOST, PLOTTER_WEB_PORT.
+# Note: if the user was added to dialout after login, re-login/reboot is needed
+# for the user manager to pick up the new group.
+# "-": ignore if the file does not exist (then the server generates a password).
+EnvironmentFile=-%h/.config/plotter-web.env
+ExecStart=/usr/bin/python3 /home/robotlab/picasso-at-home/tools/plot_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

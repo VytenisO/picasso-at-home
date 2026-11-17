@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pen Plotter</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a222b; --line:#2b3743; --fg:#e6edf3; --mut:#8b9bab;
+          --acc:#4fd1c5; --warn:#f6ad55; --bad:#fc8181; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  a { color:var(--acc); }
+  .wrap { max-width:1280px; margin:0 auto; padding:24px 16px 60px; }
+  .layout { display:flex; gap:16px; align-items:flex-start; }
+  .main-col { flex:1; min-width:0; }
+  .side-col { width:380px; flex:none; position:sticky; top:16px; }
+  .side-col.collapsed { width:54px; }
+  .side-col.collapsed #logBody, .side-col.collapsed h2 { display:none; }
+  .side-col.collapsed .card { padding:12px 8px; }
+  .side-col.collapsed .log-toggle { transform:rotate(180deg); }
+  .log-toggle { padding:4px 10px; font-size:18px; line-height:1; }
+  @media (max-width:1000px) {
+    .layout { display:block; }
+    .side-col { width:auto; position:static; margin-bottom:16px; }
+    .side-col.collapsed { width:auto; }
+    .side-col.collapsed #logBody { display:block; }
+    .side-col.collapsed h2 { display:block; }
+  }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
+  h1 { font-size:21px; margin:0; letter-spacing:.3px; }
+  h1 small { font-weight:400; color:var(--mut); font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 14px; color:var(--acc); letter-spacing:.4px; text-transform:uppercase; }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#23303c; color:var(--fg);
+           padding:8px 13px; border-radius:7px; }
+  button:hover { border-color:var(--acc); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--acc); color:#06231f; border-color:var(--acc); font-weight:600; }
+  button.danger { color:var(--bad); }
+  button.estop { background:#8b1a1a; color:#fff; border-color:#ff5c5c; font-weight:700;
+                 letter-spacing:.5px; padding:9px 16px; box-shadow:0 0 0 2px #ff5c5c33; }
+  button.estop:hover { background:#b12222; border-color:#ff8a8a; }
+  .bed-wrap { background:#0b1015; border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:12px; }
+  #bed { width:100%; height:auto; display:block; }
+  #bed .bed { fill:#141c24; stroke:#4a5b6b; stroke-width:1.5; }
+  #bed .paper { fill:#203a34; stroke:var(--acc); stroke-width:1.5; }
+  #bed .canvas { fill:none; stroke:#f6ad55; stroke-width:0.8; stroke-dasharray:4 3; opacity:.85; }
+  #bed .region { fill:#f6ad5522; stroke:#f6ad55; stroke-width:1.2; stroke-dasharray:5 3; cursor:crosshair; }
+  #bed .guide { stroke:#f6ad55; stroke-width:0.8; stroke-dasharray:3 3; }
+  #bed .center { stroke:#4fd1c5; stroke-width:0.6; stroke-dasharray:6 4; opacity:.55; }
+  #bed .start { fill:#f6ad55; stroke:#0b1015; stroke-width:2; }
+  .preview-img { width:210px; height:150px; object-fit:contain; background:#fff; border:1px solid var(--line);
+                 border-radius:6px; flex:none; }
+  .tabs button.active { background:var(--acc); color:#06231f; border-color:var(--acc); }
+  .preview-stage { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px; text-align:center; }
+  .preview-stage img { max-width:100%; max-height:540px; width:auto; height:auto; object-fit:contain; }
+  #trackBed { width:100%; height:auto; display:block; background:#0b1015; border:1px solid var(--line);
+              border-radius:8px; }
+  #trackBed .bed { fill:#141c24; stroke:#4a5b6b; stroke-width:1.5; }
+  #trackBed .paper { fill:#203a34; stroke:var(--acc); stroke-width:1.5; }
+  #trackBed .canvas { fill:none; stroke:#f6ad55; stroke-width:0.8; stroke-dasharray:4 3; }
+  #trackBed .trail { fill:none; stroke:#4fd1c5; stroke-width:0.7; opacity:.8; }
+  #trackBed .dot { fill:#fc8181; stroke:#0b1015; stroke-width:1.5; }
+  #bed text { fill:var(--mut); font-size:6px; }
+  #bed text.here { fill:#f6ad55; }
+  input,select { font:inherit; color:var(--fg); background:#0d1217; border:1px solid var(--line);
+                 border-radius:6px; padding:7px 9px; width:100%; }
+  label { display:block; color:var(--mut); font-size:12px; margin:0 0 4px; }
+  .grid { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .drop { border:2px dashed var(--line); border-radius:9px; padding:22px; text-align:center; color:var(--mut);
+          cursor:pointer; transition:.15s; }
+  .drop.hover { border-color:var(--acc); color:var(--fg); background:#17242e; }
+  .drop b { color:var(--acc); }
+  .files { display:grid; gap:10px; }
+  .file { display:flex; gap:14px; background:#141c24; border:1px solid var(--line); border-radius:8px; padding:12px; align-items:center; }
+  .file.active { border-color:var(--acc); box-shadow:0 0 0 1px #4fd1c555; }
+  .file img { width:92px; height:70px; object-fit:contain; background:#fff; border-radius:5px; flex:none; }
+  .file img.mask { width:52px; height:52px; }
+  .file .meta { flex:1; min-width:0; }
+  .layer-tags { display:flex; gap:5px 10px; flex-wrap:wrap; margin-top:5px; }
+  .swatch { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--mut); }
+  .swatch i { width:11px; height:11px; border-radius:50%; display:inline-block; border:1px solid #ffffff33; }
+  .file .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file .sub { color:var(--mut); font-size:12px; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .actions button { padding:6px 9px; font-size:13px; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#0b1015; border:1px solid var(--line);
+        border-radius:7px; padding:12px; max-height:340px; overflow:auto; font:12px/1.5 ui-monospace,monospace; }
+  .banner { background:#2a2415; border:1px solid #5c4a20; color:#f6d48a; border-radius:8px;
+            padding:10px 13px; font-size:13px; margin-bottom:16px; }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#23303c;
+           border:1px solid var(--acc); padding:10px 16px; border-radius:8px; z-index:10; display:none; }
+  .toast.bad { border-color:var(--bad); color:#ffd5d5; }
+  .badge { font-size:11px; border-radius:20px; padding:2px 8px; border:1px solid var(--line); color:var(--mut); }
+  .badge.raster { color:var(--warn); border-color:#5c4a20; }
+  .muted { color:var(--mut); font-size:13px; }
+  .spin { display:inline-block; width:9px; height:9px; border:2px solid var(--mut); border-top-color:var(--acc);
+          border-radius:50%; animation:s 1s linear infinite; }
+  @keyframes s { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1> Pen Plotter <small id="server"></small></h1>
+    <div class="row"><button class="estop" id="estop">■ E-STOP</button>
+      <span id="who" class="muted"></span><button id="logout" style="display:none">Log out</button></div>
+  </header>
+
+  <!-- LOGIN -->
+  <div id="login" class="card" style="display:none">
+    <h2>Unlock</h2>
+    <p class="muted">This panel controls a physical pen plotter. Enter the shared password.</p>
+    <div class="row"><input id="pw" type="password" placeholder="Password" style="max-width:260px" autocomplete="current-password">
+    <button class="primary" id="loginBtn">Unlock</button></div>
+  </div>
+
+  <div id="main" style="display:none">
+    <div class="banner"> Safety: firmware 2.0.1 has no hardware e-stop. Keep the power switch in reach.
+      Before any trace/plot, motors off, carriage at the chosen anchor point (top-left, top-centre or centre), pen up over paper.
+      A preflight dry run runs automatically and must be clean. E-STOP (or Ctrl-C in the terminal) raises the pen
+      and releases the motors; an in-flight move still finishes — cut power for an instant stop.</div>
+
+    <div class="layout">
+    <div class="main-col">
+
+    <!-- UPLOAD -->
+    <div class="card">
+      <h2>Upload</h2>
+      <div class="drop" id="drop">Drop a file here or <b>browse</b><br><span class="muted">SVG, PNG, JPG, WEBP, BMP, GIF, TIFF, STL, OBJ (max 12 MB)</span></div>
+      <input id="file" type="file" accept=".svg,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,.stl,.obj" style="display:none">
+      <div class="grid" style="margin-top:10px">
+        <div><label>3D view: yaw (deg)</label><input id="m_yaw" type="number" value="35" min="-180" max="180"></div>
+        <div><label>3D view: pitch (deg)</label><input id="m_pitch" type="number" value="25" min="-89" max="89"></div>
+        <div><label>3D size on paper (mm)</label><input id="m_size" type="number" value="120" min="20" max="267"></div>
+      </div>
+      <p class="muted">For STL/OBJ meshes: hidden lines are removed with an orthographic camera. Tune the angles above and watch the preview, then upload.</p>
+      <div class="row" style="margin-top:10px">
+        <div style="max-width:260px"><label>Text font for SVG uploads</label><input id="ctext" value="DejaVu Sans"></div>
+        <span class="muted" style="align-self:end">Vector SVGs are plotted directly — text becomes real outlines, no thresholding. Transforms are applied.</span>
+      </div>
+      <div id="rasterPreview" style="display:none;margin-top:14px">
+        <div class="row">
+          <img id="convPreview" class="preview-img" alt="converted line drawing">
+          <img id="convMask" class="preview-img" alt="dark-shape mask">
+          <div><div class="muted" id="convStats"></div>
+            <div class="muted" style="margin-top:6px">Left: the actual pen paths, fitted inside the reachable canvas.
+              Right: the pre-processing image (dark-shape mask, or posterised tones). Change the settings below
+              and the preview updates.</div></div>
+        </div>
+        <button class="primary" id="uploadBtn" style="margin-top:12px">Upload this image with these settings</button>
+      </div>
+      <h2 style="margin-top:18px">Raster conversion</h2>
+      <div class="grid">
+        <div><label>Style</label><select id="cs">
+          <option value="contour">Contours (outlines)</option>
+          <option value="halftone">Halftone dots</option>
+          <option value="one-line">One-line drawing</option>
+          <option value="lineart">Line art (centreline, for technical drawings)</option>
+        </select></div>
+        <div><label>Ink layers (pens)</label><select id="ci">
+          <option value="1">1 · Black</option>
+          <option value="2">2 · Black + Blue</option>
+          <option value="3">3 · Black + Blue + Red</option>
+          <option value="4">4 · CMYK-ish</option>
+        </select></div>
+        <div><label>Tone levels (pre-processing)</label><select id="cl">
+          <option value="0">Continuous (original)</option>
+          <option value="2">2 values (black / white)</option>
+          <option value="3">3 values</option>
+          <option value="4">4 values</option>
+          <option value="5">5 values</option>
+          <option value="6">6 values</option>
+        </select></div>
+        <div><label>Width on paper (mm)</label><input id="cw" type="number" value="120" min="10" max="1000"></div>
+        <div><label>Dark-shape cutoff (0-255)</label><input id="ct" type="number" value="150" min="0" max="255"></div>
+        <div><label>Density (1-100)</label><input id="cd" type="number" value="40" min="1" max="100"></div>
+        <div><label>Blur (px)</label><input id="cb" type="number" value="1" min="0" max="10" step="0.5"></div>
+        <label class="row" style="color:var(--mut);font-size:12px;align-self:end">
+          <input type="checkbox" id="csingle" style="width:auto"> One pen (no swaps)
+        </label>
+      </div>
+      <p class="muted" style="margin-bottom:0">
+        <b>One-line</b>: one continuous line that packs tightly inside the dark shapes.
+        <b>Density</b> sets the number of passes; <b>Dark-shape cutoff</b> decides which shapes count as dark
+        (a black/white mask of them appears next to the preview).<br>
+        <b>Line art</b> is for technical drawings: it thins dark lines to a one-pixel centreline and plots each as a
+        single stroke with one pen, so thin detail survives without the double outlines of contour tracing. Use a high
+        cutoff (200–230) and little or no blur; Tone levels should be Continuous. <b>Halftone</b>: Density sets dot
+        fineness. <b>Contours</b>: a higher cutoff traces more nested outlines.
+        <b>Tone levels</b> posterises the photo into 2–6 discrete values before routing, so each value becomes a
+        nested band of ink — useful for photos. <b>Dark-shape cutoff</b> still sets the mask when continuous.
+        Lower cutoff = darker areas become ink. With more than one ink layer, Plot stops for a manual pen swap.
+        Drawings are automatically fitted inside the reachable canvas (1.5 cm clear of every paper edge).
+        All of these are ignored for SVG uploads.
+      </p>
+    </div>
+
+    <!-- PREVIEW & LIVE TRACKER -->
+    <div class="card">
+      <h2>Preview &amp; live tracker</h2>
+      <div class="row" style="margin-bottom:12px">
+        <div class="row">
+          <button id="tabDrawing" class="active">Drawing</button>
+          <button id="tabTracker">Live tracker</button>
+        </div>
+        <select id="previewFile" style="max-width:300px"><option value="">Choose an uploaded file…</option></select>
+      </div>
+      <div id="drawingPane">
+        <div class="preview-stage"><img id="bigPreview" alt="drawing preview" style="display:none"></div>
+        <p class="muted" id="previewHint" style="margin:8px 0 0">Pick an uploaded file above, or click a preview in the Files card.</p>
+      </div>
+      <div id="trackerPane" style="display:none">
+        <svg id="trackBed" viewBox="0 0 368 227.5" preserveAspectRatio="xMidYMid meet">
+          <rect class="bed" x="0" y="0" width="368" height="227.5"></rect>
+          <rect id="trackPaper" class="paper"></rect>
+          <rect id="trackCanvas" class="canvas"></rect>
+          <image id="trackOverlay" href="" x="-100" y="-100" width="0" height="0" preserveAspectRatio="none"
+                 style="mix-blend-mode:multiply;pointer-events:none;display:none"></image>
+          <polyline id="trackTrail" class="trail" points=""></polyline>
+          <circle id="trackDot" class="dot" r="3.5" cx="-10" cy="-10"></circle>
+        </svg>
+        <div class="row" style="margin-top:10px"><span id="trackReadout" class="muted">Idle — no job running.</span></div>
+        <div class="row" style="margin-top:6px">
+          <label class="row" style="margin:0;color:var(--mut);font-size:12px">
+            <input type="checkbox" id="overlayOn" checked style="width:auto"> Show drawing overlay
+          </label>
+          <label style="margin:0">Opacity</label>
+          <input id="overlayOpacity" type="range" min="5" max="100" value="40" style="width:140px">
+          <span id="overlayPct" class="muted">40%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEXT ART -->
+    <div class="card">
+      <h2>Text art (vector outlines)</h2>
+      <div class="grid">
+        <div style="grid-column:1/-1"><label>Text</label><input id="ta_text" value="HELLO" maxlength="60"></div>
+        <div><label>Font</label><select id="ta_font">
+          <option value="DejaVu Sans">DejaVu Sans</option>
+          <option value="DejaVu Serif">DejaVu Serif</option>
+          <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+          <option value="Liberation Sans">Liberation Sans</option>
+          <option value="Ubuntu">Ubuntu</option>
+        </select></div>
+        <div><label>Size (mm)</label><input id="ta_size" type="number" value="20" min="5" max="150"></div>
+        <div><label>Bend style</label><select id="ta_effect">
+          <option value="plain">Plain</option>
+          <option value="arc" selected>Arc</option>
+          <option value="wave">Wave</option>
+          <option value="rise">Rising</option>
+          <option value="circle">Circle</option>
+          <option value="twist">Twist</option>
+        </select></div>
+        <div><label>Bend amount (0-100)</label><input id="ta_bend" type="number" value="40" min="0" max="100"></div>
+        <label class="row" style="color:var(--mut);font-size:12px;align-self:end">
+          <input type="checkbox" id="ta_bold" style="width:auto"> Bold
+        </label>
+      </div>
+      <div class="preview-stage" style="margin-top:12px"><img id="ta_preview" alt="text art preview" style="display:none"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="ta_add">Add to uploads</button>
+        <button id="ta_download">Download SVG</button>
+        <span class="muted" id="ta_stats"></span>
+      </div>
+    </div>
+
+    <!-- FILES -->
+    <div class="card">
+      <h2>Files</h2>
+      <div id="files" class="files"><p class="muted">No uploads yet.</p></div>
+    </div>
+
+    <!-- PLOT OPTIONS -->
+    <div class="card">
+      <h2>Plot options</h2>
+      <div class="grid">
+        <div><label>Width (mm, 0=as drawn)</label><input id="o_width" type="number" value="" min="5" max="1000" step="1" placeholder="auto"></div>
+        <div><label>Offset X (mm)</label><input id="o_x0" type="number" value="0" step="1"></div>
+        <div><label>Offset Y (mm)</label><input id="o_y0" type="number" value="0" step="1"></div>
+        <div><label>Carriage start X (mm)</label><input id="o_start_x" type="number" value="203.5" step="1"></div>
+        <div><label>Carriage start Y (mm)</label><input id="o_start_y" type="number" value="0" step="1"></div>
+        <div><label>Draw speed (mm/s)</label><input id="o_speed" type="number" value="15" min="1" max="40"></div>
+        <div><label>Travel speed (mm/s)</label><input id="o_travel_speed" type="number" value="25" min="1" max="40"></div>
+      </div>
+    </div>
+
+    <!-- PAPER & PLACEMENT -->
+    <div class="card">
+      <h2>Paper &amp; placement</h2>
+      <div class="grid">
+        <div><label>Paper left X (mm)</label><input id="o_paper_x0" type="number" value="50" min="0" max="1000" step="1"></div>
+        <div><label>Paper top Y (mm)</label><input id="o_paper_y0" type="number" value="15" min="0" max="1000" step="1"></div>
+        <div><label>Paper width (mm)</label><input id="o_paper_width" type="number" value="280" min="1" max="1000" step="1"></div>
+        <div><label>Paper height (mm)</label><input id="o_paper_height" type="number" value="210" min="1" max="1000" step="1"></div>
+        <div><label>Place carriage at (anchor)</label><select id="o_anchor">
+          <option value="top-left">Top-left corner</option>
+          <option value="top-center" selected>Top-centre (Y=0, X=middle)</option>
+          <option value="center">Centre of the sheet</option>
+        </select></div>
+      </div>
+      <label class="row" style="margin-top:12px;color:var(--mut);font-size:12px">
+        <input type="checkbox" id="o_region_on" style="width:auto"> Plot in a region (the drawing is scaled to fit and centred there)
+      </label>
+      <div class="grid" id="regionFields" style="display:none;margin-top:8px">
+        <div><label>Region X (mm)</label><input id="o_region_x" type="number" value="120" step="1"></div>
+        <div><label>Region Y (mm)</label><input id="o_region_y" type="number" value="60" step="1"></div>
+        <div><label>Region width (mm)</label><input id="o_region_width" type="number" value="80" step="1"></div>
+        <div><label>Region height (mm)</label><input id="o_region_height" type="number" value="50" step="1"></div>
+      </div>
+      <p class="muted" id="regionHint" style="display:none">Drag on the bed diagram to draw a region. It must stay inside the canvas; the carriage starts at the region's anchor.</p>
+      <div class="bed-wrap">
+        <svg id="bed" viewBox="0 0 368 227.5" preserveAspectRatio="xMidYMid meet">
+          <rect class="bed" x="0" y="0" width="368" height="227.5"></rect>
+          <rect id="paperRect" class="paper" x="55" y="0" width="297" height="210"></rect>
+          <rect id="canvasRect" class="canvas"></rect>
+          <rect id="regionRect" class="region" style="display:none"></rect>
+          <line id="centerV" class="center"></line>
+          <line id="centerH" class="center"></line>
+          <line id="guideX" class="guide"></line>
+          <line id="guideY" class="guide"></line>
+          <circle id="startDot" class="start" cx="203.5" cy="0" r="5"></circle>
+          <text id="paperLabel">paper</text>
+          <text id="startLabel" class="here">carriage</text>
+        </svg>
+      </div>
+      <div id="placeWarn" class="banner" style="display:none"></div>
+      <p class="muted" style="margin-bottom:0">Only the dashed <b>canvas</b> is reachable — it stays 15 mm clear of
+        every paper edge, and uploads are auto-fitted to it. Slide the carriage by hand to the orange dot — the chosen
+        anchor — pen up, before every run. A dry run refuses to start if the carriage or the drawing is off the canvas.
+        Defaults come from <code>config/machine.json</code>.</p>
+    </div>
+
+    </div><!-- /main-col -->
+
+    <aside class="side-col" id="logPanel">
+      <div class="card" id="outCard">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h2 style="margin:0">Output <span id="jobState"></span></h2>
+          <button id="logToggle" class="log-toggle" title="Collapse log" aria-label="Collapse log">›</button>
+        </div>
+        <div id="logBody">
+          <div id="pauseBox" style="display:none;margin-bottom:10px;margin-top:12px">
+            <div id="pauseMsg" class="banner" style="margin-bottom:8px"></div>
+            <button class="primary" id="continueBtn">Pen swapped — Continue</button>
+          </div>
+          <pre id="out" style="margin-top:12px">(no output yet)</pre>
+        </div>
+      </div>
+    </aside>
+    </div><!-- /layout -->
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let polling = null;
+let paperInit = false;
+let paperCfg = null;
+let startManual = false;
+let lastAnchor = null;
+let pendingFile = null;
+let activeFileId = null;
+let placement = null;
+
+function val(id, dflt) { const v = parseFloat($(id).value); return isFinite(v) ? v : dflt; }
+function canvasRect() {
+  const m = paperCfg ? paperCfg.margin : 15;
+  const px = val('o_paper_x0', 55), py = val('o_paper_y0', 0);
+  return [px + m, py + m, px + val('o_paper_width', 297) - m, py + val('o_paper_height', 210) - m];
+}
+function regionBounds() { return [val('o_region_x', 70), val('o_region_y', 21),
+                                  val('o_region_width', 100), val('o_region_height', 80)]; }
+function anchorStart() {
+  // The anchor is the matching corner/edge/centre of the region (when enabled)
+  // or of the paper; the drawing is placed there automatically when plotting.
+  const use = $('o_region_on').checked;
+  const b = use ? regionBounds() : [val('o_paper_x0', 55), val('o_paper_y0', 6),
+                                    val('o_paper_width', 297), val('o_paper_height', 210)];
+  const [x0, y0, w, h] = b;
+  const a = $('o_anchor').value;
+  if (a === 'top-center' || a === 'center')
+    return [x0 + w / 2, a === 'center' ? y0 + h / 2 : y0];
+  return [x0, y0];
+}
+function syncStart() {
+  const [x, y] = anchorStart();
+  const cx = val('o_start_x', NaN), cy = val('o_start_y', NaN);
+  if (lastAnchor && (Math.abs(cx - lastAnchor[0]) > 0.5 || Math.abs(cy - lastAnchor[1]) > 0.5))
+    startManual = true;   // the operator moved the start point; keep their choice
+  if (!startManual) { $('o_start_x').value = x; $('o_start_y').value = y; }
+  lastAnchor = [x, y];
+}
+function updateBed() {
+  const x0 = val('o_paper_x0', 55), y0 = val('o_paper_y0', 0);
+  const w = val('o_paper_width', 297), h = val('o_paper_height', 210);
+  const sx = val('o_start_x', x0), sy = val('o_start_y', y0);
+  const r = $('paperRect');
+  r.setAttribute('x', x0); r.setAttribute('y', y0);
+  r.setAttribute('width', Math.max(0, w)); r.setAttribute('height', Math.max(0, h));
+  const c = canvasRect();
+  const cr = $('canvasRect');
+  cr.setAttribute('x', c[0]); cr.setAttribute('y', c[1]);
+  cr.setAttribute('width', Math.max(0, c[2] - c[0])); cr.setAttribute('height', Math.max(0, c[3] - c[1]));
+  const rr = $('regionRect');
+  if ($('o_region_on').checked) {
+    const r = regionBounds();
+    rr.style.display = 'block';
+    rr.setAttribute('x', r[0]); rr.setAttribute('y', r[1]);
+    rr.setAttribute('width', Math.max(0, r[2])); rr.setAttribute('height', Math.max(0, r[3]));
+  } else { rr.style.display = 'none'; }
+  $('paperLabel').setAttribute('x', x0 + 3); $('paperLabel').setAttribute('y', y0 + 9);
+  $('startDot').setAttribute('cx', sx); $('startDot').setAttribute('cy', sy);
+  $('startLabel').setAttribute('x', sx + 7); $('startLabel').setAttribute('y', sy - 4);
+  const cv = $('centerV'), ch = $('centerH');
+  cv.setAttribute('x1', c[0] + (c[2] - c[0]) / 2); cv.setAttribute('y1', c[1]);
+  cv.setAttribute('x2', c[0] + (c[2] - c[0]) / 2); cv.setAttribute('y2', c[3]);
+  ch.setAttribute('x1', c[0]); ch.setAttribute('y1', c[1] + (c[3] - c[1]) / 2);
+  ch.setAttribute('x2', c[2]); ch.setAttribute('y2', c[1] + (c[3] - c[1]) / 2);
+  const gx = $('guideX'), gy = $('guideY');
+  gx.setAttribute('x1', sx); gx.setAttribute('y1', sy); gx.setAttribute('x2', c[0] + (c[2] - c[0]) / 2); gx.setAttribute('y2', sy);
+  gy.setAttribute('x1', sx); gy.setAttribute('y1', sy); gy.setAttribute('x2', sx); gy.setAttribute('y2', c[1]);
+  const warn = [];
+  if (w <= 0 || h <= 0) warn.push('paper size must be positive');
+  if (sx < x0) warn.push(`carriage X ${sx.toFixed(0)} mm is ${(x0 - sx).toFixed(0)} mm LEFT of the paper`);
+  if (sy < y0) warn.push(`carriage Y ${sy.toFixed(0)} mm is ABOVE the paper`);
+  if (sx > x0 + w) warn.push('carriage is RIGHT of the paper');
+  if (sy > y0 + h) warn.push('carriage is BELOW the paper');
+  if ($('o_region_on').checked) {
+    const r = regionBounds();
+    if (r[2] <= 0 || r[3] <= 0) warn.push('region size must be positive');
+    else if (r[0] < c[0] - 0.5 || r[1] < c[1] - 0.5 || r[0] + r[2] > c[2] + 0.5 || r[1] + r[3] > c[3] + 0.5)
+      warn.push('region must stay inside the canvas');
+  }
+  const bed = $('bed').viewBox.baseVal;
+  if (sx < 0 || sy < 0 || sx > bed.width || sy > bed.height) warn.push('carriage is outside the machine bed');
+  const box = $('placeWarn');
+  if (warn.length) {
+    box.style.display = 'block';
+    box.textContent = 'Placement check: ' + warn.join('; ') + '. Slide the carriage onto the paper before starting.';
+  } else { box.style.display = 'none'; }
+  schedulePlacement();
+}
+['o_paper_x0','o_paper_y0','o_paper_width','o_paper_height']
+  .forEach(id => $(id).addEventListener('input', () => { syncStart(); updateBed(); }));
+['o_start_x','o_start_y'].forEach(id => $(id).addEventListener('input', () => { startManual = true; updateBed(); }));
+$('o_anchor').addEventListener('change', () => { startManual = false; lastAnchor = null; syncStart(); updateBed(); });
+['o_width','o_x0','o_y0'].forEach(id => $(id).addEventListener('input', schedulePlacement));
+$('o_region_on').addEventListener('change', () => {
+  const on = $('o_region_on').checked;
+  $('regionFields').style.display = on ? 'grid' : 'none';
+  $('regionHint').style.display = on ? 'block' : 'none';
+  startManual = false; lastAnchor = null; syncStart(); updateBed();
+});
+['o_region_x','o_region_y','o_region_width','o_region_height'].forEach(id =>
+  $(id).addEventListener('input', () => { startManual = false; lastAnchor = null; syncStart(); updateBed(); }));
+
+let dragStart = null;
+function svgPoint(e) {
+  const svg = $('bed'), pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+$('bed').addEventListener('pointerdown', e => {
+  if (!$('o_region_on').checked) return;
+  const p = svgPoint(e), c = canvasRect();
+  dragStart = [Math.max(c[0], Math.min(c[2], p.x)), Math.max(c[1], Math.min(c[3], p.y))];
+  $('bed').setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+$('bed').addEventListener('pointermove', e => {
+  if (!dragStart) return;
+  const p = svgPoint(e), c = canvasRect();
+  const x = Math.max(c[0], Math.min(c[2], p.x)), y = Math.max(c[1], Math.min(c[3], p.y));
+  $('o_region_x').value = Math.min(dragStart[0], x).toFixed(1);
+  $('o_region_y').value = Math.min(dragStart[1], y).toFixed(1);
+  $('o_region_width').value = Math.abs(x - dragStart[0]).toFixed(1);
+  $('o_region_height').value = Math.abs(y - dragStart[1]).toFixed(1);
+  startManual = false; lastAnchor = null; syncStart(); updateBed();
+});
+$('bed').addEventListener('pointerup', e => {
+  if (dragStart) { dragStart = null; try { $('bed').releasePointerCapture(e.pointerId); } catch(err) {} }
+});
+
+let wasRunning = false;
+function setPreviewTab(tab) {
+  $('tabDrawing').className = tab === 'drawing' ? 'active' : '';
+  $('tabTracker').className = tab === 'tracker' ? 'active' : '';
+  $('drawingPane').style.display = tab === 'drawing' ? 'block' : 'none';
+  $('trackerPane').style.display = tab === 'tracker' ? 'block' : 'none';
+}
+function selectPreview(id) {
+  activeFileId = id || null;
+  schedulePlacement();
+  $('previewFile').value = activeFileId || '';
+  for (const card of document.querySelectorAll('.file'))
+    card.classList.toggle('active', card.dataset.id === activeFileId);
+  if (!activeFileId) {
+    $('bigPreview').style.display = 'none';
+    $('previewHint').textContent = 'Pick an uploaded file above, or click a preview in the Files card.';
+    return;
+  }
+  $('bigPreview').src = '/api/preview?name=' + encodeURIComponent(activeFileId);
+  $('bigPreview').style.display = 'block';
+  $('previewHint').textContent = 'Active file — click another card in Files to switch drawings.';
+}
+function updateOverlay() {
+  const img = $('trackOverlay');
+  if (!activeFileId || !placement || !$('overlayOn').checked) {
+    img.style.display = 'none';
+    return;
+  }
+  img.setAttribute('href', '/api/preview?name=' + encodeURIComponent(activeFileId));
+  img.setAttribute('x', placement.origin[0]);
+  img.setAttribute('y', placement.origin[1]);
+  img.setAttribute('width', Math.max(0.01, placement.size[0]));
+  img.setAttribute('height', Math.max(0.01, placement.size[1]));
+  img.setAttribute('opacity', Number($('overlayOpacity').value) / 100);
+  img.style.display = 'block';
+}
+async function refreshPlacement() {
+  if (!activeFileId) { placement = null; updateOverlay(); return; }
+  try {
+    const url = '/api/placement?name=' + encodeURIComponent(activeFileId) +
+                '&opts=' + encodeURIComponent(JSON.stringify(options()));
+    const {data} = await api(url);
+    if (data.origin) { placement = data; updateOverlay(); }
+  } catch(e) {}
+}
+function schedulePlacement() { clearTimeout(schedulePlacement._t); schedulePlacement._t = setTimeout(refreshPlacement, 300); }
+$('overlayOn').addEventListener('change', updateOverlay);
+$('overlayOpacity').addEventListener('input', () => {
+  $('overlayPct').textContent = $('overlayOpacity').value + '%';
+  updateOverlay();
+});
+
+function updateTracker(data) {
+  if (paperCfg) {
+    const p = paperCfg, c = p.canvas, bed = $('trackBed');
+    bed.setAttribute('viewBox', `0 0 ${p.bed_x} ${p.bed_y}`);
+    for (const [id, v] of [['trackPaper',[p.x0, p.y0, p.width, p.height]],
+                           ['trackCanvas',[c[0], c[1], c[2] - c[0], c[3] - c[1]]]]) {
+      const r = $(id);
+      r.setAttribute('x', v[0]); r.setAttribute('y', v[1]);
+      r.setAttribute('width', v[2]); r.setAttribute('height', v[3]);
+    }
+  }
+  $('trackTrail').setAttribute('points', (data.trail || []).map(p => `${p[0]},${p[1]}`).join(' '));
+  const pos = data.pos;
+  if (pos) {
+    $('trackDot').setAttribute('cx', pos.x); $('trackDot').setAttribute('cy', pos.y);
+    $('trackReadout').textContent = `X ${pos.x.toFixed(1)} mm · Y ${pos.y.toFixed(1)} mm · pen ${pos.pen}` +
+      (data.paused ? ' · PAUSED' : '');
+  } else if (!data.running) {
+    $('trackDot').setAttribute('cx', -10); $('trackDot').setAttribute('cy', -10);
+    $('trackReadout').textContent = 'Idle — no job running.';
+  }
+}
+$('tabDrawing').onclick = () => setPreviewTab('drawing');
+$('tabTracker').onclick = () => setPreviewTab('tracker');
+$('previewFile').onchange = () => { selectPreview($('previewFile').value); setPreviewTab('drawing'); };
+
+function toast(msg, bad=false) {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : '');
+  t.style.display = 'block'; clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.style.display = 'none', 3600);
+}
+async function api(path, opts={}) {
+  const r = await fetch(path, opts);
+  let d; try { d = await r.json(); } catch(e) { d = {ok:false, error:'bad response'}; }
+  if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('session expired'); }
+  return {status:r.status, data:d};
+}
+function showLogin() {
+  $('login').style.display = 'block'; $('main').style.display = 'none'; $('logout').style.display = 'none';
+}
+async function check() {
+  const {data} = await api('/api/me');
+  $('server').textContent = data.server || '';
+  if (data.paper && !paperInit) {
+    paperInit = true;
+    paperCfg = data.paper;
+    const p = data.paper;
+    for (const [id, v] of [['o_paper_x0',p.x0],['o_paper_y0',p.y0],['o_paper_width',p.width],
+                           ['o_paper_height',p.height]]) $(id).value = v;
+    $('o_anchor').value = 'top-center';
+    startManual = false;
+    lastAnchor = null;
+    syncStart();
+    const bed = $('bed');
+    bed.setAttribute('viewBox', `0 0 ${p.bed_x} ${p.bed_y}`);
+    bed.querySelector('.bed').setAttribute('width', p.bed_x);
+    bed.querySelector('.bed').setAttribute('height', p.bed_y);
+    updateBed();
+  }
+  if (data.auth) {
+    $('login').style.display = 'none'; $('main').style.display = 'block'; $('logout').style.display = 'inline-block';
+    $('who').textContent = 'unlocked';
+    await loadFiles(); await pollJob(); refreshTextArt();
+  } else { showLogin(); }
+}
+$('loginBtn').onclick = async () => {
+  const r = await api('/api/login', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({password:$('pw').value})});
+  if (r.data.ok) { $('pw').value=''; await check(); }
+  else toast(r.data.error || 'login failed', true);
+};
+$('pw').addEventListener('keydown', e => { if (e.key==='Enter') $('loginBtn').click(); });
+$('logout').onclick = async () => { await api('/api/logout',{method:'POST'}); showLogin(); };
+
+function options() {
+  const o = {};
+  for (const k of ['width','x0','y0','start_x','start_y','speed','travel_speed',
+                   'paper_x0','paper_y0','paper_width','paper_height']) {
+    const v = $('o_'+k).value.trim(); if (v !== '') o[k] = Number(v);
+  }
+  o.anchor = $('o_anchor').value;
+  if ($('o_region_on').checked)
+    for (const k of ['region_x','region_y','region_width','region_height']) o[k] = val('o_'+k, 0);
+  return o;
+}
+function convHeaders(file) {
+  return {'Content-Type':'application/octet-stream', 'X-Filename':encodeURIComponent(file.name),
+    'X-Width-Mm':$('cw').value, 'X-Threshold':$('ct').value, 'X-Blur':$('cb').value,
+    'X-Style':$('cs').value, 'X-Density':$('cd').value, 'X-Inks':$('ci').value,
+    'X-Levels':$('cl').value, 'X-Single-Pen':$('csingle').checked ? '1' : '0',
+    'X-Text-Font':$('ctext').value,
+    'X-Yaw':$('m_yaw').value, 'X-Pitch':$('m_pitch').value, 'X-Size':$('m_size').value};
+}
+function isRaster(f) { return !/\.svg$/i.test(f.name); }
+async function refreshPreview() {
+  if (!pendingFile || !isRaster(pendingFile)) return;
+  try {
+    const isMesh = /\.(stl|obj)$/i.test(pendingFile.name);
+    const r = await api(isMesh ? '/api/mesh_preview' : '/api/convert_preview',
+                        {method:'POST', headers:convHeaders(pendingFile), body:pendingFile});
+    if (r.data.ok) {
+      $('convPreview').src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(r.data.svg)));
+      $('convMask').src = r.data.mask ? 'data:image/png;base64,' + r.data.mask : '';
+      const s = r.data.stats;
+      $('convStats').textContent = isMesh
+        ? `3D mesh · ${s.triangles} triangles · ${s.paths} visible paths · ` +
+          `yaw ${s.yaw}° pitch ${s.pitch}° · ${s.width_mm} × ${s.height_mm} mm`
+        : `${s.style} · ${s.levels ? s.levels + ' tones' : 'continuous'} · ` +
+          `${s.paths} paths · ${s.points} pts · ${s.inks} ink(s) · ${s.width_mm} × ${s.height_mm} mm`;
+    } else { toast(r.data.error || 'preview failed', true); }
+  } catch(e) {}
+}
+function schedulePreview() { clearTimeout(schedulePreview._t); schedulePreview._t = setTimeout(refreshPreview, 250); }
+['cs','ci','cl','cw','ct','cd','cb','csingle','m_yaw','m_pitch','m_size'].forEach(id => {
+  $(id).addEventListener('input', schedulePreview);
+  $(id).addEventListener('change', schedulePreview);
+});
+async function upload(file) {
+  toast('Uploading ' + file.name + ' …');
+  const r = await api('/api/upload', {method:'POST', headers:convHeaders(file), body:file});
+  if (r.data.ok) { activeFileId = r.data.file.id; toast('Uploaded ' + r.data.file.name); await loadFiles(); selectPreview(activeFileId); }
+  else toast(r.data.error || 'upload failed', true);
+}
+function fileChosen(f) {
+  if (!f) return;
+  pendingFile = f;
+  if (isRaster(f)) {
+    $('rasterPreview').style.display = 'block';
+    refreshPreview();
+  } else {
+    $('rasterPreview').style.display = 'none';
+    upload(f);
+  }
+}
+$('uploadBtn').onclick = async () => {
+  if (!pendingFile) return;
+  await upload(pendingFile);
+  $('rasterPreview').style.display = 'none';
+  pendingFile = null;
+};
+$('drop').onclick = () => $('file').click();
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('hover'); };
+$('drop').ondragleave = () => $('drop').classList.remove('hover');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('hover');
+  if (e.dataTransfer.files.length) fileChosen(e.dataTransfer.files[0]); };
+$('file').onchange = e => { if (e.target.files.length) fileChosen(e.target.files[0]); e.target.value=''; };
+
+function fileCard(f) {
+  const el = document.createElement('div'); el.className = 'file'; el.dataset.id = f.id;
+  if (f.mask) {
+    const m = document.createElement('img'); m.className = 'mask'; m.alt = 'dark-shape mask';
+    m.title = 'Dark-shape mask used by the converter (black = ink)';
+    m.src = '/api/mask?name=' + encodeURIComponent(f.id);
+    el.appendChild(m);
+  }
+  const img = document.createElement('img'); img.src = '/api/preview?name=' + encodeURIComponent(f.id); img.alt = 'preview';
+  img.style.cursor = 'pointer'; img.title = 'Open in the large preview';
+  img.onclick = () => { selectPreview(f.id); setPreviewTab('drawing');
+    $('previewFile').scrollIntoView({behavior:'smooth', block:'center'}); };
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const name = document.createElement('div'); name.className = 'name'; name.textContent = f.name;
+  const badge = document.createElement('span'); badge.className = 'badge' + (f.kind==='raster' ? ' raster' : '');
+  badge.textContent = f.kind + (f.style ? '/' + f.style : '') + (f.kind === '3d' ? ' (hidden lines)' : '');
+  const sub = document.createElement('div'); sub.className = 'sub';
+  sub.textContent = ` ${(f.bytes/1024).toFixed(0)} KB · ${f.uploaded}` +
+    (f.conversion ? ` · ${f.conversion.paths} paths, ${f.conversion.points} pts` : '') +
+    (f.vector && f.vector.text_glyphs ? ` · ${f.vector.text_glyphs} text glyphs outlined` : '');
+  name.appendChild(document.createTextNode(' ')); name.appendChild(badge);
+  meta.appendChild(name); meta.appendChild(sub);
+  if (f.layers && f.layers.length) {
+    const tags = document.createElement('div'); tags.className = 'layer-tags';
+    f.layers.forEach(L => {
+      const s = document.createElement('span'); s.className = 'swatch';
+      const dot = document.createElement('i'); dot.style.background = L.color || '#888888';
+      dot.title = L.color || '';
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode(`${L.label || L.name || 'Ink'} · ${L.strokes}`));
+      tags.appendChild(s);
+    });
+    meta.appendChild(tags);
+  }
+  const act = document.createElement('div'); act.className = 'actions';
+  const mk = (label, cls, fn) => { const b=document.createElement('button'); b.textContent=label;
+    if(cls) b.className=cls; b.onclick=fn; return b; };
+  act.appendChild(mk('Dry run', '', () => dry(f)));
+  act.appendChild(mk('Trace', '', () => actPlot(f,'trace')));
+  act.appendChild(mk('Plot', 'primary', () => actPlot(f,'plot')));
+  act.appendChild(mk('Save', '', () => location.href='/api/download?name='+encodeURIComponent(f.id)));
+  act.appendChild(mk('Delete', 'danger', async () => {
+    if(!confirm('Delete '+f.name+'?')) return;
+    const r=await api('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:f.id})});
+    if(r.data.ok){toast('Deleted');loadFiles();}else toast(r.data.error,true);
+  }));
+  el.appendChild(img); el.appendChild(meta); el.appendChild(act);
+  return el;
+}
+async function loadFiles() {
+  const {data} = await api('/api/files');
+  const box = $('files'); box.textContent = '';
+  const sel = $('previewFile'), keep = activeFileId || sel.value;
+  sel.innerHTML = '<option value="">Choose an uploaded file…</option>';
+  const files = data.files || [];
+  if (!files.length) {
+    const p=document.createElement('p'); p.className='muted'; p.textContent='No uploads yet.'; box.appendChild(p);
+    selectPreview(''); return;
+  }
+  files.forEach(f => {
+    box.appendChild(fileCard(f));
+    const opt = document.createElement('option'); opt.value = f.id; opt.textContent = f.name;
+    sel.appendChild(opt);
+  });
+  if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+  else selectPreview(files[0].id);
+}
+function showOut(text, state='') {
+  $('out').textContent=text || '(no output)'; $('jobState').textContent=state;
+  $('out').scrollTop = $('out').scrollHeight;
+}
+$('logToggle').onclick = () => {
+  const panel = $('logPanel');
+  panel.classList.toggle('collapsed');
+  const collapsed = panel.classList.contains('collapsed');
+  $('logToggle').textContent = collapsed ? '‹' : '›';
+  $('logToggle').title = collapsed ? 'Expand log' : 'Collapse log';
+};
+async function dry(f) {
+  toast('Dry running ' + f.name + ' …');
+  const r = await api('/api/dry',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:f.id, options:options()})});
+  showOut(r.data.output || r.data.error || '', r.data.ok ? '· dry run OK' : '· dry run FAILED');
+}
+async function actPlot(f, mode) {
+  const word = mode.toUpperCase();
+  if (mode==='plot') {
+    if (!confirm('PLOT: the pen will touch the paper. Make sure the power switch is in reach and the carriage is at the start point.')) return;
+  } else {
+    if (!confirm('TRACE: pen-up bounding-box trace. Confirm the carriage is at the start point.')) return;
+  }
+  const typed = prompt('Type ' + word + ' to start. A preflight dry run must pass.');
+  if (typed !== word) { toast('Cancelled — confirmation did not match', true); return; }
+  const r = await api('/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:f.id, options:options(), confirm:typed})});
+  if (r.data.ok) { activeFileId = f.id; selectPreview(f.id); toast(mode+' started'); showOut('Starting '+mode+'…'); startPolling(); }
+  else { toast(r.data.error || 'could not start', true); showOut(r.data.error || ''); }
+}
+let taSvg = null;
+async function refreshTextArt() {
+  try {
+    const r = await api('/api/text_art', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:$('ta_text').value, font:$('ta_font').value,
+        size:Number($('ta_size').value), bold:$('ta_bold').checked,
+        effect:$('ta_effect').value, bend:Number($('ta_bend').value)})});
+    if (r.data.ok) {
+      taSvg = r.data.svg;
+      $('ta_preview').src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(taSvg)));
+      $('ta_preview').style.display = 'block';
+      const s = r.data.stats;
+      $('ta_stats').textContent = `${s.glyphs} glyphs · ${s.paths} paths · ${s.width_mm} × ${s.height_mm} mm`;
+    } else { toast(r.data.error || 'text art failed', true); }
+  } catch(e) {}
+}
+function scheduleTextArt() { clearTimeout(scheduleTextArt._t); scheduleTextArt._t = setTimeout(refreshTextArt, 250); }
+['ta_text','ta_font','ta_size','ta_effect','ta_bend','ta_bold'].forEach(id => {
+  $(id).addEventListener('input', scheduleTextArt);
+  $(id).addEventListener('change', scheduleTextArt);
+});
+$('ta_add').onclick = async () => {
+  if (!taSvg) return;
+  await upload(new File([taSvg], 'text_art.svg', {type:'image/svg+xml'}));
+};
+$('ta_download').onclick = () => {
+  if (!taSvg) return;
+  const a = document.createElement('a');
+  a.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(taSvg);
+  a.download = 'text_art.svg';
+  a.click();
+};
+
+$('estop').onclick = async () => {
+  if (!confirm('E-STOP: abort the current job, raise the pen and release the motors?')) return;
+  const r = await api('/api/estop', {method:'POST'});
+  if (r.data.ok) {
+    toast('E-STOP: ' + (r.data.was_running ? 'job aborted' : 'motors released'), true);
+    showOut((r.data.notes || []).join('\n'), ' · E-STOP');
+    if (polling) { clearInterval(polling); polling = null; }
+    wasRunning = false;
+    updateTracker({running:false, trail:[], pos:null});
+    $('pauseBox').style.display = 'none';
+  } else { toast(r.data.error || 'e-stop failed', true); }
+};
+$('continueBtn').onclick = async () => {
+  const r = await api('/api/continue', {method:'POST'});
+  if (r.data.ok) { $('pauseBox').style.display='none'; toast('Resuming plot…'); }
+  else toast(r.data.error || 'could not resume', true);
+};
+function startPolling() { if(!polling) polling = setInterval(pollJob, 300); }
+async function pollJob() {
+  try {
+    const {data} = await api('/api/job');
+    if (data.running) {
+      startPolling();
+      if (!wasRunning) {
+        wasRunning = true;
+        $('trackTrail').setAttribute('points','');
+        setPreviewTab('tracker');
+        if ($('logPanel').classList.contains('collapsed')) $('logToggle').click();
+      }
+      updateTracker(data);
+      showOut(data.output);
+      if (data.paused) {
+        const p = data.pause || {};
+        $('pauseBox').style.display = 'block';
+        $('pauseMsg').textContent = 'Pen change: swap to ' + (p.label || p.color || 'the next ink') +
+          (p.color ? ' (' + p.color + ')' : '') + '. The plotter is stopped with the pen up.';
+        $('jobState').innerHTML = ' · <span class="spin"></span> paused for pen change';
+      } else {
+        $('pauseBox').style.display = 'none';
+        $('jobState').innerHTML = ' · <span class="spin"></span> ' + (data.mode||'') + ' running';
+      }
+    } else {
+      if (polling) { clearInterval(polling); polling=null;
+        wasRunning = false;
+        updateTracker(data);
+        if (data.returncode !== null) toast((data.returncode===0?'Finished ':'Failed ')+(data.mode||'job'), data.returncode!==0);
+        if (data.output) showOut(data.output, '· '+data.mode+' exit '+data.returncode);
+        if (data.status === 'estop') $('jobState').textContent = ' · E-STOP';
+      }
+      $('pauseBox').style.display = 'none';
+    }
+  } catch(e) {}
+}
+check();
+</script>
+</body>
+</html>
