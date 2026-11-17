@@ -5,3 +5,4 @@ __pycache__/
 *.log
 results/
 input/
+config/web.json
