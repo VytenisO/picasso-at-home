@@ -1,0 +1,6 @@
+numpy
+scipy
+scikit-image
+shapely
+tifffile
+Hershey-Fonts

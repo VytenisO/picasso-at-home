@@ -5,3 +5,8 @@ __pycache__/
 *.log
 results/
 input/
+
+# map inputs/outputs
+*.tif
+maps/*/data/
+maps/*/out/
