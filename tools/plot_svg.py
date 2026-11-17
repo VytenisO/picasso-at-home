@@ -53,7 +53,8 @@ CSS_COLORS = {"black": "#000000", "white": "#ffffff", "red": "#ff0000", "green":
 MAX_SPEED = 40.0        # mm/s hard ceiling for drawing (pen down)
 MAX_PRESSURE = 0.9      # data-pressure ceiling: a fraction of the way from pen-down toward pen-up
 MAX_TRAVEL_SPEED = 200.0  # mm/s ceiling for pen-up travel; 100 and 200 ran clean on pen-up traces
-CHUNK_STEPS = 3000      # longest single SM leg (per vector), keeps any in-flight move < ~3 s
+CHUNK_STEPS = 3000      # longest single SM leg (per vector) in steps
+CHUNK_SECONDS = 3.0     # and in time: no single SM runs longer, so an in-flight move at abort is bounded
 LEAD = 0.05             # s: feed the next SM this long before the current one ends
 EDGE_MARGIN = 5.0       # mm kept clear of the machine travel limit
 OUT = ROOT / "results"
@@ -320,6 +321,8 @@ def load_svg(path, ignore_unsupported):
         tag = el.tag.split("}")[-1]
         if tag in ("defs", "metadata", "title", "desc", "style", "namedview"):
             return
+        if (el.get("display") or "").strip() == "none" or re.search(r"(?:^|;)\s*display\s*:\s*none", el.get("style") or ""):
+            return
         xform = mat_mul(parent_xform, parse_transform(el.get("transform")))
         cur = dict(ctx)
         c = element_color(el)
@@ -546,12 +549,15 @@ class Plotter:
         self.track(force=True)
 
     def shutdown(self):
+        """Raise the pen, wait for any move already sent to finish, then release the motors. -> True if clean."""
         try:
             self.cmd("SP,1,300")
-            self.sleep(0.4)
+            self.sleep(max(0.0, self.t_end - self.now()) + 0.4)
             self.cmd("EM,0,0")
+            return True
         except Exception as ex:   # noqa: BLE001
             log(f"shutdown problem: {ex!r}")
+            return False
 
     def _sm(self, a1, a2, ms):
         wait = self.t_end - self.now() - LEAD
@@ -566,7 +572,8 @@ class Plotter:
     def move_to(self, tx, ty, speed):
         """Absolute world-step target; chunked, vector speed in mm/s."""
         dx, dy = tx - self.pos[0], ty - self.pos[1]
-        n = max(1, math.ceil(math.hypot(dx, dy) / CHUNK_STEPS))
+        mm_total = math.hypot(dx / self.spmm[0], dy / self.spmm[1])
+        n = max(1, math.ceil(math.hypot(dx, dy) / CHUNK_STEPS), math.ceil(mm_total / speed / CHUNK_SECONDS))
         for k in range(1, n + 1):
             nx = self.pos[0] + round((dx) * k / n) - round(dx * (k - 1) / n)
             ny = self.pos[1] + round((dy) * k / n) - round(dy * (k - 1) / n)
@@ -661,6 +668,11 @@ def main():
             sys.exit(f"servo {k}={cfg['servo'][k]} outside 7500..22000")
     spmm = (cfg["steps_per_mm"]["x"], cfg["steps_per_mm"]["y"])
     mx, my = cfg["travel_mm"]["x"], cfg["travel_mm"]["y"]
+    axes = [cfg["axis"][k] for k in ("x", "y")]
+    if sorted(ax["ebb_axis"] for ax in axes) != [1, 2] or any(ax["sign"] not in (1, -1) for ax in axes):
+        sys.exit("config axis: x and y must map to distinct EBB axes 1 and 2, each with sign 1 or -1")
+    if min(spmm) <= 0 or mx <= 0 or my <= 0:
+        sys.exit("config steps_per_mm and travel_mm must be positive")
 
     # Paper rectangle: the region the drawing is allowed to occupy. CLI flags
     # override config/machine.json; start position defaults to the paper corner.
@@ -751,6 +763,8 @@ def main():
         problems.append(f"drawing reaches machine ({abs_x1:.1f},{abs_y1:.1f}) mm; travel is {mx} x {my} mm (margin {EDGE_MARGIN})")
     # The carriage itself sits on the paper (it can be outside the canvas); the
     # drawing must stay inside the canvas.
+    if not (0 <= a.start_x <= mx and 0 <= a.start_y <= my):
+        problems.append(f"carriage start S=({a.start_x:.1f},{a.start_y:.1f}) mm is outside the machine travel {mx} x {my} mm")
     if a.start_x < px0 - 0.5 or a.start_y < py0 - 0.5:
         problems.append(f"carriage start S=({a.start_x:.1f},{a.start_y:.1f}) mm is OFF the paper "
                         f"(paper starts at {px0:.1f},{py0:.1f}) — slide the carriage onto the paper before starting")
@@ -861,12 +875,13 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
             p.idle()
     except KeyboardInterrupt:
         status = "interrupted"
-        log("Interrupted: raising pen, releasing motors. Position is now unknown.")
+        log("Interrupted: raising pen, then releasing motors once the move in flight ends. Position is now unknown.")
     except Exception as ex:   # noqa: BLE001
         status = f"error: {ex!r}"
         log(f"ERROR: {ex!r}")
     finally:
-        p.shutdown()
+        if not p.shutdown():
+            status += " (cleanup FAILED: pen may be down or motors still on, check the machine and cut power if needed)"
         el = p.now() - t_start
         summary.update(status=status, elapsed_s=el, sm_commands=p.nsm, net_ebb_steps_sent=p.sent,
                        final_world_steps=p.pos)
