@@ -39,7 +39,7 @@ INKS = {
     3: [("Black", "#111111"), ("Blue", "#2463a6"), ("Red", "#c0392b")],
     4: [("Key", "#111111"), ("Magenta", "#c2187e"), ("Cyan", "#00a0b0"), ("Yellow", "#d9a400")],
 }
-STYLES = ("contour", "halftone", "one-line")
+STYLES = ("contour", "halftone", "one-line", "lineart")
 
 
 def read_pixels(path, width_px, blur, levels=0):
@@ -177,6 +177,138 @@ def rdp(pts, eps):
             keep[bi] = True
             stack += [(a, bi), (bi, b)]
     return [p for p, k in zip(pts, keep) if k]
+
+
+def skeletonize(w, h, mask):
+    """Zhang-Suen thinning of a binary mask. -> set of (x, y) skeleton pixels."""
+    rows = [bytearray(1 if mask[y][x] else 0 for x in range(w)) for y in range(h)]
+
+    def nb(x, y):
+        if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
+            return None
+        r0, r1, r2 = rows[y - 1], rows[y], rows[y + 1]
+        return (r1[x], r0[x], r0[x + 1], r1[x + 1], r2[x + 1], r2[x],
+                r2[x - 1], r1[x - 1], r0[x - 1])  # p1..p9 (p1 = centre)
+
+    changed = True
+    while changed:
+        changed = False
+        for sub in (0, 1):
+            drop = []
+            for y in range(1, h - 1):
+                for x in range(1, w - 1):
+                    n = nb(x, y)
+                    if not n or not n[0]:
+                        continue
+                    p = n[1:] + (n[1],)
+                    b = sum(p[:8])
+                    if b < 2 or b > 6:
+                        continue
+                    trans = sum(1 for k in range(8) if p[k] == 0 and p[k + 1] == 1)
+                    if trans != 1:
+                        continue
+                    if sub == 0:
+                        ok = p[1] * p[3] * p[5] == 0 and p[3] * p[5] * p[7] == 0
+                    else:
+                        ok = p[1] * p[3] * p[7] == 0 and p[1] * p[5] * p[7] == 0
+                    if ok:
+                        drop.append((x, y))
+            if drop:
+                changed = True
+                for x, y in drop:
+                    rows[y][x] = 0
+    return {(x, y) for y in range(h) for x in range(w) if rows[y][x]}
+
+
+def trace_skeleton(points):
+    """Chain skeleton pixels into polylines (endpoints and junctions split paths)."""
+    adj = {p: set() for p in points}
+    for x, y in points:
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx or dy:
+                    q = (x + dx, y + dy)
+                    if q in adj:
+                        adj[(x, y)].add(q)
+
+    def take(a, b):
+        adj[a].discard(b)
+        adj[b].discard(a)
+
+    paths = []
+
+    def walk(start):
+        while adj[start]:
+            nxt = next(iter(adj[start]))
+            take(start, nxt)
+            path = [start, nxt]
+            prev, cur = start, nxt
+            while adj[cur]:
+                dx, dy = cur[0] - prev[0], cur[1] - prev[1]
+                cands = list(adj[cur])
+                cands.sort(key=lambda q: -((q[0] - cur[0]) * dx + (q[1] - cur[1]) * dy))
+                nxt = cands[0]
+                take(cur, nxt)
+                path.append(nxt)
+                prev, cur = cur, nxt
+                if len(adj[cur]) != 1:
+                    break
+            paths.append(path)
+
+    ends = [p for p, ns in adj.items() if len(ns) == 1]
+    for p in ends:
+        walk(p)
+    for p in list(adj):
+        if adj[p]:
+            walk(p)
+    return paths
+
+
+def join_paths(paths, tol=1.5):
+    """Merge fragments that share an endpoint, to avoid unnecessary pen lifts."""
+    paths = [list(p) for p in paths]
+    while True:
+        ends = {}
+        for i, p in enumerate(paths):
+            ends.setdefault((round(p[0][0] / tol), round(p[0][1] / tol)), []).append((i, 0))
+            ends.setdefault((round(p[-1][0] / tol), round(p[-1][1] / tol)), []).append((i, -1))
+        joined, used = None, set()
+        for pairs in ends.values():
+            if len(pairs) != 2:
+                continue   # junction: never guess which branch continues
+            (i, ea), (j, eb) = pairs
+            if i == j:
+                continue
+            p, q = list(paths[i]), list(paths[j])
+            if ea == 0:
+                p.reverse()
+            if eb == -1:
+                q.reverse()
+            joined = (i, p + q[1:], j)
+            used.add(j)
+            break
+        if not joined:
+            break
+        i, merged, j = joined
+        paths[i] = merged
+        paths = [p for k, p in enumerate(paths) if k not in used]
+    return paths
+
+
+def lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px):
+    """One continuous centreline stroke per dark line in a technical drawing."""
+    mask = [[1 if pix[x, y] < threshold else 0 for x in range(w)] for y in range(h)]
+    skeleton = skeletonize(w, h, mask)
+    bands = [[] for _ in range(inks)]
+    for path in join_paths(trace_skeleton(skeleton)):
+        pts = rdp([(float(x), float(y)) for x, y in path], simplify_px)
+        if len(pts) < 2:
+            continue
+        length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+        if length < min_len_px:
+            continue
+        bands[0].append(pts)
+    return bands
 
 
 def darkness(pix, w, h, threshold):
@@ -334,7 +466,8 @@ def svg_text(width_mm, height_mm, bands, inks, mm_per_px):
 
 def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
             simplify_px=0.6, min_len_px=2.0, style="contour", density=40,
-            inks=1, mask=None, levels=0, max_width_mm=None, max_height_mm=None):
+            inks=1, mask=None, levels=0, max_width_mm=None, max_height_mm=None,
+            single_pen=False):
     """Convert raster file -> layered SVG file. Returns a stats dict.
 
     levels>=2 posterises the grayscale into that many discrete tones before
@@ -348,6 +481,8 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
     levels = int(levels)
     if levels not in (0, 1) and not 2 <= levels <= 6:
         raise ValueError("levels must be 0 (continuous) or 2..6")
+    if style == "lineart":
+        width_px = min(width_px, 300)   # thinning is O(pixels) in pure Python
     w, h, pix, im = read_pixels(pathlib.Path(src), width_px, blur, levels)
     if max_width_mm and width_mm > max_width_mm:
         width_mm = float(max_width_mm)
@@ -362,6 +497,8 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
         bands = contour_bands(w, h, pix, threshold, inks, simplify_px, min_len_px, levels)
     elif style == "halftone":
         bands = halftone_bands(w, h, pix, threshold, inks, density)
+    elif style == "lineart":
+        bands = lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px)
     else:
         bands = one_line_bands(w, h, pix, threshold, inks, density)
 
@@ -380,6 +517,9 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
     if not any(bands):
         raise ValueError(f"nothing to draw at this threshold/density (style {style}); tune the controls")
 
+    if single_pen and inks > 1:
+        bands = [[p for band in bands for p in band]]
+        inks = 1   # keep all the tone detail, but plot it with one pen and no swaps
     svg, layers, n_paths, n_points = svg_text(width_mm, height_mm, bands, inks, mm_per_px)
     pathlib.Path(dst).write_text(svg, encoding="utf-8")
     stats = {"source_px": [w, h], "width_mm": round(width_mm, 2),
@@ -400,6 +540,7 @@ def main(argv=None):
     ap.add_argument("--threshold", type=int, default=140, help="dark-shape cutoff 0..255 (default 140)")
     ap.add_argument("--density", type=int, default=40, help="line passes / dot fineness 1..100")
     ap.add_argument("--inks", type=int, default=1, choices=[1, 2, 3, 4], help="number of pen layers")
+    ap.add_argument("--single-pen", action="store_true", help="keep all tone bands but output one ink (no pen swaps)")
     ap.add_argument("--levels", type=int, default=0, choices=[0, 2, 3, 4, 5, 6],
                     help="posterise into N discrete tones before routing (0 = continuous)")
     ap.add_argument("--max-width-mm", type=float, help="cap the drawing width (reachable canvas)")
@@ -418,7 +559,8 @@ def main(argv=None):
         sys.exit("width-mm and px must be positive")
     try:
         stats = convert(a.image, a.out, a.width_mm, a.threshold, a.blur, a.px, a.simplify, a.min_len,
-                        a.style, a.density, a.inks, a.mask, a.levels, a.max_width_mm, a.max_height_mm)
+                        a.style, a.density, a.inks, a.mask, a.levels, a.max_width_mm, a.max_height_mm,
+                        a.single_pen)
     except Exception as ex:  # noqa: BLE001
         sys.exit(f"conversion failed: {ex}")
     print(f"Wrote {a.out}: {stats['style']}, {stats['inks']} ink(s), {stats['paths']} paths, "

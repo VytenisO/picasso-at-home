@@ -17,8 +17,10 @@ is toward you. Calibration comes from ../config/machine.json.
 
 Ctrl-C is the software e-stop: it raises the pen and releases the motors. Firmware 2.0.1
 cannot stop a move already sent, so cutting power is the only instant stop.
-Supported SVG: path (M L H V C S Q T Z, no arcs), line, polyline, polygon, rect, circle.
-Anything else, or any transform, is an error unless --ignore-unsupported.
+Supported SVG: path (M L H V C S Q T Z, no arcs), line, polyline, polygon, rect, circle,
+ellipse, and translate/scale/rotate/skew/matrix transforms. Text is outlined via
+tools/svg_vector.py at upload time (or here when fonttools is available). Other unknown
+elements are an error unless --ignore-unsupported.
 """
 import argparse
 import datetime
@@ -82,13 +84,21 @@ def normalize_color(s):
 
 
 def element_color(el):
-    c = el.get("stroke")
-    if not c:
-        m = re.search(r"(?:^|;)\s*stroke\s*:\s*([^;]+)", el.get("style") or "")
-        c = m.group(1) if m else None
+    style = el.get("style") or ""
+
+    def find(prop):
+        c = el.get(prop)
+        if not c:
+            m = re.search(r"(?:^|;)\s*" + prop + r"\s*:\s*([^;]+)", style)
+            c = m.group(1) if m else None
+        return c
+
+    c = find("stroke")
     if not c or c.strip().lower() == "none":
-        return None
-    return normalize_color(c)
+        c = find("fill")
+    if not c or c.strip().lower() == "none":
+        return "#000000"   # unstyled geometry uses the default black pen
+    return normalize_color(c) or "#000000"
 
 
 def element_layer(el):
@@ -126,6 +136,54 @@ def pause_for_swap(key, a):
         input("Pen swapped? Type CONTINUE to resume: ")
     except EOFError:
         raise SystemExit("input closed while waiting for a pen swap")
+
+
+# --------------------------------------------------------------- SVG transforms
+IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def mat_mul(m, n):
+    """Compose two 2x3 affine matrices (apply n first, then m)."""
+    a, b, c, d, e, f = m
+    A, B, C, D, E, F = n
+    return (a * A + c * B, b * A + d * B, a * C + c * D, b * C + d * D,
+            a * E + c * F + e, b * E + d * F + f)
+
+
+def mat_apply(m, p):
+    return (m[0] * p[0] + m[2] * p[1] + m[4], m[1] * p[0] + m[3] * p[1] + m[5])
+
+
+def parse_transform(s):
+    m = IDENTITY
+    if not s or s.strip() in ("", "none"):
+        return m
+    for name, raw in re.findall(r"([A-Za-z]+)\s*\(([^)]*)\)", s):
+        v = [float(x) for x in re.findall(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", raw)]
+        name = name.lower()
+        if name == "matrix" and len(v) >= 6:
+            t = tuple(v[:6])
+        elif name == "translate":
+            t = (1.0, 0.0, 0.0, 1.0, v[0], v[1] if len(v) > 1 else 0.0)
+        elif name == "scale":
+            sy = v[1] if len(v) > 1 else v[0]
+            t = (v[0], 0.0, 0.0, sy, 0.0, 0.0)
+        elif name == "rotate":
+            ang = math.radians(v[0])
+            co, si = math.cos(ang), math.sin(ang)
+            rot = (co, si, -si, co, 0.0, 0.0)
+            if len(v) >= 3:
+                cx, cy = v[1], v[2]
+                t = mat_mul(mat_mul((1, 0, 0, 1, cx, cy), rot), (1, 0, 0, 1, -cx, -cy))
+            else:
+                t = rot
+        elif name in ("skewx", "skewy"):
+            q = math.tan(math.radians(v[0]))
+            t = (1.0, 0.0, q, 1.0, 0.0, 0.0) if name == "skewx" else (1.0, q, 0.0, 1.0, 0.0, 0.0)
+        else:
+            continue
+        m = mat_mul(m, t)
+    return m
 
 
 # ---------------------------------------------------------------- SVG parsing
@@ -256,13 +314,11 @@ def load_svg(path, ignore_unsupported):
 
     polys, metas, skipped = [], [], {}
 
-    def walk(el, ctx):
+    def walk(el, ctx, parent_xform):
         tag = el.tag.split("}")[-1]
         if tag in ("defs", "metadata", "title", "desc", "style", "namedview"):
             return
-        t = (el.get("transform") or "").strip()
-        if t and t not in ("none",):
-            raise ValueError(f"<{tag}> has a transform ({t!r}); flatten the SVG first (e.g. vpype)")
+        xform = mat_mul(parent_xform, parse_transform(el.get("transform")))
         cur = dict(ctx)
         c = element_color(el)
         layer = element_layer(el)
@@ -274,7 +330,7 @@ def load_svg(path, ignore_unsupported):
 
         def add(poly):
             if len(poly) >= 2:
-                polys.append(poly)
+                polys.append([mat_apply(xform, p) for p in poly])
                 metas.append(dict(meta))
 
         f = lambda k, dflt=0.0: float(el.get(k, dflt))  # noqa: E731
@@ -295,14 +351,37 @@ def load_svg(path, ignore_unsupported):
         elif tag == "circle":
             cx, cy, r = f("cx"), f("cy"), f("r")
             add([(cx + r * math.cos(2 * math.pi * k / 72), cy + r * math.sin(2 * math.pi * k / 72)) for k in range(73)])
-        elif tag in ("g", "svg", "a"):
+        elif tag == "ellipse":
+            cx, cy, rx, ry = f("cx"), f("cy"), f("rx"), f("ry")
+            add([(cx + rx * math.cos(2 * math.pi * k / 72), cy + ry * math.sin(2 * math.pi * k / 72)) for k in range(73)])
+        elif tag == "text":
+            # Normally outlined at upload time; support it here too if fonttools is present.
+            try:
+                import svg_vector
+                st = dict(svg_vector.style_of(el))
+                txt = "".join(el.itertext())
+                d = svg_vector.text_to_d(txt, svg_vector.length(el.get("x", "0"), 0.0),
+                                         svg_vector.length(el.get("y", "0"), 0.0),
+                                         svg_vector.length(st.get("font-size")),
+                                         st.get("font-family", "DejaVu Sans"),
+                                         st.get("font-weight", "normal"), st.get("font-style", "normal"),
+                                         st.get("text-anchor", "start"),
+                                         svg_vector.length(st.get("letter-spacing"), 0.0))
+                if d:
+                    for poly in parse_path(d):
+                        add(poly)
+                else:
+                    skipped[tag] = skipped.get(tag, 0) + 1
+            except Exception:  # noqa: BLE001
+                skipped[tag] = skipped.get(tag, 0) + 1
+        elif tag in ("g", "svg", "a", "tspan"):
             pass
         else:
             skipped[tag] = skipped.get(tag, 0) + 1
         for child in el:
-            walk(child, cur)
+            walk(child, cur, xform)
 
-    walk(root, {"color": None, "layer": None})
+    walk(root, {"color": None, "layer": None}, IDENTITY)
     if skipped:
         msg = f"unsupported elements: {skipped}"
         if not ignore_unsupported:
@@ -532,6 +611,10 @@ def main():
     ap.add_argument("--paper-y0", type=float, help="paper top-left Y on the bed, mm (overrides config)")
     ap.add_argument("--paper-width", type=float, help="paper width in mm (overrides config)")
     ap.add_argument("--paper-height", type=float, help="paper height in mm (overrides config)")
+    ap.add_argument("--region-x", type=float, help="plot region left edge, mm (inside the canvas)")
+    ap.add_argument("--region-y", type=float, help="plot region top edge, mm")
+    ap.add_argument("--region-width", type=float, help="plot region width, mm")
+    ap.add_argument("--region-height", type=float, help="plot region height, mm")
     ap.add_argument("--speed", type=float, default=15.0, help="drawing speed mm/s")
     ap.add_argument("--travel-speed", type=float, default=25.0, help="pen-up speed mm/s")
     ap.add_argument("--simplify", type=float, default=0.05, help="RDP tolerance mm")
@@ -575,6 +658,20 @@ def main():
     cx0, cy0, cx1, cy1 = px0 + margin, py0 + margin, px1 - margin, py1 - margin
     if cx1 <= cx0 or cy1 <= cy0:
         sys.exit("paper margin leaves no reachable canvas")
+    region = None
+    if None not in (a.region_x, a.region_y, a.region_width, a.region_height):
+        rx, ry, rw, rh = a.region_x, a.region_y, a.region_width, a.region_height
+        if rw <= 0 or rh <= 0 or rx < cx0 - 0.5 or ry < cy0 - 0.5 or rx + rw > cx1 + 0.5 or ry + rh > cy1 + 0.5:
+            sys.exit(f"region ({rx},{ry},{rw},{rh}) must lie inside the canvas "
+                     f"({cx0:.1f}..{cx1:.1f} x {cy0:.1f}..{cy1:.1f} mm)")
+        region = (rx, ry, rx + rw, ry + rh)
+        # The carriage goes to the matching anchor of the chosen region.
+        if a.anchor == "top-left":
+            a.start_x, a.start_y = rx, ry
+        elif a.anchor == "top-center":
+            a.start_x, a.start_y = rx + rw / 2, ry
+        else:
+            a.start_x, a.start_y = rx + rw / 2, ry + rh / 2
     if a.start_x is None:
         a.start_x = px0
     if a.start_y is None:
@@ -586,26 +683,41 @@ def main():
     log(f"mode={a.mode} sim={a.sim} svg={a.svg}")
 
     polys, metas, (w_mm, h_mm) = load_svg(a.svg, a.ignore_unsupported)
-    scale = a.scale * (a.width / w_mm if a.width else 1.0)
+    base_scale = a.scale * (a.width / w_mm if a.width else 1.0)
+    scale = base_scale
+    if region:
+        rx0, ry0, rx1, ry1 = region
+        raw = bbox(polys)
+        fit = min((rx1 - rx0) / max(1e-9, (raw[2] - raw[0]) * base_scale),
+                  (ry1 - ry0) / max(1e-9, (raw[3] - raw[1]) * base_scale))
+        scale = base_scale * fit   # fit the whole drawing into the chosen region
     strokes, metas = prepare(polys, metas, a.simplify, a.join, scale, 0.0, 0.0)
     if not strokes:
         sys.exit("no drawable geometry found")
     groups = color_groups(metas)
     x0, y0, x1, y1 = bbox(strokes)
-    # The anchor is a point on the PAPER (where the operator places the
-    # carriage); the drawing itself is placed on the inset CANVAS. So the
-    # margin is added for corner anchors, while centred anchors share the
-    # paper/canvas centre and need no horizontal margin shift.
+    # The anchor is on the PAPER (where the operator places the carriage);
+    # the drawing goes into the target rectangle — the region if chosen, else
+    # the inset canvas. Shift by the difference between the two anchor points.
+    tx0, ty0, tx1, ty1 = region if region else (cx0, cy0, cx1, cy1)
+    if region:
+        shift_x = shift_y = 0.0   # S is already the region's anchor point
+    elif a.anchor == "top-left":
+        shift_x, shift_y = tx0 - px0, ty0 - py0
+    elif a.anchor == "top-center":
+        shift_x, shift_y = (tx0 + tx1) / 2 - (px0 + px1) / 2, ty0 - py0
+    else:
+        shift_x, shift_y = (tx0 + tx1) / 2 - (px0 + px1) / 2, (ty0 + ty1) / 2 - (py0 + py1) / 2
     ox, oy = a.x0, a.y0
     if a.anchor == "top-left":
-        ox += margin - x0
-        oy += margin - y0
+        ox += shift_x - x0
+        oy += shift_y - y0
     elif a.anchor == "top-center":
-        ox -= (x0 + x1) / 2
-        oy += margin - y0
-    elif a.anchor == "center":
-        ox -= (x0 + x1) / 2
-        oy -= (y0 + y1) / 2
+        ox += shift_x - (x0 + x1) / 2
+        oy += shift_y - y0
+    else:
+        ox += shift_x - (x0 + x1) / 2
+        oy += shift_y - (y0 + y1) / 2
     gx0, gy0, gx1, gy1 = x0 + ox, y0 + oy, x1 + ox, y1 + oy
     abs_x0, abs_y0 = a.start_x + gx0, a.start_y + gy0
     abs_x1, abs_y1 = a.start_x + gx1, a.start_y + gy1
@@ -627,16 +739,18 @@ def main():
     if a.start_x > px1 + 0.5 or a.start_y > py1 + 0.5:
         problems.append(f"carriage start S=({a.start_x:.1f},{a.start_y:.1f}) mm is past the paper "
                         f"({px0:.1f}..{px1:.1f} x {py0:.1f}..{py1:.1f} mm)")
-    if abs_x0 < cx0 - 0.5 or abs_y0 < cy0 - 0.5 or abs_x1 > cx1 + 0.5 or abs_y1 > cy1 + 0.5:
-        problems.append(f"drawing would leave the {margin:.0f} mm canvas ({cx0:.1f}..{cx1:.1f} x {cy0:.1f}..{cy1:.1f} mm); "
-                        f"it covers {abs_x0:.1f}..{abs_x1:.1f} x {abs_y0:.1f}..{abs_y1:.1f} mm — adjust --width/--x0/--y0")
+    if abs_x0 < tx0 - 0.5 or abs_y0 < ty0 - 0.5 or abs_x1 > tx1 + 0.5 or abs_y1 > ty1 + 0.5:
+        rname = "region" if region else f"{margin:.0f} mm canvas"
+        problems.append(f"drawing would leave the {rname} ({tx0:.1f}..{tx1:.1f} x {ty0:.1f}..{ty1:.1f} mm); "
+                        f"it covers {abs_x0:.1f}..{abs_x1:.1f} x {abs_y0:.1f}..{abs_y1:.1f} mm — adjust the region or --width/--x0/--y0")
     log(f"""
 Drawing        : {w_mm * scale:.1f} x {h_mm * scale:.1f} mm ({len(polys)} source paths -> {len(strokes)} strokes, {pts} points after simplify {a.simplify} mm)
 Placement      : {a.anchor} at S
 Geometry bbox  : x {gx0:.1f}..{gx1:.1f}  y {gy0:.1f}..{gy1:.1f} mm relative to S
 On the machine : x {abs_x0:.1f}..{abs_x1:.1f} of {mx}   y {abs_y0:.1f}..{abs_y1:.1f} of {my} mm  (S at {a.start_x},{a.start_y})
 Paper          : x {px0:.1f}..{px1:.1f}  y {py0:.1f}..{py1:.1f} mm  (carriage must start on the paper)
-Canvas         : x {cx0:.1f}..{cx1:.1f}  y {cy0:.1f}..{cy1:.1f} mm  ({margin:.0f} mm clear of every paper edge)
+Canvas         : x {cx0:.1f}..{cx1:.1f}  y {cy0:.1f}..{cy1:.1f} mm  ({margin:.0f} mm clear of every paper edge)""" +
+        (f"\nRegion         : x {tx0:.1f}..{tx1:.1f}  y {ty0:.1f}..{ty1:.1f} mm  (drawing fitted to region)" if region else "") + f"""
 Steps          : x {round(gx0 * spmm[0])}..{round(gx1 * spmm[0])}  y {round(gy0 * spmm[1])}..{round(gy1 * spmm[1])}
 Drawing length : {dd / 1000:.2f} m at {a.speed} mm/s    pen-up travel {dt / 1000:.2f} m at {a.travel_speed} mm/s    pen lifts {lifts}
 Estimated time : {fmt(secs)}
@@ -645,10 +759,18 @@ Ink layers     : {len(groups)}  ({', '.join(f'{color_label(k)}: {len(ix)} stroke
 Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}""")
     for p in problems:
         log("PROBLEM: " + p)
-    on_paper = not any("paper" in p or "canvas" in p for p in problems)
+    on_paper = not any("paper" in p or "canvas" in p or "region" in p for p in problems)
+    if a.mode == "dry":
+        # Machine-space placement of the whole SVG canvas, for the web tracker overlay.
+        print("__PLACEMENT__:" + json.dumps({
+            "origin": [a.start_x + ox, a.start_y + oy],
+            "size": [w_mm * scale, h_mm * scale],
+            "bbox": [abs_x0, abs_y0, abs_x1, abs_y1],
+            "canvas": [tx0, ty0, tx1, ty1]}), flush=True)
     summary = {"svg": a.svg, "mode": a.mode, "strokes": len(strokes), "points": pts, "est_seconds": secs,
                "bbox_machine_mm": [abs_x0, abs_y0, abs_x1, abs_y1], "problems": problems, "args": vars(a),
                "paper_mm": [px0, py0, px1, py1], "canvas_mm": [cx0, cy0, cx1, cy1],
+               "region_mm": list(region) if region else None,
                "on_paper": on_paper, "anchor": a.anchor,
                "layers": [{"color": k[0], "label": k[1], "name": color_label(k), "strokes": len(ix)}
                           for k, ix in groups], "swaps": max(0, len(groups) - 1)}

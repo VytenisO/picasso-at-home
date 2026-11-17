@@ -35,6 +35,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from image_to_svg import convert as convert_raster  # noqa: E402
+from svg_vector import prepare as prepare_svg, text_art_svg  # noqa: E402
+from mesh_to_svg import convert as convert_mesh  # noqa: E402
 
 try:
     import serial
@@ -54,7 +56,8 @@ PY = "/usr/bin/python3"
 MAX_UPLOAD = 12 * 1024 * 1024
 SESSION_AGE = 7 * 24 * 3600
 ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
-ALLOWED = ALLOWED_IMG | {".svg"}
+ALLOWED_MESH = {".stl", ".obj"}
+ALLOWED = ALLOWED_IMG | {".svg"} | ALLOWED_MESH
 
 FS_LOCK = threading.Lock()
 JOB_LOCK = threading.Lock()
@@ -180,7 +183,7 @@ def paper_config():
 
 def public_entry(e):
     return {k: e.get(k) for k in ("id", "name", "kind", "bytes", "uploaded", "svg", "orig", "conversion",
-                                  "warning", "style", "mask", "layers")}
+                                  "warning", "style", "mask", "layers", "vector")}
 
 
 # --------------------------------------------------------------------- jobs
@@ -217,6 +220,13 @@ def build_argv(entry, opts, mode):
     if anchor not in ("top-left", "top-center", "center"):
         raise ValueError("anchor must be top-left, top-center or center")
     argv += ["--anchor", anchor]
+    reg = [arg_number(opts, k, 0.0, 1000.0, float)
+           for k in ("region_x", "region_y", "region_width", "region_height")]
+    if any(v is not None for v in reg):
+        if any(v is None for v in reg) or reg[2] <= 0 or reg[3] <= 0:
+            raise ValueError("plot region needs X, Y, width and height (all positive)")
+        for k, v in zip(("region-x", "region-y", "region-width", "region-height"), reg):
+            argv += ["--" + k, str(v)]
     if mode != "dry":
         argv.append("--track")
     return argv
@@ -461,6 +471,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_auth():
                 return
             return self.serve_mask(q.get("name", [""])[0])
+        if path.path == "/api/placement":
+            if not self.require_auth():
+                return
+            return self.placement_info(q.get("name", [""])[0], q.get("opts", ["{}"])[0])
         if path.path == "/api/download":
             if not self.require_auth():
                 return
@@ -506,6 +520,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.upload()
         if path == "/api/convert_preview":
             return self.convert_preview()
+        if path == "/api/mesh_preview":
+            return self.mesh_preview()
+        if path == "/api/text_art":
+            return self.text_art()
         if path == "/api/delete":
             return self.delete_file()
         if path == "/api/dry":
@@ -548,6 +566,74 @@ class Handler(BaseHTTPRequestHandler):
         data = (INPUT / name).read_bytes()
         self.send(200, data, "image/png", {"Content-Security-Policy": "default-src 'none'; sandbox"})
 
+    def placement_info(self, ident, opts_json):
+        """Where the SVG canvas will land in machine mm, for the tracker overlay."""
+        e = self.find_entry(ident)
+        if not e:
+            return self.err(404, "unknown file id")
+        try:
+            argv = build_argv(e, json.loads(opts_json), "dry")
+        except Exception as ex:  # noqa: BLE001
+            return self.err(400, str(ex))
+        rc, out = run_capture(argv)
+        for line in out.splitlines():
+            if line.startswith("__PLACEMENT__:"):
+                try:
+                    return self.send(200, json.loads(line[len("__PLACEMENT__:"):]))
+                except Exception:  # noqa: BLE001
+                    break
+        return self.err(400, "placement unavailable: " + out[-500:])
+
+    def text_art(self):
+        """Generate deformed text outlines as a ready-to-plot SVG."""
+        data = self.body_json()
+        try:
+            effect = str(data.get("effect", "arc"))
+            if effect not in ("plain", "arc", "wave", "rise", "circle", "twist"):
+                effect = "arc"
+            svg, stats = text_art_svg(str(data.get("text", "")),
+                                      max(5.0, min(150.0, float(data.get("size", 20)))),
+                                      str(data.get("font", "DejaVu Sans")),
+                                      "bold" if data.get("bold") else "normal", "normal",
+                                      effect, max(0.0, min(100.0, float(data.get("bend", 40)))))
+            return self.send(200, {"ok": True, "svg": svg, "stats": stats})
+        except Exception as ex:  # noqa: BLE001
+            return self.err(400, f"text art failed: {ex}")
+
+    def mesh_params(self):
+        def num(h, default):
+            try:
+                return float(self.headers.get(h, default))
+            except (TypeError, ValueError):
+                return default
+        return {"yaw": max(-180.0, min(180.0, num("X-Yaw", 35.0))),
+                "pitch": max(-89.0, min(89.0, num("X-Pitch", 25.0))),
+                "width_mm": max(20.0, min(267.0, num("X-Size", 120.0)))}
+
+    def mesh_preview(self):
+        """Preview an STL/OBJ mesh with hidden lines removed, without saving it."""
+        raw = self.body_bytes()
+        safe = safe_name(urllib.parse.unquote(self.headers.get("X-Filename", "")))
+        ext = pathlib.Path(safe).suffix.lower()
+        if ext not in ALLOWED_MESH or not raw:
+            return self.err(400, "mesh preview needs a non-empty .stl or .obj file")
+        token = secrets.token_hex(6)
+        src = INPUT / f"preview_{token}{ext}"
+        dst = INPUT / f"preview_{token}.svg"
+        try:
+            src.write_bytes(raw)
+            stats = convert_mesh(src, dst, **self.mesh_params())
+            return self.send(200, {"ok": True, "svg": dst.read_text(encoding="utf-8"), "stats": stats})
+        except Exception as ex:  # noqa: BLE001
+            return self.err(400, f"mesh preview failed: {ex}")
+        finally:
+            for p in (src, dst):
+                if p.is_file():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+
     def conversion_params(self):
         """Raster conversion settings sent as headers by the upload UI."""
         def num(h, default, cast=float):
@@ -556,7 +642,7 @@ class Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 return default
         style = self.headers.get("X-Style", "contour").strip().lower()
-        if style not in ("contour", "halftone", "one-line"):
+        if style not in ("contour", "halftone", "one-line", "lineart"):
             style = "contour"
         canvas = paper_config()["canvas"]
         max_w, max_h = canvas[2] - canvas[0], canvas[3] - canvas[1]
@@ -569,7 +655,8 @@ class Handler(BaseHTTPRequestHandler):
                 "style": style,
                 "density": max(1, min(100, num("X-Density", 40, int))),
                 "inks": max(1, min(4, num("X-Inks", 1, int))),
-                "levels": levels, "max_width_mm": max_w, "max_height_mm": max_h}
+                "levels": levels, "max_width_mm": max_w, "max_height_mm": max_h,
+                "single_pen": str(self.headers.get("X-Single-Pen", "")).lower() in ("1", "true", "yes", "on")}
 
     def convert_preview(self):
         """Convert an uploaded raster with the current settings, without saving it."""
@@ -615,11 +702,14 @@ class Handler(BaseHTTPRequestHandler):
             if ext == ".svg":
                 import xml.etree.ElementTree as ET
                 ET.fromstring(raw)
-                stored = f"{ident}_{safe}"
-                (INPUT / stored).write_bytes(raw)
+                orig = f"{ident}_{safe}"
+                (INPUT / orig).write_bytes(raw)
+                stored = f"{ident}_{pathlib.Path(safe).stem}_plot.svg"
+                font = self.headers.get("X-Text-Font", "DejaVu Sans").strip() or "DejaVu Sans"
+                vstats = prepare_svg(INPUT / orig, INPUT / stored, font_family=font)
                 entry = {"id": stored, "name": safe, "kind": "svg", "bytes": len(raw),
                          "uploaded": datetime.datetime.now().isoformat(timespec="seconds"),
-                         "svg": stored, "orig": stored}
+                         "svg": stored, "orig": orig, "vector": vstats}
                 try:
                     import plot_svg
                     _, metas, _ = plot_svg.load_svg(INPUT / stored, True)
@@ -628,6 +718,16 @@ class Handler(BaseHTTPRequestHandler):
                         for k, ix in plot_svg.color_groups(metas)]
                 except Exception:  # noqa: BLE001
                     pass  # swatches are cosmetic; the plotter still handles the layers
+            elif ext in ALLOWED_MESH:
+                orig = f"{ident}_{safe}"
+                (INPUT / orig).write_bytes(raw)
+                svg = f"{ident}_{pathlib.Path(safe).stem}.svg"
+                stats = convert_mesh(INPUT / orig, INPUT / svg, **self.mesh_params())
+                entry = {"id": svg, "name": safe, "kind": "3d", "bytes": len(raw),
+                         "uploaded": datetime.datetime.now().isoformat(timespec="seconds"),
+                         "svg": svg, "orig": orig, "conversion": stats,
+                         "layers": [{"label": "Black", "color": "#111111",
+                                     "strokes": stats.get("paths", 0)}]}
             else:
                 orig = f"{ident}_{safe}"
                 (INPUT / orig).write_bytes(raw)

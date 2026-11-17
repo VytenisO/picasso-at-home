@@ -47,13 +47,15 @@ Open `http://100.75.242.85:8080/` from any device on the tailnet (or use the Mag
 
 **Paper placement.** The bed is larger than the paper, with empty space around it. `config/machine.json` defines the paper rectangle (`paper.x0`, `paper.y0`, `width`, `height`; tune these to your actual sheet) and a safe inset (`paper.margin_mm`, 15 mm by default). Only the resulting **canvas** is used: raster uploads are auto-fitted to it and dry runs refuse any drawing that leaves it, so the whole sheet is never used. The UI draws the paper, a dashed canvas rectangle, a dashed centre cross and an orange dot for the carriage start, and warns when the carriage is off the canvas.
 
+The canvas is just the reachable area of the sheet — it does **not** set the drawing's size. A vector SVG is plotted at its authored scale (or the UI's Width override), so a small drawing stays small inside the large canvas; raster uploads are capped so they never overflow it. To place a drawing precisely and combine several on one sheet, enable **Plot in a region**: drag on the bed diagram (or type X/Y/width/height) to pick a rectangle inside the canvas. The drawing is then scaled to fit that region and centred in it, the carriage anchor moves to the region, and dry run checks the region bounds. CLI: `--region-x/-y/-width/-height`.
+
 You choose **where the carriage sits** with the anchor: `top-left` (the sheet's corner), `top-center` (the middle of the sheet's top edge — easiest to eyeball, and the default in the UI), or `center` (the middle of the sheet). The anchor is a point on the **paper**; the drawing is centred on the corresponding point of the **canvas** and inset by the margin automatically. So you can place the carriage at the sheet's top edge (Y=6 mm here) without having to find the exact corner or measure the inset yourself. Start X/Y are filled in automatically from the anchor and paper size, but can be overridden by hand. A dry run refuses to proceed if the carriage or the drawing would be off the paper, so a carriage left in the empty strip is caught before any motion. CLI equivalents: `--paper-x0/-y0/-width/-height`, `--start-x/--start-y` and `--anchor {top-left,top-center,center}`.
 
 The UI writes uploads to `input/` (gitignored) and logs to `results/`. Actions call `tools/plot_svg.py` as a subprocess, so all the safety checks and limits there still apply. Only one plot job runs at a time. Restarting the server (e.g. `systemctl --user restart plotter-web`) aborts an in-flight job; the subprocess now handles SIGTERM like Ctrl-C, so the pen is raised and the motors released before it exits.
 
 ### Drawing styles and ink layers
 
-The **Preview & live tracker** card has two tabs. *Drawing* shows any uploaded file at full size (pick from the dropdown or click a thumbnail in the Files card). *Live tracker* shows the bed with the paper, the canvas, the travelled path and the current carriage position, updating a few times per second while a job runs and switching to it automatically. `plot_svg.py --track` emits the position data; the web server enables it for trace/plot jobs.
+The **Preview & live tracker** card has two tabs. *Drawing* shows any uploaded file at full size (pick from the dropdown or click a thumbnail in the Files card). *Live tracker* shows the bed with the paper, the canvas, the travelled path and the current carriage position, updating a few times per second while a job runs and switching to it automatically. The active drawing can be overlaid at its computed machine placement with adjustable opacity and multiply blending (white becomes transparent), so you can see exactly where it will land; `/api/placement` runs a dry plan to get the SVG canvas origin and size. `plot_svg.py --track` emits the position data; the web server enables it for trace/plot jobs.
 
 Selecting a raster shows a **live preview** before you upload: the actual pen paths on the left and the dark-shape mask on the right. Change style, cutoff, density, blur, width or ink layers and the preview refreshes automatically; nothing is saved until you press *Upload this image with these settings*. SVG uploads still go straight in.
 
@@ -61,6 +63,7 @@ Raster uploads offer three styles (`tools/image_to_svg.py`, Pillow only):
 
 - **Contours** — grayscale → blur → marching squares → simplified polylines (the original method). A higher cutoff traces more nested outlines.
 - **Halftone dots** — a grid of round dots whose size follows local darkness; Density controls dot fineness.
+- **Line art (centreline)** — for technical drawings / scanned line art: threshold the dark strokes, thin them to a one-pixel skeleton (Zhang–Suen, pure Python) and plot each as a single stroke. Use a high cutoff (200–230), blur 0–0.5 and Continuous tone levels. This avoids the double outlines that contour tracing produces on thin lines, and needs only one pen even when a colour version of the scan shows more detail.
 - **One-line drawing** — a single continuous serpentine line that packs tightly inside the dark shapes. **Dark-shape cutoff** decides which parts count as the subject (a black/white mask of them is shown next to the preview), and **Density** sets the number of passes. Raise the cutoff to include more of the image, lower it to keep only the biggest dark shapes.
 
 **Tone levels** are a pre-processing step before routing: with `--levels 2`–`6` the grayscale is posterised into that many discrete values first, so a photo becomes nested bands of tone (2 values is plain black/white). The right-hand preview image shows the posterised tones when enabled, otherwise the binary dark-shape mask. `--max-width-mm` / `--max-height-mm` fit the output inside the reachable canvas.
@@ -89,7 +92,22 @@ python3 tools/plot_svg.py drawing.svg --mode plot     # the real plot (you type 
 
 Always go dry, then trace, then plot. Before trace or plot: motors off, carriage slid to the start point S (`--start-x/--start-y` tell the script where S is, in mm from the machine's top-left), pen up over the paper. Useful options: `--width`, `--x0/--y0`, `--speed`, `--travel-speed`, `--pen-up/--pen-down`. Add `--sim` to run any mode on a virtual machine with a virtual clock.
 
-Supported SVG: `path` (no arcs), `line`, `polyline`, `polygon`, `rect`, `circle`. Transforms and other elements are refused rather than guessed. Strokes are drawn in file order; pre-sort with something like `vpype linesort` for multi-stroke art.
+Supported SVG: `path` (no arcs), `line`, `polyline`, `polygon`, `rect`, `circle`, `ellipse`, plus `translate`/`scale`/`rotate`/`skew`/`matrix` transforms on elements and groups. Strokes are drawn in file order; pre-sort with something like `vpype linesort` for multi-stroke art.
+
+### Technical drawings (vector SVG, no thresholding)
+
+SVGs are ingested **as vectors** — no rasterisation or thresholding. On upload, `tools/svg_vector.py` converts any `<text>`/`<tspan>` into real glyph outline paths using fontTools and the machine's installed fonts (pick a font in the Upload card; `fc-match` resolves aliases like Arial). The prepared SVG is what you see in the large preview and what gets plotted, so text won't look different on paper. Filled regions are drawn as outlines only; if you need shading, use the raster styles instead.
+
+```
+python3 tools/svg_vector.py technical.svg technical_plot.svg --font "DejaVu Sans"
+python3 tools/plot_svg.py technical_plot.svg            # dry run
+```
+
+`fonttools` is in `requirements.txt`. Unknown elements are listed in the dry-run output; use `--ignore-unsupported` to skip them. Arc commands in path data and patterns/clips are not supported yet, so flatten those in the source tool if needed.
+
+**3D meshes:** upload an **STL or OBJ** model to get an orthographic line drawing with hidden lines removed. `tools/mesh_to_svg.py` casts a ray from each sampled point on a mesh edge toward the camera; if a triangle blocks it, the point is hidden. Coplanar triangulation diagonals are dropped so only real silhouette and crease edges are drawn. Tune yaw, pitch and output size in the Upload card and watch the live preview. This is a pure-Python take on the approach used by [fogleman/ln](https://github.com/fogleman/ln) (which is Go; no Go toolchain is installed here). Meshes are capped at 1500 triangles.
+
+**Text art:** the *Text art* card makes word-art from any string — pick a font, size, bold, and a bend style (plain, arc, wave, rising, circle, twist) with a bend amount. It generates real glyph outlines (nothing rasterised), previews them live, and can add the result straight to your uploads or download the SVG. From the CLI: `python3 -c "import sys; sys.path.insert(0,'tools'); from svg_vector import text_art_svg; open('art.svg','w').write(text_art_svg('HELLO',20,'DejaVu Sans','bold','normal','arc',40)[0])"`.
 
 ## Safety
 
