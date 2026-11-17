@@ -704,23 +704,37 @@ LANDMARKS = {
 }
 
 
-def design_nasa(dem, lines, wps, view):
+# Traverse-sheet presets by scale: centre, DEM cell/smoothing, contour interval/index,
+# sol tick/label step, graticule tick/label minutes, scale bar km/division.
+TRAVERSE_PRESETS = {
+    60000: dict(center=(77.338, 18.461), cell=40, sigma=90, ci=20, ix=100, tick=50, lab=250, gt=1, gl=2, km=3, kd=0.5),
+    150000: dict(center=(77.49, 18.42), cell=60, sigma=160, ci=25, ix=100, tick=100, lab=500, gt=2, gl=4, km=10, kd=2),
+    200000: dict(center=(77.60, 18.38), cell=80, sigma=200, ci=50, ix=250, tick=100, lab=500, gt=5, gl=10, km=10, kd=2),
+}
+
+
+def design_nasa(dem, lines, wps, view, scale=60000):
     if view == "crater":
         mf = MapFrame((14, 14, 200, 196), 300000, (77.63, 18.37))
         ter = Terrain(dem, mf, 100.0, 260.0)
     else:
-        mf = MapFrame((14, 14, 283, 160), 60000, (77.338, 18.461))
-        ter = Terrain(dem, mf, 40.0, 90.0)
+        P = TRAVERSE_PRESETS[scale]
+        mf = MapFrame((14, 14, 283, 160), scale, P["center"])
+        ter = Terrain(dem, mf, P["cell"], P["sigma"])
+    near = view != "crater" and scale <= 80000
     dr = Drawing(mf)
     F, FM = "futural", "futuram"
 
     # --- traverse and landmarks first so contours and their labels avoid them
     if view == "crater":
         draw_traverse(dr, lines, wps, 250, 1000, 0.9, 1.6, F, label_offsets={1000: (0, -3.2), 2000: (-1.6, 2.6)})
-    else:
+    elif near:
         draw_traverse(dr, lines, wps, 50, 250, 0.9, 1.8, F,
                       label_offsets={250: (-4.5, 2.6), 500: (0.6, -3.6), 750: (1.4, -2.4), 1000: (-1.5, 3.6),
                                      1250: (1.6, 0.6), 1500: (-2.4, -1.8), 1750: (0, 3.4), 2000: (-1.5, -3.2)})
+    else:
+        draw_traverse(dr, lines, wps, P["tick"], P["lab"], 0.9, 1.7, F,
+                      label_offsets={500: (0.5, -3.4), 1000: (0, -3.4), 1500: (-1.5, -3.2), 2000: (-1.5, 3.4)})
     L = {k: at_sol(wps, s) for k, s in LANDMARKS.items() if s}
     if view == "crater":
         landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 9, 6, 1.6, F, "flag")
@@ -732,6 +746,19 @@ def design_nasa(dem, lines, wps, view):
         dr.label("C R A T E R", float(x), float(y) + 6, 3.2, F, anchor="middle", track=1.6, pad=1.0)
         x, y = mf.ll_mm(77.45, 18.555)
         dr.label("WESTERN FAN", float(x), float(y), 1.6, "timesi", anchor="middle", track=0.6, angle=-8)
+    elif not near:
+        landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 8, 9, 1.8, F, "flag")
+        landmark(dr, ["THREE FORKS", "SAMPLE DEPOT"], L["three_forks"][1], L["three_forks"][2], 2, 15, 1.7, F, "ring")
+        landmark(dr, ["CHEYAVA FALLS", "SOL 1212"], L["cheyava"][1], L["cheyava"][2], 3, -16, 1.7, F, "ring")
+        landmark(dr, ["WITCH HAZEL HILL"], L["witch_hazel"][1], L["witch_hazel"][2], -3, -20, 1.7, F, "ring")
+        landmark(dr, ["SOL 2022"], wps[-1][1], wps[-1][2], -4, 10, 1.7, F, "triangle", layer="red")
+        x, y = mf.ll_mm(77.80, 18.33 if scale >= 200000 else 18.30)
+        dr.label("J E Z E R O", float(x), float(y), 6.5, FM, anchor="middle", track=2.4, pad=1.2)
+        dr.label("C R A T E R", float(x), float(y) + 6, 3.2, F, anchor="middle", track=1.8, pad=1.0)
+        x, y = mf.ll_mm(77.42, 18.535)
+        dr.label("WESTERN FAN", float(x), float(y), 2.0, "timesi", anchor="middle", track=0.8, angle=-6)
+        x, y = mf.ll_mm(77.445, 18.405)
+        dr.label("Séítah", float(x), float(y), 1.8, "timesi", anchor="middle", track=0.4)
     else:
         landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE", "SOL 0"], L["landing"][1], L["landing"][2], 6, 9, 2.0, F, "flag")
         landmark(dr, ["THREE FORKS", "SAMPLE DEPOT", "SOLS 653-710"], L["three_forks"][1], L["three_forks"][2], 3, 13, 1.8, F, "ring")
@@ -761,18 +788,18 @@ def design_nasa(dem, lines, wps, view):
         contour_set(dr, ter, 50, 250, 4.0, 1.4, F, double_index=True, label_spacing=60)
         ci, ix = 50, 250
     else:
-        contour_set(dr, ter, 20, 100, 4.0, 1.4, F, double_index=True, label_spacing=55)
-        ci, ix = 20, 100
+        ci, ix = P["ci"], P["ix"]
+        contour_set(dr, ter, ci, ix, 4.0, 1.4, F, double_index=True, label_spacing=55)
     if view == "crater":
         grid_crosses(dr, mf, 10)
     else:
-        grid_crosses(dr, mf, 2)
+        grid_crosses(dr, mf, P["gl"])
     dr.finish()
 
     # --- neat line + graticule
     fx0, fy0, fx1, fy1 = mf.fx0, mf.fy0, mf.fx1, mf.fy1
     dr.add([[(fx0, fy0), (fx1, fy0), (fx1, fy1), (fx0, fy1), (fx0, fy0)]])
-    gl, glab = graticule_ticks(mf, 5 if view == "crater" else 1, 10 if view == "crater" else 2, 1.2)
+    gl, glab = graticule_ticks(mf, 5 if view == "crater" else P["gt"], 10 if view == "crater" else P["gl"], 1.2)
     dr.add(gl)
     for s, pos, kind in glab:
         if kind == "lon":
@@ -797,12 +824,12 @@ def design_nasa(dem, lines, wps, view):
         X = 14
         dr.label("JEZERO CRATER", X, 178, 7.0, FM, track=1.4)
         dr.label("MARS 2020 PERSEVERANCE ROVER TRAVERSE   LANDING THROUGH SOL 2022", X, 185, 1.8, F, track=0.35)
-        dr.label("WESTERN FAN AND CRATER RIM   SYRTIS MAJOR QUADRANGLE  MC-13", X, 189.5, 1.5, F, track=0.35)
+        dr.label(("WESTERN FAN AND CRATER RIM" if near else "WESTERN JEZERO") + "   SYRTIS MAJOR QUADRANGLE  MC-13", X, 189.5, 1.5, F, track=0.35)
         ly = 172
     # legend
     lx = 212 if view == "crater" else 140
     rows = [("traverse", "ROVER TRAVERSE (NASA/JPL MMGIS)"),
-            ("tick", f"SOL MARK, EVERY {250 if view == 'crater' else 50} SOLS"),
+            ("tick", f"SOL MARK, EVERY {250 if view == 'crater' else P['tick']} SOLS"),
             ("contour", f"CONTOUR, INTERVAL {ci} M"),
             ("index", f"INDEX CONTOUR, EVERY {ix} M"),
             ("ring", "LANDMARK, ROVER POSITION ON SOL"),
@@ -846,10 +873,88 @@ def design_nasa(dem, lines, wps, view):
         dr.add([[(ax, ay + 8), (ax, ay - 4)], [(ax - 1.6, ay - 1), (ax, ay - 4.5), (ax + 1.6, ay - 1)]])
         dr.label("N", ax, ay - 6.2, 2.2, F, anchor="middle")
     else:
-        scale_bar(dr, 140, 188, mf, 3, 0.5, 1.2, F, 1.3)
-        dr.label("SCALE 1:60 000", 196, 190, 1.8, F, track=0.5)
+        scale_bar(dr, 140, 188, mf, P["km"], P["kd"], 1.2, F, 1.3)
+        bar_end = 140 + P["km"] * 1000 * mf.k
+        dr.label(f"SCALE 1:{scale:,}".replace(",", " "), bar_end + 6, 190, 1.8, F, track=0.5)
         dr.label("ELEVATIONS IN METERS, MARS 2000 AREOID   TOPOGRAPHY: CTX DEM 20 M/PX, USGS   TRAVERSE: NASA/JPL-CALTECH", X, 196, 1.25, F, track=0.2)
-        locator(dr, dem, 258, 165, 25, 25, mf, 1.2, F)
+        if near:
+            locator(dr, dem, 258, 165, 25, 25, mf, 1.2, F)
+    return dr
+
+
+def design_nasa_full(dem, lines, wps, scale=225000, center=(77.66, 18.35)):
+    """Whole page is map; title, legend and scale sit in a box inside the neat line."""
+    mf = MapFrame((14, 14, 283, 196), scale, center)
+    ter = Terrain(dem, mf, 80.0, 220.0)
+    dr = Drawing(mf)
+    F, FM = "futural", "futuram"
+    # title box, top right, knocked out of the terrain
+    bx0, by0, bx1, by1 = 205.0, 14.0, 283.0, 74.0
+    dr.keepout.append(box(bx0 - 1.5, by0, bx1, by1 + 1.5))
+    dr.add([[(bx0, by0), (bx0, by1), (bx1, by1)], [(bx0 + 0.6, by0), (bx0 + 0.6, by1 - 0.6), (bx1, by1 - 0.6)]])
+
+    draw_traverse(dr, lines, wps, 100, 500, 0.9, 1.6, F,
+                  label_offsets={500: (0.5, -3.2), 1000: (0, -3.2), 1500: (-2.5, -1.2), 2000: (-1.5, -3.2)})
+    L = {k: at_sol(wps, s) for k, s in LANDMARKS.items() if s}
+    landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 8, 8, 1.6, F, "flag")
+    landmark(dr, ["THREE FORKS", "SAMPLE DEPOT"], L["three_forks"][1], L["three_forks"][2], 2, 15, 1.5, F, "ring")
+    landmark(dr, ["CHEYAVA FALLS", "SOL 1212"], L["cheyava"][1], L["cheyava"][2], 3, -18, 1.5, F, "ring")
+    landmark(dr, ["WITCH HAZEL HILL"], L["witch_hazel"][1], L["witch_hazel"][2], -2, -22, 1.5, F, "ring")
+    landmark(dr, ["SOL 2022"], wps[-1][1], wps[-1][2], -3, 10, 1.6, F, "triangle", layer="red")
+    x, y = mf.ll_mm(77.78, 18.30)
+    dr.label("J E Z E R O", float(x), float(y), 7.0, FM, anchor="middle", track=2.6, pad=1.2)
+    dr.label("C R A T E R", float(x), float(y) + 6.5, 3.4, F, anchor="middle", track=1.9, pad=1.0)
+    x, y = mf.ll_mm(77.43, 18.545)
+    dr.label("WESTERN FAN", float(x), float(y), 1.8, "timesi", anchor="middle", track=0.7, angle=-7)
+
+    for sx, sy, z in spot_heights(ter, mf, 7, 30, 6000):
+        if any(k.intersects(box(sx - 1, sy - 2, sx + 10, sy + 1.5)) for k in dr.keepout):
+            continue
+        dr.add([circle(sx, sy, 0.3, 8)])
+        dr.label(f"{int(round(z))}".replace("-", "−"), sx + 1.0, sy + 0.8, 1.3, F)
+        dr.keepout.append(Point(sx, sy).buffer(0.8))
+    ci, ix = 50, 250
+    contour_set(dr, ter, ci, ix, 4.0, 1.4, F, double_index=True, label_spacing=60)
+    grid_crosses(dr, mf, 10)
+    dr.finish()
+
+    fx0, fy0, fx1, fy1 = mf.fx0, mf.fy0, mf.fx1, mf.fy1
+    dr.add([[(fx0, fy0), (fx1, fy0), (fx1, fy1), (fx0, fy1), (fx0, fy0)]])
+    gl, glab = graticule_ticks(mf, 5, 10, 1.2)
+    dr.add(gl)
+    for s, pos, kind in glab:
+        if kind == "lon":
+            dr.label(s, pos, fy0 - 3.0, 1.5, F, anchor="middle")
+            dr.label(s, pos, fy1 + 4.6, 1.5, F, anchor="middle")
+        else:
+            dr.label(s, fx0 - 3.0, pos + 0.75, 1.5, F, anchor="end")
+
+    X = bx0 + 5
+    dr.label("MARS  ·  SYRTIS MAJOR  MC-13", X, 21, 1.5, F, track=0.45)
+    dr.label("JEZERO CRATER", X, 30, 4.4, FM, track=0.7)
+    dr.label("PERSEVERANCE ROVER TRAVERSE", X, 35.5, 1.6, F, track=0.4)
+    dr.label("LANDING THROUGH SOL 2022", X, 39, 1.4, F, track=0.4)
+    rows = [("traverse", "ROVER TRAVERSE"), ("tick", "SOL MARK, EVERY 100 SOLS"),
+            ("contour", f"CONTOUR, INTERVAL {ci} M"), ("index", f"INDEX CONTOUR, {ix} M"),
+            ("ring", "ROVER POSITION ON SOL")]
+    for i, (kind, t) in enumerate(rows):
+        yy = 45 + i * 3.4
+        xx = X
+        if kind == "traverse":
+            dr.add([[(xx, yy), (xx + 3, yy - 0.7), (xx + 6, yy)]], "red")
+        elif kind == "tick":
+            dr.add([[(xx, yy), (xx + 6, yy)], [(xx + 3, yy - 0.9), (xx + 3, yy + 0.9)]], "red")
+        elif kind == "contour":
+            dr.add([[(xx, yy), (xx + 6, yy)]])
+        elif kind == "index":
+            dr.add([[(xx, yy), (xx + 6, yy)], [(xx, yy + 0.18), (xx + 6, yy + 0.18)]])
+        elif kind == "ring":
+            dr.add([circle(xx + 3, yy, 0.8, 16)])
+        dr.label(t, xx + 8.5, yy + 0.6, 1.25, F, track=0.2)
+    scale_bar(dr, X, 66, mf, 10, 2, 1.0, F, 1.2)
+    dr.label(f"SCALE 1:{scale:,}".replace(",", " "), X + 10000 * mf.k + 3, 65.2, 1.4, F, track=0.3)
+    dr.label("ELEVATIONS IN METERS, MARS 2000 AREOID.  TOPOGRAPHY: CTX DEM 20 M/PX, USGS.  "
+             "TRAVERSE: NASA/JPL-CALTECH.  EQUIRECTANGULAR, MARS 2000 SPHERE.", fx0, fy1 + 9.5, 1.2, F, track=0.2)
     return dr
 
 
@@ -989,6 +1094,9 @@ def main():
     designs = {
         "a-nasa-crater": lambda: design_nasa(dem, lines, wps, "crater"),
         "b-nasa-traverse": lambda: design_nasa(dem, lines, wps, "traverse"),
+        "b2-nasa-west-150k": lambda: design_nasa(dem, lines, wps, "traverse", 150000),
+        "b3-nasa-west-200k": lambda: design_nasa(dem, lines, wps, "traverse", 200000),
+        "b4-nasa-full-225k": lambda: design_nasa_full(dem, lines, wps),
         "c-reich-crater": lambda: design_reich(dem, lines, wps, "crater"),
         "d-reich-traverse": lambda: design_reich(dem, lines, wps, "traverse"),
     }
