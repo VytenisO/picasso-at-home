@@ -52,7 +52,10 @@ class Settings:
 
     def bed(self):
         """Bed, paper and inset canvas in machine mm, for the UI and for validation."""
-        cfg = self.machine()
+        return self.bed_from(self.machine_path.read_bytes())
+
+    def bed_from(self, machine_bytes):
+        cfg = json.loads(machine_bytes)
         travel = cfg.get("travel_mm") or {}
         p = cfg.get("paper") or {}
         bx, by = float(travel.get("x", 368.0)), float(travel.get("y", 227.5))

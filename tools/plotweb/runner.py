@@ -38,6 +38,7 @@ class JobRunner:
         self.job = None
         self.proc = None
         self.pause_seq = 0
+        self.recovered = None         # Event while an escalated stop is still making the machine safe
         self.preview = None           # the immutable preview of the running plot job
         self.position = {"state": "unknown", "at": None,
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
@@ -139,8 +140,8 @@ class JobRunner:
             err = self._check(job_id)
             if err:
                 return False, err
-            if self.job["kind"] != "plot" or self.job["state"] != "running":
-                return False, "Pause is only possible while a plot is running."
+            if self.job["kind"] != "plot" or self.job["mode"] == "trace" or self.job["state"] != "running":
+                return False, "Pause is only possible while a plot is running (a trace can only be stopped)."
             if not self._write("PAUSE\n"):
                 return False, "The job process is not accepting commands."
             self.job.update(state="pausing", message="Pausing at the end of the current stroke...")
@@ -173,8 +174,9 @@ class JobRunner:
             err = self._check(job_id)
             if err:
                 return False, err
-            if self.job["kind"] != "plot" or self.job["state"] not in ("running", "pausing", "paused"):
-                return False, "Return is only possible while a plot is running or paused."
+            if (self.job["kind"] != "plot" or self.job["mode"] == "trace"
+                    or self.job["state"] not in ("running", "pausing", "paused")):
+                return False, "Return is only possible while a plot is running or paused (a trace returns by itself)."
             if not self._write("RETURN\n"):
                 return False, "The job process is not accepting commands."
             self.job.update(state="returning",
@@ -205,35 +207,49 @@ class JobRunner:
         self._log("warn", "Stop requested.")
         self._emit_state()
         if proc is not None:
-            threading.Thread(target=self._escalate, args=(j["id"], proc), daemon=True).start()
+            threading.Thread(target=self._escalate, args=(j["id"], proc, bool(j.get("sim")) or self.s.sim),
+                             daemon=True).start()
         return True, ""
 
-    def _escalate(self, job_id, proc):
-        """If the process ignores STOP, interrupt it, then kill it and make the machine safe directly."""
+    def _escalate(self, job_id, proc, sim):
+        """If the process ignores STOP, interrupt it, then kill it and make the machine safe directly.
+        The job stays reserved (busy) until this finishes: the reader waits for self.recovered."""
         try:
             proc.wait(STOP_GRACE_S)
             return
         except subprocess.TimeoutExpired:
             pass
-        self._log("error", f"The job did not stop within {STOP_GRACE_S:.0f} s; interrupting it.")
-        try:
-            if os.name == "posix":
-                proc.send_signal(signal.SIGINT)
-            else:
-                proc.terminate()
-            proc.wait(KILL_GRACE_S)
-            return
-        except subprocess.TimeoutExpired:
-            pass
-        except OSError:
-            return
-        self._log("error", "Still running: killing the job process.")
-        proc.kill()
-        proc.wait(5)
+        rec = threading.Event()
         with self.lock:
-            sim = bool(self.job and self.job.get("sim")) or self.s.sim
-        for note in hardware.last_resort_safe(sim):
-            self._log("warn", note)
+            self.recovered = rec
+        try:
+            self._log("error", f"The job did not stop within {STOP_GRACE_S:.0f} s; interrupting it.")
+            clean = False
+            try:
+                if os.name == "posix":
+                    proc.send_signal(signal.SIGINT)      # plot_svg's own cleanup runs on SIGINT
+                    proc.wait(KILL_GRACE_S)
+                    clean = True
+                else:
+                    proc.terminate()                     # no cleanup in the child on Windows
+                    proc.wait(KILL_GRACE_S)
+            except subprocess.TimeoutExpired:
+                self._log("error", "Still running: killing the job process.")
+                proc.kill()
+                try:
+                    proc.wait(5)
+                except subprocess.TimeoutExpired:
+                    self._log("error", "The job process cannot be killed. Switch the plotter off.")
+            except OSError:
+                pass
+            if not clean:
+                for note in hardware.last_resort_safe(sim):
+                    self._log("warn", note)
+            with self.lock:
+                if self.job and self.job["id"] == job_id:
+                    self.job["escalated"] = True
+        finally:
+            rec.set()
 
     def pentest(self, job_id, cmd):
         keys = {"toggle": "\n", "sweep": "s\n", "quit": "q\n"}
@@ -245,8 +261,12 @@ class JobRunner:
                 return False, "The pen test is not running."
             if cmd not in keys:
                 return False, "Unknown pen test command."
+            if self.job.get("pt_busy"):
+                return False, "The pen is still moving. Wait for it to finish."
             if not self._write(keys[cmd]):
                 return False, "The pen test is not accepting commands."
+            self.job["pt_busy"] = True
+        self._emit_state()
         return True, ""
 
     # ------------------------------------------------------------- output
@@ -269,6 +289,12 @@ class JobRunner:
         except Exception as ex:  # noqa: BLE001
             self._log("error", f"Lost the job output: {ex!r}")
         rc = proc.wait()
+        rec = self.recovered
+        if rec is not None:
+            rec.wait(60)                 # keep the job reserved until the escalation has made the machine safe
+            with self.lock:
+                if self.recovered is rec:
+                    self.recovered = None
         for f in (proc.stdin, proc.stdout):
             try:
                 if f:
@@ -349,8 +375,13 @@ class JobRunner:
             if j["kind"] == "pentest" and line.startswith("["):
                 with self.lock:
                     j["pen"] = "down" if line.startswith("[DOWN]") else "up"
+                    j["pt_busy"] = False
                 self._emit_state()
                 return
+            if j["kind"] == "pentest" and "shutdown problem" in low:
+                level = "error"
+                with self.lock:
+                    j["cleanup_failed"] = True
             self._log(level, line, "plot" if j["kind"] == "plot" else "tool")
             with self.lock:
                 j["last_line"] = line
@@ -363,15 +394,20 @@ class JobRunner:
             if not j or j["id"] != job_id:
                 return
             self.proc = None
+            saved_position = dict(self.position)
             res = j.get("result")
             j["finished"] = time.time()
             j["returncode"] = rc
             j["pause"] = None
             if j["kind"] == "pentest":
-                ok = rc == 0
-                j.update(state="complete" if ok else ("stopped" if j["stop_requested"] else "error"),
-                         message="Pen test finished, pen raised." if ok else
-                         f"Pen test ended: {j.get('last_error') or j.get('last_line') or 'exit code %s' % rc}")
+                ok = rc == 0 and not j.get("cleanup_failed") and not j.get("escalated")
+                if j.get("cleanup_failed"):
+                    j.update(state="error", message="The pen test could not raise the pen at the end. Check the "
+                                                    "pen; switch the plotter off if it is down.")
+                else:
+                    j.update(state="complete" if ok else ("stopped" if j["stop_requested"] else "error"),
+                             message="Pen test finished, pen raised." if ok else
+                             f"Pen test ended: {j.get('last_error') or j.get('last_line') or 'exit code %s' % rc}")
             elif res:
                 status = res.get("status", "")
                 if "FAILED" in status:
@@ -410,6 +446,8 @@ class JobRunner:
                     detail = j.get("last_error") or j.get("last_line") or f"exit code {rc}"
                     j.update(state="error" if rc else "complete",
                              message=("Nothing was sent: " + detail) if rc else "Done.")
+            if j.get("sim") and not self.s.sim:
+                self.position = saved_position     # simulated runs say nothing about the real carriage
             final = j["state"]
             msg = j["message"]
         self._log({"complete": "info", "stopped": "warn"}.get(final, "error"), f"Job {job_id}: {final}. {msg}")

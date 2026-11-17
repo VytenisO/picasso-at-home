@@ -114,13 +114,13 @@ def plan_id(svg_bytes, machine_bytes, resolved):
 
 
 def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=None, sim=False, sim_speed=None,
-               control=False):
+               control=False, machine=None, bed=None):
     argv = [s.python, str(s.root / "tools" / "plot_svg.py"), str(svg_path), "--mode", mode,
-            "--config", str(s.machine_path), "--anchor", "top-left",
+            "--config", str(machine or s.machine_path), "--anchor", "top-left",
             "--speed", f"{v['speed']:g}", "--travel-speed", f"{v['travel_speed']:g}"]
     if v.get("paper"):
         argv += ["--paper-width", f"{v['paper']['width']:g}", "--paper-height", f"{v['paper']['height']:g}"]
-    bed = s.bed()
+    bed = bed or s.bed()
     c = canvas_of(bed, v.get("paper"))
     if v.get("x") is not None:
         argv += ["--x0", f"{v['x'] - c[0]:.3f}", "--y0", f"{v['y'] - c[1]:.3f}"]

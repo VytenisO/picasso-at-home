@@ -184,15 +184,19 @@ class Control:
             raise EOFError
         return word
 
-    def wait_continue(self):
-        """Block until CONTINUE (-> True) or RETURN (-> False); STOP or end of input raises KeyboardInterrupt."""
+    def drain(self):
+        """Drop commands left over from before a pause (flags such as STOP stay set). Call before announcing it."""
         while True:
             try:
                 if self.lines.get_nowait() is None:
                     self.lines.put(None)
-                    break
+                    return
             except queue.Empty:
-                break
+                return
+
+    def wait_continue(self):
+        """Block until CONTINUE (-> True) or RETURN (-> False); STOP or end of input raises KeyboardInterrupt.
+        Call drain() before announcing the pause."""
         t0 = time.monotonic()
         try:
             while True:
@@ -218,6 +222,8 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     log("")
     pen = f" (pen: {info['pen']})" if info.get("pen") else ""
     log(f"*** PEN CHANGE: swap to {color_label(key)}{pen} ***")
+    if ctl:
+        ctl.drain()
     print("__PAUSE__:" + json.dumps(info), flush=True)
     if ctl:
         log("Waiting for CONTINUE (pen up, motors on: do not push the carriage).")
@@ -638,9 +644,9 @@ class Plotter:
             self.down = val
 
     def pen(self, up, delay=250):
-        if self.ctl:
-            self.ctl.check_stop()
         self.idle()
+        if self.ctl:
+            self.ctl.check_stop()   # after the wait: no pen move is sent once STOP is in
         self.pen_state = up
         self.cmd(f"SP,{1 if up else 0},{delay}")
         self.sleep(delay / 1000 + 0.05)
@@ -1077,6 +1083,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                     break
                 if ctl and ctl.pause.is_set():
                     log("Paused by the operator: pen up, motors on (do not push the carriage).")
+                    ctl.drain()
                     print("__PAUSE__:" + json.dumps({"kind": "operator", "layer_index": gi}), flush=True)
                     if not ctl.wait_continue():
                         returned = True

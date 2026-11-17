@@ -8,6 +8,8 @@ import http.cookies
 import json
 import mimetypes
 import pathlib
+import secrets
+import shutil
 import threading
 import time
 import urllib.parse
@@ -39,8 +41,15 @@ class App:
         self.runner = JobRunner(settings, self.ev)
         self.plans = {}
         self.plans_lock = threading.Lock()
+        self.hw_lock = threading.Lock()      # one read-only plotter check at a time, never during a job start
         self.plan_dir = settings.cache / "plans"
         self.plan_dir.mkdir(parents=True, exist_ok=True)
+        for old in self.plan_dir.iterdir():          # staged plans are only needed for a day
+            try:
+                if time.time() - old.stat().st_mtime > 2 * 24 * 3600:
+                    shutil.rmtree(old, ignore_errors=True) if old.is_dir() else old.unlink()
+            except OSError:
+                pass
         self.ev.log("info", "Server started" + (" in SIMULATOR mode: no hardware is ever touched." if settings.sim
                                                 else "."))
 
@@ -51,8 +60,9 @@ class App:
                 "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch}
 
     def state(self):
+        seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
         snap = self.runner.snapshot()
-        snap.update(epoch=self.ev.epoch, seq=self.ev.seq, files_rev=self.lib.rev, sim=self.s.sim)
+        snap.update(epoch=self.ev.epoch, seq=seq, files_rev=self.lib.rev, sim=self.s.sim)
         return snap
 
     def _entry(self, ident):
@@ -71,9 +81,7 @@ class App:
         g = e.get("geom")
         if g and g.get("svg_hash") == digest and e.get("layers_keys") is not None:
             return g, e["layers_keys"], e.get("layers") or []
-        tmp = self.plan_dir / f"geom_{digest}.json"
-        if tmp.exists():
-            tmp.unlink()
+        tmp = self.plan_dir / f"geom_{digest}_{secrets.token_hex(4)}.json"
         v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"],
              "x": None, "y": None, "w": None, "paper": None, "layers": []}
         rc, out = plotjob.run_dry(plotjob.build_argv(self.s, svg_path, v, "dry", None, preview_json=tmp))
@@ -93,35 +101,48 @@ class App:
         return g, keys, layers
 
     def _resolve(self, e, svg_path, raw_settings):
+        """-> resolved settings, geometry, plan id, layers, plan dir (with staged svg, machine.json, layers.json)."""
         g, keys, layers = self.geometry(e, svg_path)
-        bed = self.s.bed()
+        svg_bytes, machine_bytes = svg_path.read_bytes(), self.s.machine_path.read_bytes()
+        bed = self.s.bed_from(machine_bytes)
         try:
             v = plotjob.validate(raw_settings, bed, self.s.pens(), keys)
         except plotjob.SettingsError as ex:
             raise ApiError(400, str(ex))
         plotjob.resolve_placement(v, bed, g)
-        pid = plotjob.plan_id(svg_path.read_bytes(), self.s.machine_path.read_bytes(), v)
-        return v, g, pid, layers
-
-    def _dry(self, svg_path, v, g, pid):
+        pid = plotjob.plan_id(svg_bytes, machine_bytes, v)
         d = self.plan_dir / pid
-        d.mkdir(exist_ok=True)
-        layers_json = d / "layers.json"
-        layers_json.write_text(json.dumps(v["layers"]))
-        pv_path = d / "preview.json"
-        if pv_path.exists():
-            pv_path.unlink()
-        argv = plotjob.build_argv(self.s, svg_path, v, "dry", g, preview_json=pv_path, layers_json=layers_json)
-        rc, out = plotjob.run_dry(argv)
-        pv = json.loads(pv_path.read_text()) if pv_path.exists() else None
+        if not (d / "machine.json").exists():
+            d.mkdir(exist_ok=True)
+            for name, data in (("drawing.svg", svg_bytes), ("layers.json", json.dumps(v["layers"]).encode()),
+                               ("machine.json", machine_bytes)):     # machine.json last: it marks the stage done
+                tmp = d / f".{name}.{secrets.token_hex(4)}"
+                tmp.write_bytes(data)
+                tmp.replace(d / name)
+        return v, g, pid, layers, d
+
+    def _dry(self, plan, v, g):
+        req = plan / f"req_{secrets.token_hex(4)}"
+        req.mkdir()
+        pv_path = req / "preview.json"
+        argv = plotjob.build_argv(self.s, plan / "drawing.svg", v, "dry", g, preview_json=pv_path,
+                                  layers_json=plan / "layers.json", machine=plan / "machine.json", bed=self._bed(plan))
+        try:
+            rc, out = plotjob.run_dry(argv)
+            pv = json.loads(pv_path.read_text()) if pv_path.exists() else None
+        finally:
+            shutil.rmtree(req, ignore_errors=True)
         ok = rc == 0 and pv is not None and not pv["summary"]["problems"]
         problems = [] if ok else plotjob.friendly_problems(pv["summary"] if pv else None, out)
-        return ok, problems, pv, out, layers_json
+        return ok, problems, pv, out
+
+    def _bed(self, plan):
+        return self.s.bed_from((plan / "machine.json").read_bytes())
 
     def preview(self, body):
         e, svg_path = self._entry(body.get("id"))
-        v, g, pid, layers = self._resolve(e, svg_path, body.get("settings"))
-        ok, problems, pv, out, _ = self._dry(svg_path, v, g, pid)
+        v, g, pid, layers, plan = self._resolve(e, svg_path, body.get("settings"))
+        ok, problems, pv, out = self._dry(plan, v, g)
         with self.plans_lock:
             self.plans[pid] = {"file": e["id"], "ok": ok, "created": time.time()}
             for k in [k for k, p in self.plans.items() if time.time() - p["created"] > 24 * 3600]:
@@ -156,23 +177,25 @@ class App:
         if not ok:
             raise ApiError(409, job_id)
         try:
-            v, g, now_pid, _ = self._resolve(e, svg_path, body.get("settings"))
+            v, g, now_pid, _, plan = self._resolve(e, svg_path, body.get("settings"))
             if now_pid != pid:
                 raise ApiError(409, "The drawing, its settings or the machine calibration changed since the preview. "
                                     "Preview again and re-check before starting.")
             if not sim:
-                ready, msg = hardware.precheck(False)
+                with self.hw_lock:
+                    ready, msg = hardware.precheck(False)
                 if not ready:
                     raise ApiError(409, "Plotter not ready: " + msg)
                 self.ev.log("info", "Plotter answered: " + msg)
-            ok2, problems, pv, out, layers_json = self._dry(svg_path, v, g, pid)   # fresh preflight
+            ok2, problems, pv, out = self._dry(plan, v, g)   # fresh preflight on the staged inputs
             if not ok2:
                 raise ApiError(409, "Preflight failed: " + "; ".join(problems), problems=problems)
             if mode != "simulate":
                 with self.plans_lock:
                     self.plans[pid]["used"] = True
-            argv = plotjob.build_argv(self.s, svg_path, v, "trace" if mode == "trace" else "plot", g,
-                                      layers_json=layers_json, sim=sim, sim_speed=self.s.sim_speed if sim else None,
+            argv = plotjob.build_argv(self.s, plan / "drawing.svg", v, "trace" if mode == "trace" else "plot", g,
+                                      layers_json=plan / "layers.json", machine=plan / "machine.json",
+                                      bed=self._bed(plan), sim=sim, sim_speed=self.s.sim_speed if sim else None,
                                       control=True)
             word = None if sim else ("TRACE\n" if mode == "trace" else "PLOT\n")
             job_pv = {"order": pv["order"], "strokes": _thin(pv["strokes"]), "placement": pv["placement"],
@@ -207,7 +230,8 @@ class App:
                 if self.s.sim:
                     argv = argv + ["--sim"]
                 else:
-                    ready, msg = hardware.precheck(False)
+                    with self.hw_lock:
+                        ready, msg = hardware.precheck(False)
                     if not ready:
                         raise ApiError(409, "Plotter not ready: " + msg)
                 launched, msg = self.runner.launch(job_id, argv, "\n")
@@ -560,9 +584,14 @@ class Handler(BaseHTTPRequestHandler):
         self._control(self.app.runner.pentest, b.get("job"), b.get("cmd"))
 
     def r_plotter(self):
-        if self.app.runner.busy():
-            return self.send(200, {"ok": True, "message": "A job is using the plotter."})
-        ok, msg = hardware.precheck(self.app.s.sim)
+        if not self.app.hw_lock.acquire(timeout=5):
+            raise ApiError(409, "Another plotter check is running.")
+        try:
+            if self.app.runner.busy():
+                return self.send(200, {"ok": True, "message": "A job is using the plotter."})
+            ok, msg = hardware.precheck(self.app.s.sim)
+        finally:
+            self.app.hw_lock.release()
         self.send(200, {"ok": ok, "message": msg})
 
 
@@ -608,8 +637,10 @@ class Server(ThreadingHTTPServer):
         self.stopping = False
 
 
-def shutdown_job(app, timeout=40.0):
+def shutdown_job(app, timeout=None):
     """On server shutdown: stop a running job and wait for its cleanup."""
+    from .runner import KILL_GRACE_S, STOP_GRACE_S
+    timeout = timeout or STOP_GRACE_S + KILL_GRACE_S + 30
     if app.runner.busy():
         app.runner.stop()
         end = time.time() + timeout
