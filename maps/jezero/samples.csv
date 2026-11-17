@@ -1,0 +1,30 @@
+# Perseverance sample tubes, from NASA science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/ (fetched 2026-11-17)
+# n,name,sol,type,location
+1,Roubion,164,Atmospheric,Polygon Valley
+2,Montdenier,194,Rock core,Artuby Ridge
+3,Montagnac,196,Rock core,Artuby Ridge
+4,Salette,262,Rock core,South Séítah
+5,Coulettes,271,Rock core,South Séítah
+6,Robine,298,Rock core,South Séítah
+7,Malay,337,Rock core,South Séítah
+8,Ha'ahóni,371,Rock core,Ch'ał outcrop
+9,Atsá,377,Rock core,Ch'ał outcrop
+10,Swift Run,490,Rock core,Delta front
+11,Skyland,495,Rock core,Delta front
+12,Hazeltop,509,Rock core,Delta front
+13,Bearwallow,516,Rock core,Delta front
+14,Shuyak,575,Rock core,Delta front
+15,Mageik,619,Rock core,Delta front
+16,Kukaklek,631,Rock core,Delta front
+17,Atmo Mountain,634,Regolith,Delta front
+18,Crosswind Lake,639,Regolith,Delta front
+19,Melyn,749,Rock core,Upper fan
+20,Otis Peak,832,Rock core,Upper fan
+21,Pilot Mountain,913,Rock core,Upper fan
+22,Pelican Point,923,Rock core,Margin unit
+23,Lefroy Bay,949,Rock core,Margin unit
+24,Comet Geyser,1088,Rock core,Margin unit
+25,Sapphire Canyon,1215,Rock core,Neretva Vallis (Cheyava Falls)
+26,Silver Mountain,1401,Rock core,Crater rim (Witch Hazel Hill)
+27,Green Gardens,1433,Rock core,Crater rim (Witch Hazel Hill)
+28,Main River,1441,Rock core,Crater rim (Witch Hazel Hill)
