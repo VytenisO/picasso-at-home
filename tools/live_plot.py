@@ -4,6 +4,7 @@
   live_plot.py --sim                          simulate; type lines, Enter writes each one
   live_plot.py --text "Hello there"           write this text and finish
   live_plot.py --file letter.txt              write a file, then finish
+  live_plot.py --font "Comic Neue" ...        a standard font instead of your hand (--list-fonts shows them)
   live_plot.py                                real plotter (asks for WRITE first)
 
 Unlike plot_svg.py this process stays alive between lines, so the tracked carriage position carries over. Start it with
@@ -34,6 +35,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "handwriting"))
 import plot_svg as ps  # noqa: E402
 from engine import ReplayEngine  # noqa: E402
+
 
 ASCENT_EM, DESCENT_EM, LINE_PITCH_EM = 2.0, 0.8, 3.5   # in x-heights, as on the capture page
 
@@ -156,6 +158,9 @@ def main():
     ap.add_argument("--config", default=str(ROOT / "config" / "machine.json"))
     ap.add_argument("--samples", default=str(ROOT / "handwriting" / "samples"))
     ap.add_argument("--prompts", default=str(ROOT / "handwriting" / "prompts.json"))
+    ap.add_argument("--font", help="write in a standard font (family name such as 'Comic Neue', or a .ttf/.otf path) "
+                                   "instead of your handwriting; outlines are drawn as contours")
+    ap.add_argument("--list-fonts", action="store_true", help="print the available font families and exit")
     ap.add_argument("--xheight", type=float, default=4.5, help="x-height in mm (default %(default)s; the pen's play limits small loops)")
     ap.add_argument("--line-pitch", type=float, help="distance between baselines, mm (default 3.5 x-heights)")
     ap.add_argument("--speed", type=float, default=15.0, help="drawing speed mm/s")
@@ -169,6 +174,10 @@ def main():
     ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web tracker")
     a = ap.parse_args()
 
+    if a.list_fonts:
+        import fonts
+        print(chr(10).join(fonts.families()))
+        return 0
     if not (0 < a.speed <= ps.MAX_SPEED and 0 < a.travel_speed <= ps.MAX_TRAVEL_SPEED):
         sys.exit(f"drawing speed must be in (0, {ps.MAX_SPEED}] mm/s, travel speed in (0, {ps.MAX_TRAVEL_SPEED}] mm/s")
     if a.pressure is not None and not 0.0 <= a.pressure <= ps.MAX_PRESSURE:
@@ -185,11 +194,20 @@ def main():
     if min(cfg["steps_per_mm"].values()) <= 0:
         sys.exit("config steps_per_mm must be positive")
 
-    engine = ReplayEngine(a.samples, a.prompts, sample_pressure=a.sample_pressure,
-                          fixed_pressure=a.pressure if a.pressure is not None else 0.0)
+    fixed = a.pressure if a.pressure is not None else 0.0
+    if a.font:
+        from fontengine import FontEngine
+        isfile = pathlib.Path(a.font).suffix.lower() in (".ttf", ".otf")
+        try:
+            engine = FontEngine(None if isfile else a.font, a.font if isfile else None, fixed_pressure=fixed)
+        except ValueError as ex:
+            sys.exit(str(ex))
+    else:
+        engine = ReplayEngine(a.samples, a.prompts, sample_pressure=a.sample_pressure, fixed_pressure=fixed)
     s = Session(a, cfg, engine)
     s.emit("session", sim=a.sim, canvas_mm=[s.cx0, s.cy0, s.cx1, s.cy1], start_mm=[s.sx, s.sy],
-           xheight_mm=s.xh, words=len(engine.words), glyphs=len(engine.glyphs))
+           xheight_mm=s.xh, font=a.font,
+           words=len(getattr(engine, "words", ())), glyphs=len(getattr(engine, "glyphs", ())))
 
     lines_in = queue.Queue()
     if a.text is not None:

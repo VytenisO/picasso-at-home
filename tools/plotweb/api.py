@@ -541,6 +541,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}})
         self.send(200, {"ok": True, "svg": svg, "stats": stats})
 
+    def r_fonts(self):
+        import fonts
+        self.send(200, {"fonts": fonts.families(), "bundled": sorted({f["family"] for f in fonts.bundled()})})
+
+    def r_text_page(self):
+        """Paragraphs of text in a standard font, wrapped to the canvas, as a library drawing."""
+        from handwriting.textpage import page_svg
+        d = self.json_body()
+        try:
+            xh = max(2.0, min(20.0, float(d.get("xheight", 4.5))))
+            text = str(d.get("text", ""))
+            c = self.app.s.bed()["canvas"]
+            svg, stats = page_svg(text, str(d.get("font", "Comic Neue"))[:60], xh, c[2] - c[0],
+                                  bold=bool(d.get("bold")), italic=bool(d.get("italic")))
+        except Exception as ex:  # noqa: BLE001
+            raise ApiError(400, f"Text page failed: {ex}")
+        if d.get("add"):
+            first = " ".join(text.split())[:20] or "text"
+            e = self.app.lib.add_svg_text(svg, f"page-{first}.svg", kind="text")
+            return self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "stats": stats})
+        self.send(200, {"ok": True, "svg": svg, "stats": stats})
+
     # ---- routes: catalogue
     def r_converters(self):
         self.send(200, {"converters": [c.public() for c in converters.REGISTRY.values()]})
@@ -616,6 +638,7 @@ ROUTES_GET = {
     "/api/files/orig": (Handler.r_file_orig, True),
     "/api/files/mask": (Handler.r_file_mask, True),
     "/api/converters": (Handler.r_converters, True),
+    "/api/fonts": (Handler.r_fonts, True),
     "/api/tools": (Handler.r_tools, True),
     "/api/pens": (Handler.r_pens, True),
     "/api/job/preview": (Handler.r_job_preview, True),
@@ -629,6 +652,7 @@ ROUTES_POST = {
     "/api/files/convert_preview": (Handler.r_convert_preview, True),
     "/api/files/delete": (Handler.r_delete, True),
     "/api/text_art": (Handler.r_text_art, True),
+    "/api/text_page": (Handler.r_text_page, True),
     "/api/preview": (Handler.r_preview, True),
     "/api/job/start": (Handler.r_start, True),
     "/api/job/pause": (Handler.r_pause, True),

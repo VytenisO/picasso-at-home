@@ -102,6 +102,24 @@ class TestApi(SimServer):
         code, _ = self.call("GET", "/js/../../plot_svg.py")
         self.assertEqual(code, 404)
 
+    def test_01b_fonts_and_text_page(self):
+        code, d = self.call("GET", "/api/fonts")
+        self.assertEqual(code, 200)
+        self.assertIn("Comic Neue", d["bundled"])
+        body = {"text": "Hello there\nSecond paragraph in a standard font", "font": "Comic Neue", "xheight": 4.5}
+        code, d = self.call("POST", "/api/text_page", body)
+        self.assertEqual(code, 200, d)
+        self.assertIn("<path", d["svg"])
+        self.assertGreaterEqual(d["stats"]["lines"], 2)
+        code, d = self.call("POST", "/api/text_page", dict(body, add=True))
+        self.assertEqual(code, 200, d)
+        fid = d["file"]["id"]
+        self.assertEqual(self.preview(fid)["summary"]["problems"], [])
+        code, d = self.call("POST", "/api/text_page", {"text": "   ", "font": "Comic Neue"})
+        self.assertEqual(code, 400)
+        code, d = self.call("POST", "/api/text_page", {"text": "x" * 70, "font": "Comic Neue", "xheight": 20})
+        self.assertEqual(code, 400)   # one word wider than the page
+
     def test_02_upload_rejects(self):
         code, d = self.call("POST", "/api/files/upload", raw=b"hello", headers={"X-Filename": "x.exe"})
         self.assertEqual(code, 400)

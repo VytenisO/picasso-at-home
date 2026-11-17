@@ -67,6 +67,27 @@
       </div>
       <div class="section">
         <details>
+          <summary>Text in a font</summary>
+          <form id="tpForm">
+            <label class="field"><span>Text</span><textarea name="text" rows="5" maxlength="4000" placeholder="Type or paste text. It is wrapped to the page."></textarea></label>
+            <div class="field-row">
+              <label class="field"><span>Font</span><input name="font" value="Comic Neue" list="fontList"></label>
+              <label class="field"><span>Letter height (mm)</span><input name="xheight" type="number" value="4.5" min="2" max="20" step="0.5"></label>
+            </div>
+            <div class="field-row">
+              <label class="check"><input type="checkbox" name="bold"> Bold</label>
+              <label class="check"><input type="checkbox" name="italic"> Italic</label>
+            </div>
+            <p class="hint">Letters are drawn as outlines, so a thick font looks like outlined type. Small sizes work best with the BIC.
+              Your own handwriting needs your samples (see research/handwriting.md).</p>
+            <p id="tpInfo" class="hint" hidden></p>
+            <img id="tpImg" class="conv-preview" alt="Text preview" hidden>
+            <div class="row"><button type="button" id="tpPreview">Preview</button>
+              <button type="button" id="tpAdd" class="primary">Add to library</button></div>
+          </form>
+          <datalist id="fontList"></datalist>
+        </details>
+        <details>
           <summary>Text art</summary>
           <form id="taForm">
             <label class="field"><span>Text</span><input name="text" value="HELLO" maxlength="60"></label>
@@ -78,7 +99,7 @@
               <label class="field"><span>Effect</span><select name="effect">
                 <option value="plain">Plain</option><option value="arc" selected>Arc</option><option value="wave">Wave</option>
                 <option value="rise">Rise</option><option value="circle">Circle</option><option value="twist">Twist</option></select></label>
-              <label class="field"><span>Font</span><input name="font" value="DejaVu Sans"></label>
+              <label class="field"><span>Font</span><input name="font" value="DejaVu Sans" list="fontList"></label>
             </div>
             <label class="check"><input type="checkbox" name="bold"> Bold</label>
             <img id="taImg" class="conv-preview" alt="Text art preview" hidden>

@@ -131,3 +131,7 @@ Slow, bounded moves only (no single move over 3000 steps), but nothing here can 
 ## License
 
 MIT, see `LICENSE`.
+
+## Text in standard fonts
+
+The web UI's Library tab has a **Text in a font** panel: paragraphs wrapped to the paper, any installed font plus the bundled Comic Neue (`fonts/`, SIL OFL; Comic Sans itself is proprietary and not included). Letters are drawn as outlines. The same engine writes live: `python3 tools/live_plot.py --font "Comic Neue"` (add `--sim` to try it, `--list-fonts` to list fonts). Without `--font`, `live_plot.py` writes in your own handwriting from the captured samples.

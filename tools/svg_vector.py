@@ -42,6 +42,14 @@ def font_file(family, weight="normal", style="normal"):
     if _FONT_FAILED:
         return None
     family = (family or "sans-serif").split(",")[0].strip().strip("'\"") or "sans-serif"
+    try:
+        import fonts as _fonts   # bundled fonts/ (for example Comic Neue) win over installed ones
+        mine = _fonts.find(family, str(weight).lower() in ("bold", "700", "800", "900"),
+                           str(style).lower() in ("italic", "oblique"))
+        if mine:
+            return mine
+    except Exception:  # noqa: BLE001
+        pass
     bits = [family]
     if str(weight).lower() in ("bold", "700", "800", "900"):
         bits.append("bold")
@@ -52,7 +60,7 @@ def font_file(family, weight="normal", style="normal"):
         return _FONT_CACHE[query]
     try:
         out = subprocess.check_output(["fc-match", "-f", "%{file}", query],
-                                      text=True, timeout=5).strip()
+                                      text=True, encoding="utf-8", errors="replace", timeout=5).strip()
     except Exception:  # noqa: BLE001
         out = ""
     _FONT_CACHE[query] = out or None

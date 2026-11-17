@@ -23,6 +23,9 @@ export function initLibrary() {
   $('convAddBtn').onclick = convAdd;
   $('taPreview').onclick = () => textArt(false);
   $('taAdd').onclick = () => textArt(true);
+  $('tpPreview').onclick = () => textPage(false);
+  $('tpAdd').onclick = () => textPage(true);
+  api('/api/fonts').then((r) => { $('fontList').replaceChildren(...r.fonts.map((f) => el('option', { value: f }))); }).catch(() => {});
   on(['files', 'current', 'job'], renderFiles);
   on('converters', () => {
     const exts = state.converters.flatMap((c) => c.exts);
@@ -86,6 +89,23 @@ async function convAdd() {
     if (!jobActive()) openFile(r.file.id);
   } catch (e) { toast(e.message, true); }
   finally { $('convAddBtn').disabled = false; }
+}
+
+async function textPage(add) {
+  const f = $('tpForm');
+  const body = { text: f.text.value, font: f.font.value, xheight: Number(f.xheight.value), bold: f.bold.checked,
+    italic: f.italic.checked, add };
+  try {
+    const r = await post('/api/text_page', body);
+    const info = $('tpInfo');
+    const s = r.stats;
+    info.textContent = `${s.lines} line(s), ${s.width_mm} x ${s.height_mm} mm` + (s.missing ? `. Not in this font: ${s.missing}` : '');
+    info.hidden = false;
+    if (add) { toast('Text added.'); await refreshFiles(); if (!jobActive()) openFile(r.file.id); return; }
+    const img = $('tpImg');
+    img.src = URL.createObjectURL(new Blob([r.svg], { type: 'image/svg+xml' }));
+    img.hidden = false;
+  } catch (e) { toast(e.message, true); }
 }
 
 async function textArt(add) {

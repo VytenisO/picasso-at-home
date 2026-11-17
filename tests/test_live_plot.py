@@ -60,3 +60,12 @@ def test_page_full_refuses_everything(tmp_path):
 def test_speed_ceiling(tmp_path):
     r = run(tmp_path, "--text", "hi", "--speed", "50")
     assert r.returncode != 0
+
+
+def test_standard_font(tmp_path):
+    r = subprocess.run([sys.executable, str(LIVE), "--sim", "--json", "--font", "Comic Neue", "--text", "Hello there"],
+                       capture_output=True, text=True, timeout=120)
+    ev = events(r)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert ev[-1]["event"] == "done" and ev[-1]["end_world_steps"] == [0, 0]
+    assert any(e["event"] == "line_done" for e in ev)
