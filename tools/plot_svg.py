@@ -50,7 +50,9 @@ CSS_COLORS = {"black": "#000000", "white": "#ffffff", "red": "#ff0000", "green":
               "grey": "#808080", "gray": "#808080", "orange": "#ffa500", "purple": "#800080",
               "pink": "#ffc0cb", "lime": "#00ff00", "navy": "#000080", "teal": "#008080",
               "brown": "#a52a2a"}
-MAX_SPEED = 40.0        # mm/s hard ceiling
+MAX_SPEED = 40.0        # mm/s hard ceiling for drawing (pen down)
+MAX_PRESSURE = 0.9      # data-pressure ceiling: a fraction of the way from pen-down toward pen-up
+MAX_TRAVEL_SPEED = 200.0  # mm/s ceiling for pen-up travel; 100 and 200 ran clean on pen-up traces
 CHUNK_STEPS = 3000      # longest single SM leg (per vector), keeps any in-flight move < ~3 s
 LEAD = 0.05             # s: feed the next SM this long before the current one ends
 EDGE_MARGIN = 5.0       # mm kept clear of the machine travel limit
@@ -326,7 +328,9 @@ def load_svg(path, ignore_unsupported):
             cur["color"] = c
         if layer:
             cur["layer"] = layer
-        meta = {"color": cur.get("color"), "layer": cur.get("layer")}
+        if el.get("data-pressure") is not None:
+            cur["pressure"] = float(el.get("data-pressure"))
+        meta = {"color": cur.get("color"), "layer": cur.get("layer"), "pressure": cur.get("pressure")}
 
         def add(poly):
             if len(poly) >= 2:
@@ -381,7 +385,7 @@ def load_svg(path, ignore_unsupported):
         for child in el:
             walk(child, cur, xform)
 
-    walk(root, {"color": None, "layer": None}, IDENTITY)
+    walk(root, {"color": None, "layer": None, "pressure": None}, IDENTITY)
     if skipped:
         msg = f"unsupported elements: {skipped}"
         if not ignore_unsupported:
@@ -406,7 +410,11 @@ def rdp(pts, eps):
         best, bi = -1.0, -1
         for i in range(a + 1, b):
             px, py = pts[i]
-            d = math.hypot(px - ax, py - ay) if L == 0 else abs(dy * (px - ax) - dx * (py - ay)) / L
+            if L == 0:
+                d = math.hypot(px - ax, py - ay)
+            else:
+                u = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (L * L)))
+                d = math.hypot(px - (ax + u * dx), py - (ay + u * dy))
             if d > best:
                 best, bi = d, i
         if best > eps:
@@ -416,12 +424,12 @@ def rdp(pts, eps):
 
 
 def prepare(polys, metas, eps, join_tol, scale, dx, dy):
-    """Scale/offset to mm, join touching strokes (same ink only), simplify."""
+    """Scale/offset to mm, join touching strokes (same ink and pen pressure only), simplify."""
     sp = [[(x * scale + dx, y * scale + dy) for x, y in p] for p in polys]
     merged, mmeta = [], []
     for p, m in zip(sp, metas):
-        same_ink = merged and (m.get("color"), m.get("layer")) == \
-                   (mmeta[-1].get("color"), mmeta[-1].get("layer"))
+        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure")) == \
+                   (mmeta[-1].get("color"), mmeta[-1].get("layer"), mmeta[-1].get("pressure"))
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
         else:
@@ -517,7 +525,17 @@ class Plotter:
         self.cmd("EM,1,1")
         self.cmd(f"SC,4,{s['pen_up']}")
         self.cmd(f"SC,5,{s['pen_down']}")
+        self.down = s["pen_down"]
         self.pen(True)
+
+    def set_pressure(self, frac):
+        """Set the next pen-down by a fraction from the configured pen-down (0, heaviest) toward pen-up (1).
+        Only call with the pen up: SC,5 takes effect at the next SP,0."""
+        s = self.cfg["servo"]
+        val = round(s["pen_down"] + (frac or 0.0) * (s["pen_up"] - s["pen_down"]))
+        if val != self.down:
+            self.cmd(f"SC,5,{val}")
+            self.down = val
 
     def pen(self, up, delay=250):
         self.idle()
@@ -616,7 +634,7 @@ def main():
     ap.add_argument("--region-width", type=float, help="plot region width, mm")
     ap.add_argument("--region-height", type=float, help="plot region height, mm")
     ap.add_argument("--speed", type=float, default=15.0, help="drawing speed mm/s")
-    ap.add_argument("--travel-speed", type=float, default=25.0, help="pen-up speed mm/s")
+    ap.add_argument("--travel-speed", type=float, default=100.0, help="pen-up speed mm/s")
     ap.add_argument("--simplify", type=float, default=0.05, help="RDP tolerance mm")
     ap.add_argument("--join", type=float, default=0.1, help="join strokes whose ends are within this many mm")
     ap.add_argument("--pen-delay", type=int, default=250, help="ms to wait after each pen up/down")
@@ -631,8 +649,8 @@ def main():
 
     signal.signal(signal.SIGTERM, _sigterm)
 
-    if not (0 < a.speed <= MAX_SPEED and 0 < a.travel_speed <= MAX_SPEED):
-        sys.exit(f"speeds must be in (0, {MAX_SPEED}] mm/s")
+    if not (0 < a.speed <= MAX_SPEED and 0 < a.travel_speed <= MAX_TRAVEL_SPEED):
+        sys.exit(f"drawing speed must be in (0, {MAX_SPEED}] mm/s, travel speed in (0, {MAX_TRAVEL_SPEED}] mm/s")
     cfg = json.loads(pathlib.Path(a.config).read_text())
     if a.pen_down:
         cfg["servo"]["pen_down"] = a.pen_down
@@ -757,6 +775,16 @@ Estimated time : {fmt(secs)}
 Ink layers     : {len(groups)}  ({', '.join(f'{color_label(k)}: {len(ix)} strokes' for k, ix in groups)})""" +
         (f"  -> {len(groups) - 1} pen swap(s) during Plot" if len(groups) > 1 else "") + f"""
 Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}""")
+    used = sorted({m["pressure"] for m in metas if m.get("pressure") is not None})
+    for pr in used:
+        if not 0.0 <= pr <= MAX_PRESSURE:
+            problems.append(f"data-pressure {pr} is outside 0..{MAX_PRESSURE} (0 = configured pen-down, larger = lighter; "
+                            "never deeper than the configured pen-down)")
+    if used:
+        sv = cfg["servo"]
+        log("Pen pressure   : " + ", ".join(
+            f"{pr:g} -> {round(sv['pen_down'] + pr * (sv['pen_up'] - sv['pen_down']))}" for pr in used[:8])
+            + (" ..." if len(used) > 8 else "") + "  (fraction -> servo pen-down value)")
     for p in problems:
         log("PROBLEM: " + p)
     on_paper = not any("paper" in p or "canvas" in p or "region" in p for p in problems)
@@ -808,6 +836,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 s = strokes[i]
                 pts_s = [to_steps((x + ox, y + oy), spmm) for x, y in s]
                 p.move_to(*pts_s[0], a.travel_speed)
+                p.set_pressure(metas[i].get("pressure"))
                 p.pen(False, a.pen_delay)
                 for tx, ty in pts_s[1:]:
                     p.move_to(tx, ty, a.speed)
