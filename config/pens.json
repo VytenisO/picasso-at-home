@@ -1,0 +1,14 @@
+{
+  "bic": {
+    "description": "BIC ballpoint pen. Settings and test results here apply to this pen type only, never to other pens.",
+    "colour": "black",
+    "colour_hex": "#1a1a1a",
+    "expected_use": "lines and contours (expectation only, not yet confirmed by a test)"
+  },
+  "marker": {
+    "description": "Marker pen. Settings and test results here apply to this pen type only, never to other pens.",
+    "colour": null,
+    "colour_hex": null,
+    "expected_use": "infill (expectation only, not yet confirmed by a test)"
+  }
+}
