@@ -91,7 +91,10 @@ function renderStatus() {
   const p = state.position;
   const pn = $('stPos');
   pn.className = 'note ' + (p && p.state === 'at_start' ? 'ok' : p && p.state === 'unknown' ? 'err' : 'warn');
-  pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
+  if (active && job.kind === 'plot') {
+    pn.className = 'note';
+    pn.textContent = 'Carriage: under the job\'s control. The position above is the commanded one (no readback).';
+  } else pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
   // pen swap prompt over the bed
   const swap = job && job.state === 'paused' && job.pause;
   $('swapBanner').hidden = !swap;
@@ -144,6 +147,8 @@ function renderRun() {
   const ps = $('previewState'), list = $('problemList'), kv = $('planKv');
   list.hidden = true;
   kv.replaceChildren();
+  ps.hidden = kv.hidden = active;
+  if (active) return;
   if (!state.current) { ps.className = 'note'; ps.textContent = 'Open a drawing, then preview it.'; return; }
   if (state.previewing) { ps.className = 'note'; ps.textContent = 'Checking the plan...'; }
   else if (!pv || stale) { ps.className = 'note warn'; ps.textContent = 'Settings changed. Preview to check again.'; }

@@ -79,7 +79,10 @@ function followJob() {
   const j = state.job;
   if (!j) return;
   if (j.id !== lastJobId && j.kind === 'plot' && j.state !== 'starting') { lastJobId = j.id; loadJobPreview(); }
-  if (!jobActive()) set({ pos: null });
+  if (!jobActive()) {
+    set({ pos: null });
+    if (state.current && !state.preview && !state.previewing) runPreview();
+  }
 }
 
 function onEvent(ev) {

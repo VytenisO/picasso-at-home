@@ -36,7 +36,7 @@ export async function openFile(id, { quiet = false } = {}) {
       paper: saved.paper || null, layers: layers.filter((l) => !l.pen || pens[l.pen]) } });
   prefs('lastFile', id);
   $('bedTitle').textContent = entry.name + (entry.pen ? `  (test sheet for pen ${entry.pen})` : '');
-  await runPreview();
+  if (!jobActive()) await runPreview();
 }
 
 export function changeSettings(patch, { now = false } = {}) {
@@ -178,7 +178,7 @@ function renderLayers() {
         el('span', { class: 'spacer' }), el('small', { text: `${fl.strokes} strokes` })),
       el('div', { class: 'layer-grid' }, el('label', { class: 'field' }, el('span', { text: 'Pen' }), pen),
         num('speed', L.speed, String(st.speed ?? L.speed.default), 'Speed (mm/s)'),
-        num('pressure', { min: 0, max: L.pressure.max }, 'file', 'Pressure')));
+        num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')));
   }));
 }
 

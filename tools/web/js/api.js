@@ -18,7 +18,7 @@ export async function api(path, { method = 'GET', body, raw, headers = {} } = {}
   const text = await r.text();
   try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { error: text.slice(0, 300) }; }
   if (r.status === 401 && path !== '/api/login') onUnauthorized();
-  if (!r.ok || data.ok === false) throw new ApiError(data.error || `Request failed (${r.status})`, r.status, data);
+  if (!r.ok || (data.ok === false && data.error)) throw new ApiError(data.error || `Request failed (${r.status})`, r.status, data);
   return data;
 }
 

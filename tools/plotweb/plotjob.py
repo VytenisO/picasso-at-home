@@ -163,10 +163,11 @@ def friendly_problems(summary, output):
                     out.append(f"The drawing runs {amount:.1f} mm past the {text} edge of the canvas. "
                                "Move it or make it smaller.")
     raw = [ln[len("PROBLEM: "):] for ln in output.splitlines() if ln.startswith("PROBLEM: ")]
+    placement = ("canvas", "region", "travel is", "edge margin")   # already said in plain words above
     if not out:
         out = raw[:]
-    elif any("canvas" not in r and "region" not in r for r in raw):
-        out += [r for r in raw if "canvas" not in r and "region" not in r]
+    else:
+        out += [r for r in raw if not any(k in r for k in placement)]
     if not raw and not out and output.strip():
         tail = [ln for ln in output.strip().splitlines() if ln.strip() and not ln.startswith("__")]
         if tail:

@@ -45,7 +45,7 @@ function resize() {
   dpr = window.devicePixelRatio || 1;
   W = r.width; H = r.height;
   cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
-  if (!view.fitted) fit(); else redraw();
+  if (!view.user) fit(); else redraw();      // keep the operator's own zoom; otherwise refit
 }
 
 export function fit() {
@@ -56,6 +56,7 @@ export function fit() {
   view.ox = (W - m.bed[0] * view.s) / 2;
   view.oy = (H - m.bed[1] * view.s) / 2;
   view.fitted = true;
+  view.user = false;
   redraw();
 }
 
@@ -64,6 +65,7 @@ function zoomBy(f, cx = W / 2, cy = H / 2) {
   view.ox = cx - (cx - view.ox) * (s2 / view.s);
   view.oy = cy - (cy - view.oy) * (s2 / view.s);
   view.s = s2;
+  view.user = true;
   redraw();
 }
 export const zoomIn = () => zoomBy(1.25), zoomOut = () => zoomBy(0.8);
@@ -156,7 +158,7 @@ function render() {
 
   // the drawing
   const jp = state.jobPreview, job = state.job;
-  const showJob = jp && job && job.kind === 'plot' && (jobActive() || job.meta?.plan_id === jp.plan_id) &&
+  const showJob = jp && job && job.kind === 'plot' && (jobActive() || (!state.preview && job.meta?.plan_id === jp.plan_id)) &&
     (!state.current || state.current.id === jp.file);
   const lw = Math.max(0.3, 1.2 * px);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -264,6 +266,7 @@ function move(e) {
   if (drag.mode === 'pan') {
     view.ox = drag.o[0] + px - drag.start[0];
     view.oy = drag.o[1] + py - drag.start[1];
+    view.user = true;
   } else if (drag.mode === 'move') {
     const b = drag.box;
     draft = { ...b, x: snap(b.x + mx - drag.start[0]), y: snap(b.y + my - drag.start[1]) };

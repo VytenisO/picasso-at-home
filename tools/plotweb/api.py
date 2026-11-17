@@ -23,7 +23,7 @@ from .library import MAX_UPLOAD, Library
 from .runner import JobRunner
 
 MAX_DISPLAY_POINTS = 300_000     # preview strokes sent to the browser are thinned beyond this (display only)
-STATIC = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css"}
+STATIC = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/favicon.svg": "favicon.svg"}
 
 
 class ApiError(Exception):
@@ -105,6 +105,12 @@ class App:
         g, keys, layers = self.geometry(e, svg_path)
         svg_bytes, machine_bytes = svg_path.read_bytes(), self.s.machine_path.read_bytes()
         bed = self.s.bed_from(machine_bytes)
+        if e.get("pen"):
+            # A test sheet belongs to one pen type: every layer uses it unless the operator chose otherwise.
+            raw_settings = dict(raw_settings or {})
+            given = {ly.get("key"): ly for ly in raw_settings.get("layers") or [] if isinstance(ly, dict)}
+            raw_settings["layers"] = [dict(given.get(k) or {"key": k}, pen=(given.get(k) or {}).get("pen") or e["pen"])
+                                      for k in keys]
         try:
             v = plotjob.validate(raw_settings, bed, self.s.pens(), keys)
         except plotjob.SettingsError as ex:
