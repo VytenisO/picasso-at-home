@@ -76,3 +76,53 @@ session must be started with the carriage parked on the paper's top-left, same a
 - TrInk: https://arxiv.org/html/2508.21098v1 and DiffInk: https://arxiv.org/abs/2509.23624
 - Evil Mad Scientist, Hershey Text for Inkscape: https://www.evilmadscientist.com/2011/hershey-text-an-Inkscape-extension-for-engraving-fonts
 - Evil Mad Scientist forum, single-stroke handwriting fonts: https://www.evilmadscientist.com/?p=28198
+
+## Decision (2026-11-17): your own hand
+
+You will write the samples on a tablet, so the target is option E. The plan has three programs; only the first exists.
+
+### 1. Capture (built): `tools/handwriting/capture_server.py`
+A small web server plus a tablet page. It shows one prompt at a time over ruled guide lines (baseline, x-height,
+ascender, descender; size adjustable), records every pen point with position, time and pressure, and saves one JSON
+file per prompt under `handwriting/samples/` (gitignored: personal data). Undo, clear, skip, back, deep links
+(`/?id=w012`), resume where you stopped, and replacing a sample keeps the old one as `.prev.json`.
+Run `python3 tools/handwriting/capture_server.py --host tailscale` and open the printed address on the tablet.
+`tools/handwriting/prompts.py` builds the prompts: 126 short everyday words (English and Norwegian) chosen so every
+letter pair that occurs in the lists is written at least once, 12 two-line sentences (pangrams, digits,
+punctuation), each letter three times, each capital three times, symbols. About 200 prompts, roughly 45 to 60
+minutes. More words: `prompts.py --max-words 1500 --words mylist.txt`; existing samples stay valid as long as a
+prompt keeps its text (the server notices when a rebuilt list changes the meaning of an id).
+
+### 2. Synthesis (next): text in, strokes out, in your hand
+How much it can do depends on how much you write:
+- **About 150 words (the first pass):** replay. A word you wrote is plotted as you wrote it, normalised to a common
+  x-height, baseline and slant. Unseen words need stitching from letter pairs, which needs the strokes aligned to
+  letters. Doable with heuristics (pen lifts, x-minima, letter widths from the isolated letters) but the joins will
+  be rough. Good enough to test the whole chain on the plotter.
+- **About 1,500 to 3,500 words (several sessions):** train a small model (the Cursive Transformer paper reaches
+  realistic cursive from about 3,500 words). It learns the alignment, joins and your variation by itself and writes
+  any text. Training is a few hours on a GPU, inference is cheap. This is the version that "writes like you".
+The interface is the same either way: `Engine.strokes(text) -> list of strokes in mm`, so the plotting side does not
+change when the engine improves. Per-point pressure from the tablet maps onto the plotter's per-stroke pressure.
+
+### 3. Live plot backend (to build): `tools/live_plot.py`
+A long-lived process, separate from `plot_svg.py`, because live writing needs the tracked carriage position to
+survive between lines. Design:
+- Owns one `plot_svg.Plotter` (so the same ceilings, step tracking and shutdown rules) and the page: paper rectangle,
+  margins, line height, cursor position. Started with the carriage parked at the paper's top-left, same confirmation
+  as a plot; refuses anything off the paper or past the page bottom.
+- Input: lines from a terminal (stdin), and the same commands over a local socket for the web UI. Commands: write text,
+  new line, new page (pause for a paper change), pen up, stop. A line is written when you press Enter; an option writes
+  word by word.
+- Output: JSON events (position, pen, line started and finished, error), the same style as the `__POS__` lines the
+  web UI already reads, so Opus's redesigned UI can show a live tracker without a second protocol.
+- Each written line is also saved as strokes plus the text, so a session is reproducible and can be re-plotted.
+- Safety is unchanged: Ctrl-C raises the pen, waits for the move in flight, releases the motors. After a stop or a
+  crash the position is unknown (no readback), so a new session means re-parking, as today.
+
+### Open questions for you
+- How much writing time are you willing to spend: one hour now (replay, to prove the chain), or the several hours the
+  trained model wants? The capture tool supports both; start with the first pass.
+- Language mix: English, Norwegian, or both? The word lists and letters include both (æ, ø, å).
+- Which pen will draw the result? The BIC's play limits the smallest loops, so the x-height you write at on the tablet
+  should be the size you will plot at; the page sets that with its Size control (stored with each sample).

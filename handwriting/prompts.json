@@ -1,0 +1,1285 @@
+{
+ "version": 1,
+ "langs": [
+  "en",
+  "no"
+ ],
+ "prompts": [
+  {
+   "id": "w001",
+   "section": "words",
+   "text": "få",
+   "lines": 1
+  },
+  {
+   "id": "w002",
+   "section": "words",
+   "text": "gå",
+   "lines": 1
+  },
+  {
+   "id": "w003",
+   "section": "words",
+   "text": "ny",
+   "lines": 1
+  },
+  {
+   "id": "w004",
+   "section": "words",
+   "text": "år",
+   "lines": 1
+  },
+  {
+   "id": "w005",
+   "section": "words",
+   "text": "box",
+   "lines": 1
+  },
+  {
+   "id": "w006",
+   "section": "words",
+   "text": "dog",
+   "lines": 1
+  },
+  {
+   "id": "w007",
+   "section": "words",
+   "text": "elv",
+   "lines": 1
+  },
+  {
+   "id": "w008",
+   "section": "words",
+   "text": "fix",
+   "lines": 1
+  },
+  {
+   "id": "w009",
+   "section": "words",
+   "text": "før",
+   "lines": 1
+  },
+  {
+   "id": "w010",
+   "section": "words",
+   "text": "hei",
+   "lines": 1
+  },
+  {
+   "id": "w011",
+   "section": "words",
+   "text": "hus",
+   "lines": 1
+  },
+  {
+   "id": "w012",
+   "section": "words",
+   "text": "håp",
+   "lines": 1
+  },
+  {
+   "id": "w013",
+   "section": "words",
+   "text": "ink",
+   "lines": 1
+  },
+  {
+   "id": "w014",
+   "section": "words",
+   "text": "its",
+   "lines": 1
+  },
+  {
+   "id": "w015",
+   "section": "words",
+   "text": "new",
+   "lines": 1
+  },
+  {
+   "id": "w016",
+   "section": "words",
+   "text": "noe",
+   "lines": 1
+  },
+  {
+   "id": "w017",
+   "section": "words",
+   "text": "når",
+   "lines": 1
+  },
+  {
+   "id": "w018",
+   "section": "words",
+   "text": "ost",
+   "lines": 1
+  },
+  {
+   "id": "w019",
+   "section": "words",
+   "text": "snø",
+   "lines": 1
+  },
+  {
+   "id": "w020",
+   "section": "words",
+   "text": "sær",
+   "lines": 1
+  },
+  {
+   "id": "w021",
+   "section": "words",
+   "text": "two",
+   "lines": 1
+  },
+  {
+   "id": "w022",
+   "section": "words",
+   "text": "use",
+   "lines": 1
+  },
+  {
+   "id": "w023",
+   "section": "words",
+   "text": "vår",
+   "lines": 1
+  },
+  {
+   "id": "w024",
+   "section": "words",
+   "text": "vær",
+   "lines": 1
+  },
+  {
+   "id": "w025",
+   "section": "words",
+   "text": "wax",
+   "lines": 1
+  },
+  {
+   "id": "w026",
+   "section": "words",
+   "text": "also",
+   "lines": 1
+  },
+  {
+   "id": "w027",
+   "section": "words",
+   "text": "back",
+   "lines": 1
+  },
+  {
+   "id": "w028",
+   "section": "words",
+   "text": "brød",
+   "lines": 1
+  },
+  {
+   "id": "w029",
+   "section": "words",
+   "text": "city",
+   "lines": 1
+  },
+  {
+   "id": "w030",
+   "section": "words",
+   "text": "drøm",
+   "lines": 1
+  },
+  {
+   "id": "w031",
+   "section": "words",
+   "text": "give",
+   "lines": 1
+  },
+  {
+   "id": "w032",
+   "section": "words",
+   "text": "hånd",
+   "lines": 1
+  },
+  {
+   "id": "w033",
+   "section": "words",
+   "text": "høst",
+   "lines": 1
+  },
+  {
+   "id": "w034",
+   "section": "words",
+   "text": "jazz",
+   "lines": 1
+  },
+  {
+   "id": "w035",
+   "section": "words",
+   "text": "jump",
+   "lines": 1
+  },
+  {
+   "id": "w036",
+   "section": "words",
+   "text": "lese",
+   "lines": 1
+  },
+  {
+   "id": "w037",
+   "section": "words",
+   "text": "make",
+   "lines": 1
+  },
+  {
+   "id": "w038",
+   "section": "words",
+   "text": "natt",
+   "lines": 1
+  },
+  {
+   "id": "w039",
+   "section": "words",
+   "text": "need",
+   "lines": 1
+  },
+  {
+   "id": "w040",
+   "section": "words",
+   "text": "only",
+   "lines": 1
+  },
+  {
+   "id": "w041",
+   "section": "words",
+   "text": "over",
+   "lines": 1
+  },
+  {
+   "id": "w042",
+   "section": "words",
+   "text": "quiz",
+   "lines": 1
+  },
+  {
+   "id": "w043",
+   "section": "words",
+   "text": "regn",
+   "lines": 1
+  },
+  {
+   "id": "w044",
+   "section": "words",
+   "text": "smør",
+   "lines": 1
+  },
+  {
+   "id": "w045",
+   "section": "words",
+   "text": "swim",
+   "lines": 1
+  },
+  {
+   "id": "w046",
+   "section": "words",
+   "text": "søvn",
+   "lines": 1
+  },
+  {
+   "id": "w047",
+   "section": "words",
+   "text": "them",
+   "lines": 1
+  },
+  {
+   "id": "w048",
+   "section": "words",
+   "text": "they",
+   "lines": 1
+  },
+  {
+   "id": "w049",
+   "section": "words",
+   "text": "varm",
+   "lines": 1
+  },
+  {
+   "id": "w050",
+   "section": "words",
+   "text": "vite",
+   "lines": 1
+  },
+  {
+   "id": "w051",
+   "section": "words",
+   "text": "walk",
+   "lines": 1
+  },
+  {
+   "id": "w052",
+   "section": "words",
+   "text": "what",
+   "lines": 1
+  },
+  {
+   "id": "w053",
+   "section": "words",
+   "text": "work",
+   "lines": 1
+  },
+  {
+   "id": "w054",
+   "section": "words",
+   "text": "your",
+   "lines": 1
+  },
+  {
+   "id": "w055",
+   "section": "words",
+   "text": "about",
+   "lines": 1
+  },
+  {
+   "id": "w056",
+   "section": "words",
+   "text": "bjørn",
+   "lines": 1
+  },
+  {
+   "id": "w057",
+   "section": "words",
+   "text": "brown",
+   "lines": 1
+  },
+  {
+   "id": "w058",
+   "section": "words",
+   "text": "climb",
+   "lines": 1
+  },
+  {
+   "id": "w059",
+   "section": "words",
+   "text": "crazy",
+   "lines": 1
+  },
+  {
+   "id": "w060",
+   "section": "words",
+   "text": "dance",
+   "lines": 1
+  },
+  {
+   "id": "w061",
+   "section": "words",
+   "text": "exact",
+   "lines": 1
+  },
+  {
+   "id": "w062",
+   "section": "words",
+   "text": "first",
+   "lines": 1
+  },
+  {
+   "id": "w063",
+   "section": "words",
+   "text": "fjord",
+   "lines": 1
+  },
+  {
+   "id": "w064",
+   "section": "words",
+   "text": "frukt",
+   "lines": 1
+  },
+  {
+   "id": "w065",
+   "section": "words",
+   "text": "happy",
+   "lines": 1
+  },
+  {
+   "id": "w066",
+   "section": "words",
+   "text": "kaffe",
+   "lines": 1
+  },
+  {
+   "id": "w067",
+   "section": "words",
+   "text": "kjøtt",
+   "lines": 1
+  },
+  {
+   "id": "w068",
+   "section": "words",
+   "text": "kveld",
+   "lines": 1
+  },
+  {
+   "id": "w069",
+   "section": "words",
+   "text": "large",
+   "lines": 1
+  },
+  {
+   "id": "w070",
+   "section": "words",
+   "text": "maybe",
+   "lines": 1
+  },
+  {
+   "id": "w071",
+   "section": "words",
+   "text": "music",
+   "lines": 1
+  },
+  {
+   "id": "w072",
+   "section": "words",
+   "text": "måned",
+   "lines": 1
+  },
+  {
+   "id": "w073",
+   "section": "words",
+   "text": "ocean",
+   "lines": 1
+  },
+  {
+   "id": "w074",
+   "section": "words",
+   "text": "often",
+   "lines": 1
+  },
+  {
+   "id": "w075",
+   "section": "words",
+   "text": "other",
+   "lines": 1
+  },
+  {
+   "id": "w076",
+   "section": "words",
+   "text": "papir",
+   "lines": 1
+  },
+  {
+   "id": "w077",
+   "section": "words",
+   "text": "sleep",
+   "lines": 1
+  },
+  {
+   "id": "w078",
+   "section": "words",
+   "text": "study",
+   "lines": 1
+  },
+  {
+   "id": "w079",
+   "section": "words",
+   "text": "voice",
+   "lines": 1
+  },
+  {
+   "id": "w080",
+   "section": "words",
+   "text": "wrist",
+   "lines": 1
+  },
+  {
+   "id": "w081",
+   "section": "words",
+   "text": "zebra",
+   "lines": 1
+  },
+  {
+   "id": "w082",
+   "section": "words",
+   "text": "ærlig",
+   "lines": 1
+  },
+  {
+   "id": "w083",
+   "section": "words",
+   "text": "alltid",
+   "lines": 1
+  },
+  {
+   "id": "w084",
+   "section": "words",
+   "text": "always",
+   "lines": 1
+  },
+  {
+   "id": "w085",
+   "section": "words",
+   "text": "blyant",
+   "lines": 1
+  },
+  {
+   "id": "w086",
+   "section": "words",
+   "text": "blåbær",
+   "lines": 1
+  },
+  {
+   "id": "w087",
+   "section": "words",
+   "text": "circle",
+   "lines": 1
+  },
+  {
+   "id": "w088",
+   "section": "words",
+   "text": "expect",
+   "lines": 1
+  },
+  {
+   "id": "w089",
+   "section": "words",
+   "text": "family",
+   "lines": 1
+  },
+  {
+   "id": "w090",
+   "section": "words",
+   "text": "finish",
+   "lines": 1
+  },
+  {
+   "id": "w091",
+   "section": "words",
+   "text": "flight",
+   "lines": 1
+  },
+  {
+   "id": "w092",
+   "section": "words",
+   "text": "garden",
+   "lines": 1
+  },
+  {
+   "id": "w093",
+   "section": "words",
+   "text": "gentle",
+   "lines": 1
+  },
+  {
+   "id": "w094",
+   "section": "words",
+   "text": "hjerte",
+   "lines": 1
+  },
+  {
+   "id": "w095",
+   "section": "words",
+   "text": "length",
+   "lines": 1
+  },
+  {
+   "id": "w096",
+   "section": "words",
+   "text": "number",
+   "lines": 1
+  },
+  {
+   "id": "w097",
+   "section": "words",
+   "text": "people",
+   "lines": 1
+  },
+  {
+   "id": "w098",
+   "section": "words",
+   "text": "please",
+   "lines": 1
+  },
+  {
+   "id": "w099",
+   "section": "words",
+   "text": "purple",
+   "lines": 1
+  },
+  {
+   "id": "w100",
+   "section": "words",
+   "text": "sammen",
+   "lines": 1
+  },
+  {
+   "id": "w101",
+   "section": "words",
+   "text": "school",
+   "lines": 1
+  },
+  {
+   "id": "w102",
+   "section": "words",
+   "text": "skrive",
+   "lines": 1
+  },
+  {
+   "id": "w103",
+   "section": "words",
+   "text": "square",
+   "lines": 1
+  },
+  {
+   "id": "w104",
+   "section": "words",
+   "text": "summer",
+   "lines": 1
+  },
+  {
+   "id": "w105",
+   "section": "words",
+   "text": "yellow",
+   "lines": 1
+  },
+  {
+   "id": "w106",
+   "section": "words",
+   "text": "because",
+   "lines": 1
+  },
+  {
+   "id": "w107",
+   "section": "words",
+   "text": "bokstav",
+   "lines": 1
+  },
+  {
+   "id": "w108",
+   "section": "words",
+   "text": "gjennom",
+   "lines": 1
+  },
+  {
+   "id": "w109",
+   "section": "words",
+   "text": "goodbye",
+   "lines": 1
+  },
+  {
+   "id": "w110",
+   "section": "words",
+   "text": "hvorfor",
+   "lines": 1
+  },
+  {
+   "id": "w111",
+   "section": "words",
+   "text": "kanskje",
+   "lines": 1
+  },
+  {
+   "id": "w112",
+   "section": "words",
+   "text": "kitchen",
+   "lines": 1
+  },
+  {
+   "id": "w113",
+   "section": "words",
+   "text": "setning",
+   "lines": 1
+  },
+  {
+   "id": "w114",
+   "section": "words",
+   "text": "through",
+   "lines": 1
+  },
+  {
+   "id": "w115",
+   "section": "words",
+   "text": "welcome",
+   "lines": 1
+  },
+  {
+   "id": "w116",
+   "section": "words",
+   "text": "whisper",
+   "lines": 1
+  },
+  {
+   "id": "w117",
+   "section": "words",
+   "text": "historie",
+   "lines": 1
+  },
+  {
+   "id": "w118",
+   "section": "words",
+   "text": "mountain",
+   "lines": 1
+  },
+  {
+   "id": "w119",
+   "section": "words",
+   "text": "triangle",
+   "lines": 1
+  },
+  {
+   "id": "w120",
+   "section": "words",
+   "text": "øyeblikk",
+   "lines": 1
+  },
+  {
+   "id": "w121",
+   "section": "words",
+   "text": "beautiful",
+   "lines": 1
+  },
+  {
+   "id": "w122",
+   "section": "words",
+   "text": "knowledge",
+   "lines": 1
+  },
+  {
+   "id": "w123",
+   "section": "words",
+   "text": "paragraph",
+   "lines": 1
+  },
+  {
+   "id": "w124",
+   "section": "words",
+   "text": "sjokolade",
+   "lines": 1
+  },
+  {
+   "id": "w125",
+   "section": "words",
+   "text": "everything",
+   "lines": 1
+  },
+  {
+   "id": "w126",
+   "section": "words",
+   "text": "kjærlighet",
+   "lines": 1
+  },
+  {
+   "id": "s001",
+   "section": "sentences",
+   "text": "The quick brown fox jumps\nover the lazy dog.",
+   "lines": 2
+  },
+  {
+   "id": "s002",
+   "section": "sentences",
+   "text": "Pack my box with five\ndozen liquor jugs.",
+   "lines": 2
+  },
+  {
+   "id": "s003",
+   "section": "sentences",
+   "text": "How vexingly quick daft\nzebras jump!",
+   "lines": 2
+  },
+  {
+   "id": "s004",
+   "section": "sentences",
+   "text": "Sphinx of black quartz,\njudge my vow.",
+   "lines": 2
+  },
+  {
+   "id": "s005",
+   "section": "sentences",
+   "text": "A journey of a thousand\nmiles begins with a step.",
+   "lines": 2
+  },
+  {
+   "id": "s006",
+   "section": "sentences",
+   "text": "Vår sære Zulu fra badeøya\nspilte jo whist og quickstep.",
+   "lines": 2
+  },
+  {
+   "id": "s007",
+   "section": "sentences",
+   "text": "Blåbærsyltetøy er godt\npå brødskive.",
+   "lines": 2
+  },
+  {
+   "id": "s008",
+   "section": "sentences",
+   "text": "Jeg skriver for hånd\nmed en tegnemaskin.",
+   "lines": 2
+  },
+  {
+   "id": "s009",
+   "section": "sentences",
+   "text": "Meet at 14:30, room 7,\nbuilding 12 (second floor).",
+   "lines": 2
+  },
+  {
+   "id": "s010",
+   "section": "sentences",
+   "text": "Call 555-0123 or write:\nhello@example.com",
+   "lines": 2
+  },
+  {
+   "id": "s011",
+   "section": "sentences",
+   "text": "\"Yes,\" she said, \"but why?\"\nNo one knew; it rained all day.",
+   "lines": 2
+  },
+  {
+   "id": "s012",
+   "section": "sentences",
+   "text": "Price: 249,50 kr (25 % off)\n& free shipping!",
+   "lines": 2
+  },
+  {
+   "id": "l001",
+   "section": "letters",
+   "text": "a a a",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l002",
+   "section": "letters",
+   "text": "b b b",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l003",
+   "section": "letters",
+   "text": "c c c",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l004",
+   "section": "letters",
+   "text": "d d d",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l005",
+   "section": "letters",
+   "text": "e e e",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l006",
+   "section": "letters",
+   "text": "f f f",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l007",
+   "section": "letters",
+   "text": "g g g",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l008",
+   "section": "letters",
+   "text": "h h h",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l009",
+   "section": "letters",
+   "text": "i i i",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l010",
+   "section": "letters",
+   "text": "j j j",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l011",
+   "section": "letters",
+   "text": "k k k",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l012",
+   "section": "letters",
+   "text": "l l l",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l013",
+   "section": "letters",
+   "text": "m m m",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l014",
+   "section": "letters",
+   "text": "n n n",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l015",
+   "section": "letters",
+   "text": "o o o",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l016",
+   "section": "letters",
+   "text": "p p p",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l017",
+   "section": "letters",
+   "text": "q q q",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l018",
+   "section": "letters",
+   "text": "r r r",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l019",
+   "section": "letters",
+   "text": "s s s",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l020",
+   "section": "letters",
+   "text": "t t t",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l021",
+   "section": "letters",
+   "text": "u u u",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l022",
+   "section": "letters",
+   "text": "v v v",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l023",
+   "section": "letters",
+   "text": "w w w",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l024",
+   "section": "letters",
+   "text": "x x x",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l025",
+   "section": "letters",
+   "text": "y y y",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l026",
+   "section": "letters",
+   "text": "z z z",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l027",
+   "section": "letters",
+   "text": "æ æ æ",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l028",
+   "section": "letters",
+   "text": "ø ø ø",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "l029",
+   "section": "letters",
+   "text": "å å å",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c001",
+   "section": "capitals",
+   "text": "A A A",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c002",
+   "section": "capitals",
+   "text": "B B B",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c003",
+   "section": "capitals",
+   "text": "C C C",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c004",
+   "section": "capitals",
+   "text": "D D D",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c005",
+   "section": "capitals",
+   "text": "E E E",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c006",
+   "section": "capitals",
+   "text": "F F F",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c007",
+   "section": "capitals",
+   "text": "G G G",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c008",
+   "section": "capitals",
+   "text": "H H H",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c009",
+   "section": "capitals",
+   "text": "I I I",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c010",
+   "section": "capitals",
+   "text": "J J J",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c011",
+   "section": "capitals",
+   "text": "K K K",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c012",
+   "section": "capitals",
+   "text": "L L L",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c013",
+   "section": "capitals",
+   "text": "M M M",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c014",
+   "section": "capitals",
+   "text": "N N N",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c015",
+   "section": "capitals",
+   "text": "O O O",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c016",
+   "section": "capitals",
+   "text": "P P P",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c017",
+   "section": "capitals",
+   "text": "Q Q Q",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c018",
+   "section": "capitals",
+   "text": "R R R",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c019",
+   "section": "capitals",
+   "text": "S S S",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c020",
+   "section": "capitals",
+   "text": "T T T",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c021",
+   "section": "capitals",
+   "text": "U U U",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c022",
+   "section": "capitals",
+   "text": "V V V",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c023",
+   "section": "capitals",
+   "text": "W W W",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c024",
+   "section": "capitals",
+   "text": "X X X",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c025",
+   "section": "capitals",
+   "text": "Y Y Y",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c026",
+   "section": "capitals",
+   "text": "Z Z Z",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c027",
+   "section": "capitals",
+   "text": "Æ Æ Æ",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c028",
+   "section": "capitals",
+   "text": "Ø Ø Ø",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "c029",
+   "section": "capitals",
+   "text": "Å Å Å",
+   "lines": 1,
+   "note": "three separate letters, not joined"
+  },
+  {
+   "id": "y001",
+   "section": "symbols",
+   "text": ". , ; :",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  },
+  {
+   "id": "y002",
+   "section": "symbols",
+   "text": "! ? ' \"",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  },
+  {
+   "id": "y003",
+   "section": "symbols",
+   "text": "( ) [ ] - /",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  },
+  {
+   "id": "y004",
+   "section": "symbols",
+   "text": "& @ # + = %",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  },
+  {
+   "id": "y005",
+   "section": "symbols",
+   "text": "0 1 2 3 4",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  },
+  {
+   "id": "y006",
+   "section": "symbols",
+   "text": "5 6 7 8 9",
+   "lines": 1,
+   "note": "separate marks, a little space between"
+  }
+ ]
+}

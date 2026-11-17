@@ -11,3 +11,6 @@ input/
 maps/*/data/
 maps/*/out/
 config/web.json
+
+# personal handwriting samples
+handwriting/samples/
