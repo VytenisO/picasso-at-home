@@ -53,7 +53,7 @@ in the top bar on every tab. Dark and light via `prefers-color-scheme` with a ma
   `unknown`; simulated runs never change the record of the real carriage.
 - `--sim` server mode: every job runs `plot_svg.py --sim`, the serial port is never opened.
 
-## Changes to `plot_svg.py` (opt-in flags; without them the CLI behaves as before)
+## Changes to `plot_svg.py` (new behaviour is opt-in by flag, with the exceptions listed below the table)
 
 | Flag | Why the UI needs it |
 |---|---|
@@ -64,7 +64,9 @@ in the top bar on every tab. Dark and light via `prefers-color-scheme` with a ma
 | markers under `--track` | `__PROGRESS__`, `__LAYER__`, `__PAUSE__` (`kind: swap|operator`), `__RESUMED__`, `__RESULT__`. |
 
 Also changed (safety, independent of the UI): the far-edge check uses the physical travel on its own (before, a
-paper larger than the bed widened it), and the cleanup ignores a second Ctrl-C/SIGTERM.
+paper larger than the bed widened it), and the cleanup ignores a second Ctrl-C/SIGTERM. Smaller output changes that also
+apply without the flags: extra layer log lines, more fields in the `__PAUSE__` payload and the saved JSON, multi-layer
+time estimates in plot order, and an end of input at the confirmation prompt counting as a refusal.
 
 ## Server modules (`tools/plotweb/`)
 

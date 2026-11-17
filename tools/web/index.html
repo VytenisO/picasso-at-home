@@ -18,6 +18,8 @@
     <p id="loginErr" class="problems" hidden></p>
     <button class="primary" type="submit">Log in</button>
   </form>
+  <p class="note">A job is running and you cannot log in? Stop works without a session.
+    <button id="loginStop" type="button" class="danger">Stop the running job</button></p>
 </div>
 
 <div id="appView" hidden>
@@ -252,6 +254,7 @@
     <p class="note">No emergency stop on this firmware. Stop lets the move already sent finish, lifts the pen and
       releases the motors. For an instant stop, switch the plotter off.</p>
     <div class="actions">
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button value="cancel" formnovalidate>Cancel</button>
       <button value="ok" class="primary" id="confirmGo" disabled>Start</button>
     </div>

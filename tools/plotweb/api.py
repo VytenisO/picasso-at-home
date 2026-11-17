@@ -22,6 +22,8 @@ from .events import EventLog
 from .library import MAX_UPLOAD, Library
 from .runner import JobRunner
 
+TOOL_LOCK = threading.Lock()   # test-sheet and result tools rewrite shared files: one at a time
+
 MAX_DISPLAY_POINTS = 300_000     # preview strokes sent to the browser are thinned beyond this (display only)
 STATIC = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/favicon.svg": "favicon.svg"}
 
@@ -247,7 +249,8 @@ class App:
                 self.runner.cancel(job_id, ex.msg)
                 raise
             return {"ok": True, "job": job_id}
-        rc, out = tools.run_sync(argv)
+        with TOOL_LOCK:
+            rc, out = tools.run_sync(argv)
         for ln in out.splitlines():
             if ln.strip():
                 self.ev.log("info" if rc == 0 else "error", ln, "tool")
@@ -365,10 +368,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(401, "Not logged in.")
             return fn(self)
         except ApiError as ex:
+            self.close_connection = True   # the request body may be unread; never let it prefix the next request
             return self.err(ex.code, ex.msg, **ex.extra)
         except (BrokenPipeError, ConnectionResetError):
             return None
         except Exception as ex:  # noqa: BLE001
+            self.close_connection = True
             self.app.ev.log("error", f"Server error on {method} {path}: {ex!r}")
             return self.err(500, f"Server error: {ex}. Details are in the console (Debug).")
 

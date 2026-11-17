@@ -214,15 +214,18 @@ class JobRunner:
     def _escalate(self, job_id, proc, sim):
         """If the process ignores STOP, interrupt it, then kill it and make the machine safe directly.
         The job stays reserved (busy) until this finishes: the reader waits for self.recovered."""
-        try:
-            proc.wait(STOP_GRACE_S)
-            return
-        except subprocess.TimeoutExpired:
-            pass
         rec = threading.Event()
         with self.lock:
-            self.recovered = rec
+            self.recovered = rec          # published before the reader can release the job
         try:
+            try:
+                proc.wait(STOP_GRACE_S)
+                with self.lock:
+                    if self.recovered is rec:
+                        self.recovered = None     # exited by itself: nothing to recover
+                return
+            except subprocess.TimeoutExpired:
+                pass
             self._log("error", f"The job did not stop within {STOP_GRACE_S:.0f} s; interrupting it.")
             clean = False
             try:

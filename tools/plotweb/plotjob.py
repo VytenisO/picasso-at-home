@@ -60,7 +60,7 @@ def validate(raw, bed, pens, layer_keys):
             raise SettingsError("The paper is smaller than its margins.")
         out["paper"] = {"width": pw, "height": ph}
     layers = raw.get("layers") or []
-    if not isinstance(layers, list) or len(layers) > 64:
+    if not isinstance(layers, list) or len(layers) > max(64, len(layer_keys)):
         raise SettingsError("layers must be a list")
     by_key = {}
     for i, ent in enumerate(layers):

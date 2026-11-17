@@ -223,7 +223,7 @@ function confirmStart(mode, pv) {
     } else rows.push(['Moves', 'Pen up around the drawing\'s frame and back to S. Nothing is drawn.']);
     $('confirmKv').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
     const checks = [
-      `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${m.start[0]}, ${m.start[1]}) mm. It was slid there with the motors off.`,
+      `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${(s.start_mm || m.start)[0]}, ${(s.start_mm || m.start)[1]}) mm. It was slid there with the motors off.`,
       mode === 'plot' ? `The pen is up and the first pen is in${first && first.pen ? `: ${first.pen}` : ''}.` : 'The pen is up.',
       'The paper is taped down, nothing is in the carriage\'s way, and the power switch is within reach.',
     ];

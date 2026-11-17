@@ -171,9 +171,10 @@ function render() {
     ctx.stroke(donePath(jp, n));
   } else if (state.preview && state.preview.strokes) {
     const pv = state.preview, b = pv.summary.bbox_machine_mm, box = designBox();
-    const k = box && (b[2] - b[0]) > 1e-6 ? box.w / (b[2] - b[0]) : 1;
+    // A finished preview is drawn exactly as planned; only a stale one is stretched to follow the box being dragged.
+    const k = state.previewStale && box && (b[2] - b[0]) > 1e-6 ? box.w / (b[2] - b[0]) : 1;
     ctx.save();
-    if (box) { ctx.translate(box.x, box.y); ctx.scale(k, k); ctx.translate(-b[0], -b[1]); }
+    if (box && state.previewStale) { ctx.translate(box.x, box.y); ctx.scale(k, k); ctx.translate(-b[0], -b[1]); }
     const enabled = (state.settings && state.settings.layers) || [];
     for (const [l, p] of buildLayers(pv)) {
       ctx.globalAlpha = enabled[l] && enabled[l].enabled === false ? 0.15 : (state.previewStale ? 0.55 : 1);

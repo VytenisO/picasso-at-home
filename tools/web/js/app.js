@@ -111,6 +111,10 @@ function onEvent(ev) {
 
 // ----------------------------------------------------------------- login
 function showLogin() {
+  $('loginStop').onclick = async () => {
+    try { const r = await post('/api/job/stop', {}); toast(r.message || 'Stop requested.'); }
+    catch (e) { toast(e.message, true); }
+  };
   // Mid-session (expired cookie) the workspace stays visible: Stop works without a session.
   const midSession = inited && !$('appView').hidden;
   $('loginView').classList.toggle('floating', midSession);
