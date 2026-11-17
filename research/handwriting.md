@@ -105,7 +105,11 @@ How much it can do depends on how much you write:
 The interface is the same either way: `Engine.strokes(text) -> list of strokes in mm`, so the plotting side does not
 change when the engine improves. Per-point pressure from the tablet maps onto the plotter's per-stroke pressure.
 
-### 3. Live plot backend (to build): `tools/live_plot.py`
+### 3. Live plot backend (built, sim-tested only): `tools/live_plot.py`
+Built as v1 with the replay engine (`tools/handwriting/engine.py`): words you wrote replay as written, other words are stitched
+from your single letters without joins. Stdin lines or `--text/--file`, `:newpage`, `:quit`, `--json` events. Not yet built: the
+local socket for the web UI (its job runner can feed stdin meanwhile), word-by-word writing, slant normalisation. Run
+`python3 tools/live_plot.py --sim` first; the real plotter asks for WRITE after the park check. Original design:
 A long-lived process, separate from `plot_svg.py`, because live writing needs the tracked carriage position to
 survive between lines. Design:
 - Owns one `plot_svg.Plotter` (so the same ceilings, step tracking and shutdown rules) and the page: paper rectangle,
