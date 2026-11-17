@@ -49,9 +49,11 @@ Open `http://100.75.242.85:8080/` from any device on the tailnet (or use the Mag
 
 You choose **where the carriage sits** with the anchor: `top-left` (the sheet's corner), `top-center` (the middle of the sheet's top edge — easiest to eyeball, and the default in the UI), or `center` (the middle of the sheet). The anchor is a point on the **paper**; the drawing is centred on the corresponding point of the **canvas** and inset by the margin automatically. So you can place the carriage at the sheet's top edge (Y=6 mm here) without having to find the exact corner or measure the inset yourself. Start X/Y are filled in automatically from the anchor and paper size, but can be overridden by hand. A dry run refuses to proceed if the carriage or the drawing would be off the paper, so a carriage left in the empty strip is caught before any motion. CLI equivalents: `--paper-x0/-y0/-width/-height`, `--start-x/--start-y` and `--anchor {top-left,top-center,center}`.
 
-The UI writes uploads to `input/` (gitignored) and logs to `results/`. Actions call `tools/plot_svg.py` as a subprocess, so all the safety checks and limits there still apply. Only one plot job runs at a time.
+The UI writes uploads to `input/` (gitignored) and logs to `results/`. Actions call `tools/plot_svg.py` as a subprocess, so all the safety checks and limits there still apply. Only one plot job runs at a time. Restarting the server (e.g. `systemctl --user restart plotter-web`) aborts an in-flight job; the subprocess now handles SIGTERM like Ctrl-C, so the pen is raised and the motors released before it exits.
 
 ### Drawing styles and ink layers
+
+The **Preview & live tracker** card has two tabs. *Drawing* shows any uploaded file at full size (pick from the dropdown or click a thumbnail in the Files card). *Live tracker* shows the bed with the paper, the canvas, the travelled path and the current carriage position, updating a few times per second while a job runs and switching to it automatically. `plot_svg.py --track` emits the position data; the web server enables it for trace/plot jobs.
 
 Selecting a raster shows a **live preview** before you upload: the actual pen paths on the left and the dark-shape mask on the right. Change style, cutoff, density, blur, width or ink layers and the preview refreshes automatically; nothing is saved until you press *Upload this image with these settings*. SVG uploads still go straight in.
 

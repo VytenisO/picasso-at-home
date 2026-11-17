@@ -35,6 +35,16 @@
   #bed .start { fill:#f6ad55; stroke:#0b1015; stroke-width:2; }
   .preview-img { width:210px; height:150px; object-fit:contain; background:#fff; border:1px solid var(--line);
                  border-radius:6px; flex:none; }
+  .tabs button.active { background:var(--acc); color:#06231f; border-color:var(--acc); }
+  .preview-stage { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px; text-align:center; }
+  .preview-stage img { max-width:100%; max-height:540px; width:auto; height:auto; object-fit:contain; }
+  #trackBed { width:100%; height:auto; display:block; background:#0b1015; border:1px solid var(--line);
+              border-radius:8px; }
+  #trackBed .bed { fill:#141c24; stroke:#4a5b6b; stroke-width:1.5; }
+  #trackBed .paper { fill:#203a34; stroke:var(--acc); stroke-width:1.5; }
+  #trackBed .canvas { fill:none; stroke:#f6ad55; stroke-width:0.8; stroke-dasharray:4 3; }
+  #trackBed .trail { fill:none; stroke:#4fd1c5; stroke-width:0.7; opacity:.8; }
+  #trackBed .dot { fill:#fc8181; stroke:#0b1015; stroke-width:1.5; }
   #bed text { fill:var(--mut); font-size:6px; }
   #bed text.here { fill:#f6ad55; }
   input,select { font:inherit; color:var(--fg); background:#0d1217; border:1px solid var(--line);
@@ -148,6 +158,32 @@
         Drawings are automatically fitted inside the reachable canvas (1.5 cm clear of every paper edge).
         All of these are ignored for SVG uploads.
       </p>
+    </div>
+
+    <!-- PREVIEW & LIVE TRACKER -->
+    <div class="card">
+      <h2>Preview &amp; live tracker</h2>
+      <div class="row" style="margin-bottom:12px">
+        <div class="row">
+          <button id="tabDrawing" class="active">Drawing</button>
+          <button id="tabTracker">Live tracker</button>
+        </div>
+        <select id="previewFile" style="max-width:300px"><option value="">Choose an uploaded file…</option></select>
+      </div>
+      <div id="drawingPane">
+        <div class="preview-stage"><img id="bigPreview" alt="drawing preview" style="display:none"></div>
+        <p class="muted" id="previewHint" style="margin:8px 0 0">Pick an uploaded file above, or click a preview in the Files card.</p>
+      </div>
+      <div id="trackerPane" style="display:none">
+        <svg id="trackBed" viewBox="0 0 368 227.5" preserveAspectRatio="xMidYMid meet">
+          <rect class="bed" x="0" y="0" width="368" height="227.5"></rect>
+          <rect id="trackPaper" class="paper"></rect>
+          <rect id="trackCanvas" class="canvas"></rect>
+          <polyline id="trackTrail" class="trail" points=""></polyline>
+          <circle id="trackDot" class="dot" r="3.5" cx="-10" cy="-10"></circle>
+        </svg>
+        <div class="row" style="margin-top:10px"><span id="trackReadout" class="muted">Idle — no job running.</span></div>
+      </div>
     </div>
 
     <!-- PAPER & PLACEMENT -->
@@ -294,6 +330,50 @@ function updateBed() {
 ['o_start_x','o_start_y'].forEach(id => $(id).addEventListener('input', () => { startManual = true; updateBed(); }));
 $('o_anchor').addEventListener('change', () => { startManual = false; lastAnchor = null; syncStart(); updateBed(); });
 
+let wasRunning = false;
+function setPreviewTab(tab) {
+  $('tabDrawing').className = tab === 'drawing' ? 'active' : '';
+  $('tabTracker').className = tab === 'tracker' ? 'active' : '';
+  $('drawingPane').style.display = tab === 'drawing' ? 'block' : 'none';
+  $('trackerPane').style.display = tab === 'tracker' ? 'block' : 'none';
+}
+function selectPreview(id) {
+  $('previewFile').value = id || '';
+  if (!id) {
+    $('bigPreview').style.display = 'none';
+    $('previewHint').textContent = 'Pick an uploaded file above, or click a preview in the Files card.';
+    return;
+  }
+  $('bigPreview').src = '/api/preview?name=' + encodeURIComponent(id);
+  $('bigPreview').style.display = 'block';
+  $('previewHint').textContent = 'Click another preview in the Files card to switch drawings.';
+}
+function updateTracker(data) {
+  if (paperCfg) {
+    const p = paperCfg, c = p.canvas, bed = $('trackBed');
+    bed.setAttribute('viewBox', `0 0 ${p.bed_x} ${p.bed_y}`);
+    for (const [id, v] of [['trackPaper',[p.x0, p.y0, p.width, p.height]],
+                           ['trackCanvas',[c[0], c[1], c[2] - c[0], c[3] - c[1]]]]) {
+      const r = $(id);
+      r.setAttribute('x', v[0]); r.setAttribute('y', v[1]);
+      r.setAttribute('width', v[2]); r.setAttribute('height', v[3]);
+    }
+  }
+  $('trackTrail').setAttribute('points', (data.trail || []).map(p => `${p[0]},${p[1]}`).join(' '));
+  const pos = data.pos;
+  if (pos) {
+    $('trackDot').setAttribute('cx', pos.x); $('trackDot').setAttribute('cy', pos.y);
+    $('trackReadout').textContent = `X ${pos.x.toFixed(1)} mm · Y ${pos.y.toFixed(1)} mm · pen ${pos.pen}` +
+      (data.paused ? ' · PAUSED' : '');
+  } else if (!data.running) {
+    $('trackDot').setAttribute('cx', -10); $('trackDot').setAttribute('cy', -10);
+    $('trackReadout').textContent = 'Idle — no job running.';
+  }
+}
+$('tabDrawing').onclick = () => setPreviewTab('drawing');
+$('tabTracker').onclick = () => setPreviewTab('tracker');
+$('previewFile').onchange = () => { selectPreview($('previewFile').value); setPreviewTab('drawing'); };
+
 function toast(msg, bad=false) {
   const t = $('toast'); t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : '');
   t.style.display = 'block'; clearTimeout(toast._t);
@@ -415,6 +495,9 @@ function fileCard(f) {
     el.appendChild(m);
   }
   const img = document.createElement('img'); img.src = '/api/preview?name=' + encodeURIComponent(f.id); img.alt = 'preview';
+  img.style.cursor = 'pointer'; img.title = 'Open in the large preview';
+  img.onclick = () => { selectPreview(f.id); setPreviewTab('drawing');
+    $('previewFile').scrollIntoView({behavior:'smooth', block:'center'}); };
   const meta = document.createElement('div'); meta.className = 'meta';
   const name = document.createElement('div'); name.className = 'name'; name.textContent = f.name;
   const badge = document.createElement('span'); badge.className = 'badge' + (f.kind==='raster' ? ' raster' : '');
@@ -454,8 +537,20 @@ function fileCard(f) {
 async function loadFiles() {
   const {data} = await api('/api/files');
   const box = $('files'); box.textContent = '';
-  if (!data.files || !data.files.length) { const p=document.createElement('p'); p.className='muted'; p.textContent='No uploads yet.'; box.appendChild(p); return; }
-  data.files.forEach(f => box.appendChild(fileCard(f)));
+  const sel = $('previewFile'), keep = sel.value;
+  sel.innerHTML = '<option value="">Choose an uploaded file…</option>';
+  const files = data.files || [];
+  if (!files.length) {
+    const p=document.createElement('p'); p.className='muted'; p.textContent='No uploads yet.'; box.appendChild(p);
+    selectPreview(''); return;
+  }
+  files.forEach(f => {
+    box.appendChild(fileCard(f));
+    const opt = document.createElement('option'); opt.value = f.id; opt.textContent = f.name;
+    sel.appendChild(opt);
+  });
+  if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+  else selectPreview(files[0].id);
 }
 function showOut(text, state='') {
   $('outCard').style.display='block'; $('out').textContent=text || '(no output)'; $('jobState').textContent=state;
@@ -488,6 +583,8 @@ $('estop').onclick = async () => {
     toast('E-STOP: ' + (r.data.was_running ? 'job aborted' : 'motors released'), true);
     showOut((r.data.notes || []).join('\n'), ' · E-STOP');
     if (polling) { clearInterval(polling); polling = null; }
+    wasRunning = false;
+    updateTracker({running:false, trail:[], pos:null});
     $('pauseBox').style.display = 'none';
   } else { toast(r.data.error || 'e-stop failed', true); }
 };
@@ -496,12 +593,14 @@ $('continueBtn').onclick = async () => {
   if (r.data.ok) { $('pauseBox').style.display='none'; toast('Resuming plot…'); }
   else toast(r.data.error || 'could not resume', true);
 };
-function startPolling() { if(!polling) polling = setInterval(pollJob, 1000); }
+function startPolling() { if(!polling) polling = setInterval(pollJob, 300); }
 async function pollJob() {
   try {
     const {data} = await api('/api/job');
     if (data.running) {
       startPolling();
+      if (!wasRunning) { wasRunning = true; $('trackTrail').setAttribute('points',''); setPreviewTab('tracker'); }
+      updateTracker(data);
       showOut(data.output);
       if (data.paused) {
         const p = data.pause || {};
@@ -515,6 +614,8 @@ async function pollJob() {
       }
     } else {
       if (polling) { clearInterval(polling); polling=null;
+        wasRunning = false;
+        updateTracker(data);
         if (data.returncode !== null) toast((data.returncode===0?'Finished ':'Failed ')+(data.mode||'job'), data.returncode!==0);
         if (data.output) showOut(data.output, '· '+data.mode+' exit '+data.returncode);
         if (data.status === 'estop') $('jobState').textContent = ' · E-STOP';

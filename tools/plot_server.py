@@ -60,7 +60,7 @@ FS_LOCK = threading.Lock()
 JOB_LOCK = threading.Lock()
 JOB = {"running": False, "mode": None, "file": None, "output": "", "returncode": None,
        "started": None, "finished": None, "id": None, "status": None,
-       "paused": False, "pause": None}
+       "paused": False, "pause": None, "pos": None, "trail": []}
 ACTIVE_PROC = None   # the running plot subprocess, kept so a pen swap can be resumed
 ESTOP = {"active": False}
 LOG_LOCK = threading.Lock()
@@ -217,6 +217,8 @@ def build_argv(entry, opts, mode):
     if anchor not in ("top-left", "top-center", "center"):
         raise ValueError("anchor must be top-left, top-center or center")
     argv += ["--anchor", anchor]
+    if mode != "dry":
+        argv.append("--track")
     return argv
 
 
@@ -244,7 +246,17 @@ def job_worker(argv, word):
         proc.stdin.flush()
         # Keep stdin open: plot_svg.py reads CONTINUE at each pen change.
         for line in proc.stdout:
-            if line.startswith("__PAUSE__:"):
+            if line.startswith("__POS__:"):
+                try:
+                    pos = json.loads(line[len("__POS__:"):])
+                except Exception:  # noqa: BLE001
+                    continue
+                with LOG_LOCK:
+                    JOB["pos"] = pos
+                    JOB["trail"].append([pos["x"], pos["y"]])
+                    JOB["trail"] = JOB["trail"][-500:]
+                logfile.write(line)
+            elif line.startswith("__PAUSE__:"):
                 try:
                     info = json.loads(line[len("__PAUSE__:"):])
                 except Exception:  # noqa: BLE001
@@ -354,7 +366,7 @@ def start_job(argv, mode, entry, word):
             JOB.update(running=True, mode=mode, file=entry["id"], output="",
                        returncode=None, started=datetime.datetime.now().isoformat(timespec="seconds"),
                        finished=None, id=f"{time.strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(2)}",
-                       status="running", paused=False, pause=None)
+                       status="running", paused=False, pause=None, pos=None, trail=[])
             ESTOP["active"] = False
         threading.Thread(target=job_worker, args=(argv, word), daemon=True).start()
         return True, JOB["id"]
@@ -745,6 +757,23 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(200, {"ok": True})
 
 
+def shutdown_cleanup(signum, frame):
+    """On SIGTERM (e.g. systemctl restart), stop the job and leave the pen up."""
+    try:
+        proc = ACTIVE_PROC
+        if proc is not None and proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        hard_stop()
+    except Exception:  # noqa: BLE001
+        pass
+    raise SystemExit(0)
+
+
 def detect_host():
     try:
         out = subprocess.check_output(["tailscale", "ip", "-4"], text=True, timeout=5)
@@ -758,6 +787,7 @@ def main():
     ap.add_argument("--host", default=os.environ.get("PLOTTER_WEB_HOST"), help="bind address (default: tailscale IP)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PLOTTER_WEB_PORT", 0)) or None)
     args = ap.parse_args()
+    signal.signal(signal.SIGTERM, shutdown_cleanup)
     cfg, password, sourced = load_config()
     host = args.host or detect_host()
     port = args.port or int(cfg.get("port", 8080))

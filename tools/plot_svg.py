@@ -26,6 +26,7 @@ import json
 import math
 import pathlib
 import re
+import signal
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -373,6 +374,10 @@ class Plotter:
         self.vt = 0.0                # virtual clock for --sim
         self.t_end = self.now()
         self.nsm = 0
+        self.tracking = args.track
+        self.origin = (args.start_x, args.start_y)
+        self.last_track = 0.0
+        self.pen_state = True
         self.ser = None
         if not self.sim:
             port = args.port
@@ -415,6 +420,19 @@ class Plotter:
         self.sleep(self.t_end - self.now() + 0.1)
         self.t_end = max(self.t_end, self.now())
 
+    def track(self, force=False):
+        """Emit the current machine position for the web UI's live tracker."""
+        if not self.tracking:
+            return
+        now = self.now()
+        if not force and now - self.last_track < 0.2:
+            return
+        self.last_track = now
+        info = {"x": round(self.origin[0] + self.pos[0] / self.spmm[0], 2),
+                "y": round(self.origin[1] + self.pos[1] / self.spmm[1], 2),
+                "pen": "up" if self.pen_state else "down"}
+        print("__POS__:" + json.dumps(info), flush=True)
+
     def setup(self):
         s = self.cfg["servo"]
         self.cmd("EM,1,1")
@@ -424,9 +442,11 @@ class Plotter:
 
     def pen(self, up, delay=250):
         self.idle()
+        self.pen_state = up
         self.cmd(f"SP,{1 if up else 0},{delay}")
         self.sleep(delay / 1000 + 0.05)
         self.t_end = max(self.t_end, self.now())
+        self.track(force=True)
 
     def shutdown(self):
         try:
@@ -464,6 +484,7 @@ class Plotter:
             self._sm(a[0], a[1], ms)
             self.pos[0] += sx
             self.pos[1] += sy
+            self.track()
 
 
 def to_steps(pt, spmm):
@@ -519,7 +540,13 @@ def main():
     ap.add_argument("--pen-down", type=int, help="override servo pen-down value")
     ap.add_argument("--pen-up", type=int, help="override servo pen-up value")
     ap.add_argument("--ignore-unsupported", action="store_true")
+    ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web live tracker")
     a = ap.parse_args()
+
+    def _sigterm(signum, frame):
+        raise KeyboardInterrupt()   # run the same pen-up/motors-off cleanup as Ctrl-C
+
+    signal.signal(signal.SIGTERM, _sigterm)
 
     if not (0 < a.speed <= MAX_SPEED and 0 < a.travel_speed <= MAX_SPEED):
         sys.exit(f"speeds must be in (0, {MAX_SPEED}] mm/s")
@@ -571,14 +598,14 @@ def main():
     # paper/canvas centre and need no horizontal margin shift.
     ox, oy = a.x0, a.y0
     if a.anchor == "top-left":
-        ox += margin
-        oy += margin
+        ox += margin - x0
+        oy += margin - y0
     elif a.anchor == "top-center":
-        ox -= (x1 - x0) / 2
-        oy += margin
+        ox -= (x0 + x1) / 2
+        oy += margin - y0
     elif a.anchor == "center":
-        ox -= (x1 - x0) / 2
-        oy -= (y1 - y0) / 2
+        ox -= (x0 + x1) / 2
+        oy -= (y0 + y1) / 2
     gx0, gy0, gx1, gy1 = x0 + ox, y0 + oy, x1 + ox, y1 + oy
     abs_x0, abs_y0 = a.start_x + gx0, a.start_y + gy0
     abs_x1, abs_y1 = a.start_x + gx1, a.start_y + gy1
