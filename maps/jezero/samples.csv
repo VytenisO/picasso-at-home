@@ -1,30 +1,40 @@
-# Perseverance sample tubes, from NASA science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/ (fetched 2026-11-17)
-# n,name,sol,type,location
-1,Roubion,164,Atmospheric,Polygon Valley
-2,Montdenier,194,Rock core,Artuby Ridge
-3,Montagnac,196,Rock core,Artuby Ridge
-4,Salette,262,Rock core,South Séítah
-5,Coulettes,271,Rock core,South Séítah
-6,Robine,298,Rock core,South Séítah
-7,Malay,337,Rock core,South Séítah
-8,Ha'ahóni,371,Rock core,Ch'ał outcrop
-9,Atsá,377,Rock core,Ch'ał outcrop
-10,Swift Run,490,Rock core,Delta front
-11,Skyland,495,Rock core,Delta front
-12,Hazeltop,509,Rock core,Delta front
-13,Bearwallow,516,Rock core,Delta front
-14,Shuyak,575,Rock core,Delta front
-15,Mageik,619,Rock core,Delta front
-16,Kukaklek,631,Rock core,Delta front
-17,Atmo Mountain,634,Regolith,Delta front
-18,Crosswind Lake,639,Regolith,Delta front
-19,Melyn,749,Rock core,Upper fan
-20,Otis Peak,832,Rock core,Upper fan
-21,Pilot Mountain,913,Rock core,Upper fan
-22,Pelican Point,923,Rock core,Margin unit
-23,Lefroy Bay,949,Rock core,Margin unit
-24,Comet Geyser,1088,Rock core,Margin unit
-25,Sapphire Canyon,1215,Rock core,Neretva Vallis (Cheyava Falls)
-26,Silver Mountain,1401,Rock core,Crater rim (Witch Hazel Hill)
-27,Green Gardens,1433,Rock core,Crater rim (Witch Hazel Hill)
-28,Main River,1441,Rock core,Crater rim (Witch Hazel Hill)
+# Perseverance sample tubes 1-28 (NASA numbering; witness tubes not included).
+# name, sealed_sol, type, location: NASA, science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/ (2026-11-17)
+# designation and collected_sol: the designation encodes the collection sol. Herd et al. 2025, PNAS 122(2) e2404255121,
+#   Table 1 (samples to 24); PDS Three Forks depot bundle, sample_tube_locations.csv (depot tubes; Atsah is 00374-10 there).
+#   25-28 have no published designation here; their collection sols are from NASA/JPL releases
+#   (Sapphire Canyon 2024-07-21 = sol 1215, Silver Mountain 2025-01-28 = sol 1401, Green Gardens cored 2025-02-16 = sol 1419 or 1420 (no drive sols 1416-1429),
+#   sealed sol 1433 after 13 sols of sealing attempts, Main River 2025-03-10 = sol 1441).
+# lat, lon, elev: rover pose during collection = last PLACES localization at or before collected_sol
+#   (PDS mars2020_rover_places, data_localizations/best_interp.csv; planetocentric lat, east lon, m). No drive took place
+#   on any collection sol, so this is where the rover stood while coring; the borehole is within ~2 m of it.
+# depot: 1 if the tube was left at the Three Forks depot.
+n,name,designation,collected_sol,sealed_sol,type,lat,lon,elev,depot,location
+1,Roubion,M2020-00164-02,164,164,Atmospheric,18.4276946,77.4516498,-2584.9,1,Polygon Valley
+2,Montdenier,M2020-00190-03,190,194,Rock core,18.4307421,77.4444200,-2574.6,1,Artuby Ridge
+3,Montagnac,M2020-00196-04,196,196,Rock core,18.4307421,77.4444200,-2574.6,0,Artuby Ridge
+4,Salette,M2020-00262-05,262,262,Rock core,18.4339641,77.4430192,-2569.2,0,South Séítah
+5,Coulettes,M2020-00271-06,271,271,Rock core,18.4339641,77.4430192,-2569.2,1,South Séítah
+6,Robine,M2020-00298-07,298,298,Rock core,18.4326606,77.4413730,-2574.4,0,South Séítah
+7,Malay,M2020-00337-08,337,337,Rock core,18.4326091,77.4413140,-2574.2,1,South Séítah
+8,Ha'ahóni,M2020-00371-09,371,371,Rock core,18.4439016,77.4524344,-2568.7,0,Ch'ał outcrop
+9,Atsá,M2020-00374-10,374,377,Rock core,18.4439016,77.4524344,-2568.7,1,Ch'ał outcrop
+10,Swift Run,M2020-00490-11,490,490,Rock core,18.4588953,77.4061677,-2520.9,0,Delta front
+11,Skyland,M2020-00495-12,495,495,Rock core,18.4588953,77.4061677,-2520.9,1,Delta front
+12,Hazeltop,M2020-00509-14,509,509,Rock core,18.4586473,77.4059249,-2523.2,0,Delta front
+13,Bearwallow,M2020-00516-15,516,516,Rock core,18.4586473,77.4059249,-2523.2,1,Delta front
+14,Shuyak,M2020-00575-16,575,575,Rock core,18.4507263,77.4014403,-2526.5,0,Delta front
+15,Mageik,M2020-00579-17,579,619,Rock core,18.4507263,77.4014403,-2526.5,1,Delta front
+16,Kukaklek,M2020-00623-19,623,631,Rock core,18.4536440,77.3991537,-2517.3,0,Delta front
+17,Atmo Mountain,M2020-00634-20,634,634,Regolith,18.4513312,77.4012571,-2525.3,0,Delta front
+18,Crosswind Lake,M2020-00639-21,639,639,Regolith,18.4513312,77.4012571,-2525.3,1,Delta front
+19,Melyn,M2020-00749-22,749,749,Rock core,18.4702116,77.3839878,-2449.1,0,Upper fan
+20,Otis Peak,M2020-00822-23,822,832,Rock core,18.4829880,77.3681943,-2420.8,0,Upper fan
+21,Pilot Mountain,M2020-00882-24,882,913,Rock core,18.4838052,77.3605098,-2418.0,0,Upper fan
+22,Pelican Point,M2020-00923-25,923,923,Rock core,18.4834427,77.3506942,-2423.3,0,Margin unit
+23,Lefroy Bay,M2020-00949-26,949,949,Rock core,18.4887146,77.3470434,-2407.7,0,Margin unit
+24,Comet Geyser,M2020-01088-27,1088,1088,Rock core,18.4918327,77.3272028,-2383.0,0,Margin unit
+25,Sapphire Canyon,,1215,1215,Rock core,18.4974844,77.3051909,-2354.0,0,Neretva Vallis (Cheyava Falls)
+26,Silver Mountain,,1401,1401,Rock core,18.4605529,77.2647454,-1820.0,0,Crater rim (Witch Hazel Hill)
+27,Green Gardens,,1419,1433,Rock core,18.4606224,77.2646439,-1821.2,0,Crater rim (Witch Hazel Hill)
+28,Main River,,1441,1441,Rock core,18.4617273,77.2585030,-1918.5,0,Crater rim (Witch Hazel Hill)

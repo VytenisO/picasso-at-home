@@ -10,9 +10,11 @@ elements or transforms, so tools/plot_svg.py can take the per-pen files directly
 Fetch the traverse first (see fetch_data.sh).
 """
 import argparse
+import csv
 import json
 import math
 import os
+from collections import namedtuple
 
 import numpy as np
 import tifffile
@@ -358,6 +360,7 @@ class Drawing:
         self.keepout = []       # polygons black terrain lines must avoid
         self.red_keepout = []   # polygons red lines must avoid (e.g. their own labels)
         self.terrain = []       # black lines that get masked (contours, hachures)
+        self.shadow = []        # Tanaka shadow lines, masked like terrain, own pen
 
     def add(self, lines, layer="black"):
         self.layers[layer] += [list(map(tuple, l)) for l in lines if len(l) >= 2]
@@ -372,15 +375,20 @@ class Drawing:
         ko = unary_union(self.keepout) if self.keepout else None
         frame = self.mf.box
         pk = prep(ko) if ko is not None else None
-        out = []
-        for l in self.terrain:
-            g = LineString(l)
-            if not frame.contains(g):
-                g = g.intersection(frame)
-            if pk is not None and pk.intersects(g):
-                g = g.difference(ko)
-            out += [x for x in as_lines(g) if LineString(x).length > 0.25]
-        self.layers["black"] = out + self.layers["black"]
+
+        def mask(lines):
+            out = []
+            for l in lines:
+                g = LineString(l)
+                if not frame.contains(g):
+                    g = g.intersection(frame)
+                if pk is not None and pk.intersects(g):
+                    g = g.difference(ko)
+                out += [x for x in as_lines(g) if LineString(x).length > 0.25]
+            return out
+        self.layers["black"] = mask(self.terrain) + self.layers["black"]
+        if self.shadow:
+            self.layers["shadow"] = mask(self.shadow)
 
 
 def contour_set(dr, ter, interval, index_every, min_len, label_cap, label_font, double_index,
@@ -406,7 +414,7 @@ def contour_set(dr, ter, interval, index_every, min_len, label_cap, label_font, 
                 for part in as_lines(off):
                     dr.terrain.append(part)
             if tanaka:
-                dr.terrain += tanaka_shadow(ter, c, tanaka * (2.0 if is_index else 1.0))
+                dr.shadow += tanaka_shadow(ter, c, tanaka * (2.0 if is_index else 1.0))
     # inline labels on index contours: straight-ish stretches, spread out
     for lv, ls in sorted(index_lines, key=lambda t: -t[1].length):
         s = f"{int(lv)}" if label_sign else f"{abs(int(lv))}"
@@ -899,22 +907,32 @@ def traverse_profile(lines_xyz):
     return np.array(d), np.array(z)
 
 
+Sample = namedtuple("Sample", "n name designation sol sealed kind lat lon elev depot loc")
+
+
 def load_samples(path):
+    """samples.csv: one row per tube; sol is the collection sol, lat/lon the rover pose while coring."""
     out = []
-    for row in open(path, encoding="utf-8"):
-        if row.startswith("#") or not row.strip():
-            continue
-        n, name, sol, kind, loc = row.rstrip("\n").split(",", 4)
-        out.append((int(n), name, int(sol), kind, loc))
+    with open(path, encoding="utf-8") as f:
+        for r in csv.DictReader(l for l in f if not l.startswith("#")):
+            out.append(Sample(int(r["n"]), r["name"], r["designation"], int(r["collected_sol"]), int(r["sealed_sol"]),
+                              r["type"], float(r["lat"]), float(r["lon"]), float(r["elev"]), r["depot"] == "1",
+                              r["location"]))
     return out
+
+
+def load_depot(path):
+    """depot.csv: PDS Three Forks drop events (rover pose at each drop, tube azimuth)."""
+    with open(path, encoding="utf-8") as f:
+        return list(csv.DictReader(l for l in f if not l.startswith("#")))
 
 
 def sample_clusters(samples, wps, mf, radius_mm):
     """Group samples whose rover positions fall within radius_mm on the page."""
     groups = []
-    for n, name, sol, kind, loc in samples:
-        w = at_sol(wps, sol)
-        x, y = (float(v) for v in mf.ll_mm(w[1], w[2]))
+    for sm in samples:
+        n = sm.n
+        x, y = (float(v) for v in mf.ll_mm(sm.lon, sm.lat))
         for g in groups:
             if math.hypot(g["x"] - x, g["y"] - y) < radius_mm:
                 g["n"].append(n)
@@ -979,6 +997,8 @@ def boxed(dr, x0, y0, x1, y1, edges="all"):
     g = 0.6
     if edges == "tr":  # tucked into the top-right corner of the frame
         dr.add([[(x0, y0), (x0, y1), (x1, y1)], [(x0 + g, y0), (x0 + g, y1 - g), (x1, y1 - g)]])
+    elif edges == "br":  # tucked into the bottom-right corner
+        dr.add([[(x0, y1), (x0, y0), (x1, y0)], [(x0 + g, y1), (x0 + g, y0 + g), (x1, y0 + g)]])
     elif edges == "bl":  # tucked into the bottom-left corner
         dr.add([[(x0, y0), (x1, y0), (x1, y1)], [(x0, y0 + g), (x1 - g, y0 + g), (x1 - g, y1)]])
     else:
@@ -1034,9 +1054,9 @@ def draw_profile(dr, raw_lines, wps, x0, y0, x1, y1, F, samples=None):
             anchor = "end"
         dr.label(lab, xx, top - 0.7, 1.05, F, anchor=anchor, pad=0.2)
     if samples:
-        for n, name, sol, kind, loc in samples:
-            xx, yy = at(sol)
-            dr.add([circle(xx, yy, 0.35, 8)], "red")
+        for sm in samples:
+            _, i = tree.query(ll_to_xy(sm.lon, sm.lat))
+            dr.add([circle(X(d[i]), Y(z[i]), 0.35, 8)], "red")
 
 
 def design_nasa_full(dem, lines, wps, raw_lines, scale=225000, center=(77.66, 18.35),
@@ -1169,7 +1189,7 @@ def design_nasa_full(dem, lines, wps, raw_lines, scale=225000, center=(77.66, 18
         half = (len(samples) + 1) // 2
         colw = (kx1 - kx0 - 5) / 2
         step = (ky1 - ky0 - 13) / half
-        for i, (n, name, sol, kind, loc) in enumerate(samples):
+        for i, (n, name, _, sol, _, kind, *_) in enumerate(samples):
             cxx = kx0 + 3 + (i // half) * colw
             yy = ky0 + 11.2 + (i % half) * step
             dr.label(f"{n}", cxx + 3, yy, 1.05, F, anchor="end")
@@ -1184,19 +1204,27 @@ def design_nasa_full(dem, lines, wps, raw_lines, scale=225000, center=(77.66, 18
     return dr
 
 
-def design_ridgeline(dem, rows=64, exag=0.030, scale=240000, center=(77.66, 18.36)):
+def design_ridgeline(dem, rows=64, exag=0.030, scale=240000, center=(77.66, 18.36), lat_range=None,
+                     fr=(20.0, 14.0, 277.0, 182.0)):
     """Stacked east-west elevation profiles with hidden lines removed. Stylised, one pen,
     name only. exag is page mm per metre of height. Rows are spread evenly down the frame,
     with the back row pushed down just far enough that its peaks clear the top edge."""
-    fr = (20.0, 14.0, 277.0, 182.0)
     x0, y0, x1, y1 = fr
     mf = MapFrame(fr, scale, center)
+    if lat_range:
+        # rows cover lat_range (north to south), whatever the frame height
+        s_, n_ = lat_range
+        h = (ll_to_xy(0, n_)[1] - ll_to_xy(0, s_)[1]) * mf.k
+        mf = MapFrame((x0, 0.0, x1, h), scale, (center[0], (s_ + n_) / 2))
+        my = np.linspace(0.5, h - 0.5, rows)
+    else:
+        my = np.linspace(y0, y1, rows)
     ter = Terrain(dem, mf, 80.0, 160.0, pad_mm=2)
-    dr = Drawing(mf)
+    dr = Drawing(MapFrame(fr, scale, center))
     xs = np.linspace(x0, x1, 1200)
     zref = np.nanpercentile(ter.z, 2)
     lift = np.array([(ter.sample_mm(ter.z, np.column_stack([xs, np.full_like(xs, m)])) - zref) * exag
-                     for m in np.linspace(y0, y1, rows)])
+                     for m in my])
     u = np.clip(np.minimum(xs - x0, x1 - xs) / ((x1 - x0) * 0.10), 0, 1)
     lift = np.maximum(lift, 0) * (0.5 - 0.5 * np.cos(np.pi * u))
     frac = np.linspace(0, 1, rows)
@@ -1249,12 +1277,88 @@ def design_clean(dem, lines, wps, scale=225000, center=(77.66, 18.35), tanaka=0.
     return dr
 
 
+def load_places(path, sol0, sol1):
+    """PLACES rover poses (lat, lon) for drives between two sols."""
+    with open(path, encoding="utf-8") as f:
+        return [(float(r["planetocentric_latitude"]), float(r["longitude"])) for r in csv.DictReader(f)
+                if r["frame"] == "ROVER" and sol0 <= int(r["sol"]) <= sol1]
+
+
+def depot_inset(dr, depot, samples, drive, x0, y0, x1, y1, F, scale=1500):
+    """Three Forks depot at large scale: rover pose at each tube drop (PDS), tube azimuth
+    as a short bar (seal end dot to glove end, length not to scale), and the depot drives."""
+    boxed(dr, x0, y0, x1, y1, edges="br")
+    lat = np.mean([float(d["Rover Latitude"]) for d in depot])
+    lon = np.mean([float(d["Rover Longitude"]) for d in depot])
+    imf = MapFrame((x0 + 2, y0 + 9, x1 - 2, y1 - 6), scale, (lon, lat))
+    lat = (min(float(d["Rover Latitude"]) for d in depot) + max(float(d["Rover Latitude"]) for d in depot)) / 2
+    imf = MapFrame((x0 + 2, y0 + 9, x1 - 2, y1 - 6), scale, (lon, lat))
+    dr.label("THREE FORKS SAMPLE DEPOT", x0 + 3, y0 + 4.2, 1.3, F, track=0.3)
+    sols = [int(d["Dropoff Sol"]) for d in depot]
+    dr.label(f"ROVER POSITION AT EACH TUBE DROP, SOLS {min(sols)}–{max(sols)}", x0 + 3, y0 + 7.0, 0.9, F, track=0.2)
+    fr = imf.box
+    ko = []
+    pts = [tuple(float(v) for v in imf.ll_mm(lo, la)) for la, lo in drive]
+    path = LineString(pts).intersection(fr.buffer(-0.5))
+    ko.append(path.buffer(0.5))
+    by_name = {sm.name.replace("á", "a").lower(): sm.n for sm in samples}
+    by_name["atsah"] = by_name.get("atsa")  # PDS spelling
+    marks = []
+    for d in depot:
+        x, y = (float(v) for v in imf.ll_mm(float(d["Rover Longitude"]), float(d["Rover Latitude"])))
+        a = math.radians(float(d["Sample Tube Azimuth"]))
+        vx, vy = math.sin(a), -math.cos(a)  # seal end -> glove end, clockwise from north
+        L = 1.2
+        dr.add([[(x - vx * L, y - vy * L), (x + vx * L, y + vy * L)], circle(x - vx * L, y - vy * L, 0.3, 8)])
+        ko.append(LineString([(x - vx * L, y - vy * L), (x + vx * L, y + vy * L)]).buffer(0.6))
+        n = by_name.get(d["Sample Name"].lower())
+        t = f"{n} {d['Sample Name'].upper()}" if n else d["Sample Name"].upper()
+        marks.append((x, y, t, d["Dropoff Sol"]))
+    # labels in two columns either side of the cluster, leaders to each drop
+    xs_ = sorted(m[0] for m in marks)
+    xmid = (xs_[len(xs_) // 2 - 1] + xs_[len(xs_) // 2]) / 2
+    xl, xr = min(xs_) - 5.0, max(xs_) + 5.0
+    top, bot, gap = imf.fy0 + 1.2, imf.fy1 - 1.6, 2.9
+    for side in ("l", "r"):
+        col = sorted((m for m in marks if (m[0] < xmid) == (side == "l")), key=lambda m: m[1])
+        ys = []
+        for m in col:
+            ys.append(max(m[1], top, ys[-1] + gap if ys else top))
+        over = ys[-1] - bot if ys else 0
+        if over > 0:
+            ys = [y - over for y in ys]
+            for i in range(len(ys) - 2, -1, -1):
+                ys[i] = min(ys[i], ys[i + 1] - gap)
+        for (x, y, t, sol), ly in zip(col, ys):
+            tx = xl if side == "l" else xr
+            anchor = "end" if side == "l" else "start"
+            ex = tx + (0.6 if side == "l" else -0.6)
+            dr.add([[(x + (-0.7 if side == "l" else 0.7), y), (ex, ly - 0.4)]])
+            ko.append(dr.label(t, tx, ly - 0.1, 0.9, F, anchor=anchor, track=0.1, pad=0.2).buffer(0.3))
+            ko.append(dr.label(f"SOL {sol}", tx, ly + 1.2, 0.75, F, anchor=anchor, track=0.1, pad=0.2).buffer(0.3))
+    # drive path last, broken where it would run through a label
+    lab = unary_union(ko[len(marks) + 1:])
+    dr.add(as_lines(path.difference(lab)), "red")
+    # scale bar and north arrow
+    sx, sy = x0 + 3, y1 - 2.5
+    m10 = 10 * imf.k
+    dr.add([[(sx, sy), (sx + 2 * m10, sy)]] + [[(sx + i * m10, sy - 0.6), (sx + i * m10, sy)] for i in range(3)])
+    for i in range(3):
+        dr.label(f"{i * 10}", sx + i * m10, sy - 1.0, 0.8, F, anchor="middle")
+    dr.label("M", sx + 2 * m10 + 1.2, sy + 0.4, 0.8, F)
+    dr.label(f"1:{scale:,}".replace(",", " "), sx + 2 * m10 + 4.0, sy + 0.4, 0.8, F, track=0.1)
+    ax, ay = x1 - 3.5, y1 - 2.0
+    dr.add([[(ax, ay), (ax, ay - 4.5)], [(ax - 0.8, ay - 3.3), (ax, ay - 4.6), (ax + 0.8, ay - 3.3)]])
+    dr.label("N", ax, ay - 5.4, 1.1, F, anchor="middle")
+    return lon, lat
+
+
 # Section along the drive, east to west: rover positions on these sols, one per area,
 # so it follows the route without its back-and-forth (and has no time axis).
 SECTION_SOLS = [13, 298, 575, 749, 913, 1088, 1215, 1401, 1700, 1900]
 
 
-def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)):
+def design_detail(dem, lines, wps, samples, depot, depot_drive, scale=90000, center=(77.343, 18.466)):
     """Portrait sheet, about 2.5x the full-crater map: western fan and rim with every sample
     site, a terrain section along the route, and the tube key."""
     page = (PAGE_H, PAGE_W)
@@ -1268,8 +1372,10 @@ def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)
     L = {k: at_sol(wps, s) for k, s in LANDMARKS.items() if s}
     landmark(dr, ["OCTAVIA E. BUTLER", "LANDING SITE"], L["landing"][1], L["landing"][2], 10, -21, 1.5, F, "flag",
              anchor="end")
-    landmark(dr, ["THREE FORKS DEPOT"], L["three_forks"][1], L["three_forks"][2], -2, 10, 1.5, F, "ring")
-    landmark(dr, ["CHEYAVA FALLS"], L["cheyava"][1], L["cheyava"][2], 2, -10, 1.5, F, "ring")
+    dlon, dlat = depot_inset(dr, depot, samples, depot_drive, 124.0, 127.0, fx1, fy1, F, scale=2000)
+    landmark(dr, ["THREE FORKS DEPOT", "SEE INSET"], dlon, dlat, -2, 10, 1.5, F, "ring", sub=0.75)
+    s25 = next(sm for sm in samples if sm.n == 25)
+    landmark(dr, ["CHEYAVA FALLS"], s25.lon, s25.lat, 2, -10, 1.5, F, "ring")
     landmark(dr, ["WITCH HAZEL HILL"], L["witch_hazel"][1], L["witch_hazel"][2], 3, 11, 1.5, F, "ring")
     landmark(dr, ["SOL 2022"], wps[-1][1], wps[-1][2], 4, 9, 1.5, F, "triangle", layer="red")
     sample_markers(dr, samples, wps, 1.2, 1.25, F, rings=(3.5, 5.0, 7.0, 9.5))
@@ -1281,7 +1387,7 @@ def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)
         dr.add([circle(x, y, 0.35, 8)])
         dr.label(t, x + dx, y + dy, 2.0, FM, anchor="start" if dx > 0 else "end")
 
-    for nm, lon, lat, cap, ang in (("Séítah", 77.432, 18.416, 2.2, 0), ("Western fan", 77.385, 18.50, 2.6, -8),
+    for nm, lon, lat, cap, ang in (("Séítah", 77.432, 18.4205, 2.2, 0), ("Western fan", 77.385, 18.50, 2.6, -8),
                                    ("Belva", 77.372, 18.474, 1.7, 0)):
         x, y = mf.ll_mm(lon, lat)
         dr.label(nm, float(x), float(y), cap, "timesi", anchor="middle", track=0.6, angle=ang)
@@ -1351,8 +1457,8 @@ def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)
         d = path.project(p)
         return d / path.length * km[-1]
 
-    marks = [(L["landing"], "LANDING"), (at_sol(wps, 298), "SÉÍTAH"), (L["three_forks"], "DELTA FRONT"),
-             (L["cheyava"], "CHEYAVA FALLS"), (L["witch_hazel"], "WITCH HAZEL HILL")]
+    marks = [(L["landing"], "LANDING"), (at_sol(wps, 298), "SÉÍTAH"), ((0, dlon, dlat), "THREE FORKS"),
+             ((0, s25.lon, s25.lat), "CHEYAVA FALLS"), (L["witch_hazel"], "WITCH HAZEL HILL")]
     prev = None
     for w, lab in marks:
         k = along(w[1], w[2])
@@ -1366,9 +1472,8 @@ def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)
         dr.label(lab, xx, top - 0.7, 1.05, F, anchor="middle", track=0.2, pad=0.2)
         prev = (xx + wl / 2, top)
     # samples projected onto the section as red dots
-    for n_, name, sol, kind, loc in samples:
-        w = at_sol(wps, sol)
-        k = along(w[1], w[2])
+    for sm in samples:
+        k = along(sm.lon, sm.lat)
         xx = X(k)
         yy = Y(float(np.interp(k, km, z)))
         dr.add([circle(xx, yy, 0.45, 8)], "red")
@@ -1376,18 +1481,24 @@ def design_detail(dem, lines, wps, samples, scale=90000, center=(77.343, 18.466)
     ky0, ky1 = 240.0, 268.0
     dr.add([[(fx0, ky0 - 2.5), (fx1, ky0 - 2.5)]])
     dr.label("SAMPLE TUBES", fx0, ky0 + 1.5, 1.4, F, track=0.35)
-    dr.label("NUMBER, NAME, SOL.  A ATMOSPHERIC, R REGOLITH", fx0 + 26, ky0 + 1.5, 1.0, F, track=0.25)
+    dr.label("NUMBER, NAME, SOL COLLECTED.  A ATMOSPHERIC, R REGOLITH", fx0 + 26, ky0 + 1.5, 1.0, F, track=0.25)
+    dr.add([[(fx1 - 37.0, ky0 + 0.6), (fx1 - 36.1, ky0 + 0.6), (fx1 - 36.1, ky0 + 1.5), (fx1 - 37.0, ky0 + 1.5),
+             (fx1 - 37.0, ky0 + 0.6)]])
+    dr.label("LEFT AT THREE FORKS DEPOT", fx1, ky0 + 1.5, 1.0, F, anchor="end", track=0.25)
     cols = 4
     per = math.ceil(len(samples) / cols)
     colw = (fx1 - fx0) / cols
     step = (ky1 - ky0 - 5) / (per - 1)
-    for i, (n_, name, sol, kind, loc) in enumerate(samples):
+    for i, sm in enumerate(samples):
         cx = fx0 + (i // per) * colw
         yy = ky0 + 5.5 + (i % per) * step
-        dr.label(f"{n_}", cx + 3, yy, 1.1, F, anchor="end", layer="red")
-        nm = name.upper() + (" (A)" if kind == "Atmospheric" else " (R)" if kind == "Regolith" else "")
+        dr.label(f"{sm.n}", cx + 3, yy, 1.1, F, anchor="end", layer="red")
+        nm = sm.name.upper() + (" (A)" if sm.kind == "Atmospheric" else " (R)" if sm.kind == "Regolith" else "")
         dr.label(nm, cx + 4.5, yy, 1.1, F, track=0.12)
-        dr.label(f"{sol}", cx + colw - 3, yy, 1.1, F, anchor="end")
+        dr.label(f"{sm.sol}", cx + colw - 4.2, yy, 1.1, F, anchor="end")
+        if sm.depot:
+            q0, q1 = cx + colw - 3.4, cx + colw - 2.5
+            dr.add([[(q0, yy - 0.95), (q1, yy - 0.95), (q1, yy - 0.05), (q0, yy - 0.05), (q0, yy - 0.95)]])
     # --- footer
     fy = 279.0
     dr.add([[(fx0, fy - 6.0), (fx1, fy - 6.0)]])
@@ -1413,6 +1524,8 @@ def main():
     lines, wps = load_traverse(args.data)
     raw = load_traverse_xyz(args.data)
     samples = load_samples(os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples.csv"))
+    depot = load_depot(os.path.join(args.data, "pds", "sample_tube_locations.csv"))
+    depot_drive = load_places(os.path.join(args.data, "pds", "best_interp.csv"), 645, 700)
     designs = {
         "a-nasa-crater": lambda: design_nasa(dem, lines, wps, "crater"),
         "b-nasa-full": lambda: design_nasa_full(dem, lines, wps, raw),
@@ -1421,35 +1534,42 @@ def main():
         "b3-samples": lambda: design_nasa_full(dem, lines, wps, raw, tanaka=0.32, samples=samples),
         "c-clean": lambda: design_clean(dem, lines, wps),
         "c1-clean-relief": lambda: design_clean(dem, lines, wps, tanaka=0.32),
-        "d-detail": lambda: design_detail(dem, lines, wps, samples),
+        "d-detail": lambda: design_detail(dem, lines, wps, samples, depot, depot_drive),
         "e-ridgeline": lambda: design_ridgeline(dem),
         "e1-ridge-96": lambda: design_ridgeline(dem, rows=96),
         "e2-ridge-x2": lambda: design_ridgeline(dem, exag=0.06),
         "e3-ridge-128": lambda: design_ridgeline(dem, rows=128, exag=0.045),
         "e4-ridge-160": lambda: design_ridgeline(dem, rows=160, exag=0.05),
+        # E1's look, extended: crater plus the plains to the south, and the whole DEM
+        "e5-ridge-south": lambda: design_ridgeline(dem, rows=140, center=(77.66, 0), lat_range=(17.60, 18.70),
+                                                  fr=(14.0, 12.0, 283.0, 184.0), scale=230000),
+        "e6-ridge-full": lambda: design_ridgeline(dem, rows=150, center=(77.79, 0), lat_range=(17.60, 19.27),
+                                                 fr=(14.0, 12.0, 283.0, 184.0), scale=335000),
     }
     only = args.only.split(",") if args.only else list(designs)
     summary = {}
     for name in only:
         dr = designs[name]()
-        black = order_strokes(dr.layers["black"])
-        red = order_strokes(dr.layers["red"], black[-1][-1] if black else (0, 0))
-        layers = {"black": black, "red": red}
-        colors = {"black": "#1a1a1a", "red": "#c8102e"}
-        widths = {"black": 0.25, "red": 0.35}
+        pens = [("black", "pen1-black", "#1a1a1a", 0.25), ("red", "pen2-red", "#c8102e", 0.35),
+                ("shadow", "pen3-shadow", "#3d6a99", 0.25)]
+        layers, cur = {}, (0.0, 0.0)
+        for key, _, _, _ in pens:
+            if dr.layers.get(key):
+                layers[key] = order_strokes(dr.layers[key], cur)
+                cur = layers[key][-1][-1]
+        colors = {k: c for k, _, c, _ in pens}
+        widths = {k: w for k, _, _, w in pens}
         write_svg(os.path.join(args.out, f"{name}.svg"), layers, colors, widths, dr.page)
         # the plotter's travel is landscape only: portrait sheets go in turned 90 degrees
         pw, ph = dr.page
-        if ph > pw:
-            def turn(ls):
-                return [[(y, pw - x) for x, y in l] for l in ls]
-            pen_page, pb, pr = (ph, pw), turn(black), turn(red)
-        else:
-            pen_page, pb, pr = dr.page, black, red
-        write_svg(os.path.join(args.out, f"{name}-pen1-black.svg"), {"black": pb}, colors, widths, pen_page)
-        if red:
-            write_svg(os.path.join(args.out, f"{name}-pen2-red.svg"), {"red": pr}, colors, widths, pen_page)
-        summary[name] = {"black": plot_stats(black), "red": plot_stats(red)}
+        turn = ph > pw
+        for key, suffix, _, _ in pens:
+            if key not in layers:
+                continue
+            ls = [[(y, pw - x) for x, y in l] for l in layers[key]] if turn else layers[key]
+            write_svg(os.path.join(args.out, f"{name}-{suffix}.svg"), {key: ls}, colors, widths,
+                      (ph, pw) if turn else dr.page)
+        summary[name] = {k: plot_stats(v) for k, v in layers.items()}
         print(name, json.dumps(summary[name]))
     with open(os.path.join(args.out, "stats.json"), "w") as f:
         json.dump(summary, f, indent=1)
