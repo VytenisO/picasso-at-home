@@ -87,7 +87,7 @@ class TestFlags(unittest.TestCase):
                             f'{lines}{dup}</svg>')
 
     def dry(self, *flags):
-        pv = self.tmp / f"pv{len(flags)}{'_'.join(flags)}.json".replace("-", "")
+        pv = self.tmp / f"pv_{len(list(self.tmp.glob('pv_*')))}.json"
         p = subprocess.run(PLOT + [str(self.svg), "--mode", "dry", "--preview-json", str(pv), *flags],
                            capture_output=True, text=True, timeout=120)
         self.assertTrue(pv.exists(), p.stdout + p.stderr)
@@ -113,6 +113,16 @@ class TestFlags(unittest.TestCase):
         p = subprocess.run(PLOT + [str(self.svg), "--mode", "dry", "--start-at", "25"], capture_output=True, text=True)
         self.assertNotEqual(p.returncode, 0)
         self.assertIn("has 21 strokes", p.stdout + p.stderr)
+
+    def test_passes_retrace_open_strokes(self):
+        lj = self.tmp / "layers.json"
+        lj.write_text(json.dumps([{"key": "#000000|", "passes": 3}]))
+        res, _ = self.dry("--optimize", "--layers", str(lj))
+        o, s = res["order"], res["strokes"]
+        self.assertEqual(len(o), 21 * 3)
+        self.assertEqual(s[o[1]]["pts"], s[o[0]]["pts"][::-1])     # back over it: no travel between passes
+        self.assertEqual(s[o[2]]["pts"], s[o[0]]["pts"])
+        self.assertAlmostEqual(res["summary"]["drawing_mm"], 3 * 21 * 80, delta=1)
 
     def test_optimized_plot_runs_in_sim(self):
         p = subprocess.run(PLOT + [str(self.svg), "--mode", "plot", "--sim", "--optimize", "--dedupe", "--start-at", "3"],

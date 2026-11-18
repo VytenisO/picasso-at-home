@@ -97,3 +97,71 @@ def test_photo_hatch_style():
         im.save(src)
         st = image_to_svg.convert(src, dst, width_mm=60, threshold=200, style="hatch", density=40)
         assert st["paths"] > 3 and dst.read_text().count("<path") == st["paths"]
+
+
+def test_contour_rings_are_offsets_of_the_shape():
+    rings = fill.contour_rings([SQUARE, HOLE], 2.0)
+    assert rings and all(r[0] == r[-1] for r in rings)
+    # every point of a ring is 1, 3, 5... mm from the nearest edge (square or hole)
+    def seg(p, a, b):
+        (px, py), (ax, ay), (bx, by) = p, a, b
+        u = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)))
+        return math.dist(p, (ax + u * (bx - ax), ay + u * (by - ay)))
+    edges = [(r[i], r[(i + 1) % len(r)]) for r in (SQUARE, HOLE) for i in range(len(r))]
+    for r in rings:
+        for p in r:
+            d = min(seg(p, a, b) for a, b in edges)
+            assert abs((d - 1.0) / 2.0 - round((d - 1.0) / 2.0)) < 0.1, (p, d)
+
+
+def test_hatch_one_direction():
+    lines = fill.hatch_rings([SQUARE], 2.0, 0, zigzag=False)
+    assert len(lines) == 10 and all(len(ln) == 2 and ln[0][0] < ln[1][0] for ln in lines)
+
+
+def write_json(d, name, data):
+    f = pathlib.Path(d) / name
+    f.write_text(json.dumps(data))
+    return f
+
+
+def test_plot_svg_fills_per_ink_passes_and_rank():
+    with tempfile.TemporaryDirectory() as d:
+        svg = pathlib.Path(d) / "f.svg"
+        svg.write_text(SVG)
+        r, pv = run_plot(svg)
+        inks = {i["key"]: i for i in pv["summary"]["fill_inks"]}
+        assert set(inks) == {"#000000|", "#cc3333|"} and inks["#cc3333|"]["shapes"] == 1
+        # the red shape as contour rings, the black one off: only red fill strokes appear
+        fills = write_json(d, "fills.json", {"#cc3333|": {"mode": "contour", "spacing": 1.5},
+                                             "#000000|": {"mode": "off"}})
+        r, pv = run_plot(svg, "--fills", str(fills))
+        assert r.returncode == 0, r.stdout + r.stderr
+        keys = [ly["key"] for ly in pv["summary"]["layers"]]
+        assert "#cc3333|" in keys
+        red = keys.index("#cc3333|")
+        assert sum(1 for s in pv["strokes"] if s["l"] == red) >= 4      # rings both sides of the hole
+        # hatch with cross: more strokes than without
+        h1 = write_json(d, "h1.json", {"#cc3333|": {"mode": "hatch", "spacing": 1.0, "angle": 0, "zigzag": False}})
+        h2 = write_json(d, "h2.json", {"#cc3333|": {"mode": "hatch", "spacing": 1.0, "angle": 0, "zigzag": False, "cross": True}})
+        n1 = len(run_plot(svg, "--fills", str(h1))[1]["strokes"])
+        n2 = len(run_plot(svg, "--fills", str(h2))[1]["strokes"])
+        assert n2 > n1 * 1.5
+        bad = write_json(d, "bad.json", {"#cc3333|": {"mode": "hatch", "spacing": 0.01}})
+        assert run_plot(svg, "--fills", str(bad))[0].returncode != 0
+        # passes and layer order: black (layer 0) drawn twice, red first
+        r, pv0 = run_plot(svg, "--fills", str(fills))
+        layers = [{"key": k} for k in keys]
+        layers[keys.index("#000000|")].update(passes=2, rank=5)
+        layers[red].update(rank=1, name="Red marker")
+        lj = write_json(d, "layers.json", layers)
+        r, pv = run_plot(svg, "--fills", str(fills), "--layers", str(lj))
+        assert r.returncode == 0, r.stdout + r.stderr
+        blacks0 = [i for i in pv0["order"] if pv0["strokes"][i]["l"] == keys.index("#000000|")]
+        order = pv["order"]
+        assert len(order) == len(pv0["order"]) + len(blacks0)
+        assert pv["strokes"][order[0]]["l"] == red
+        # each black stroke is followed by its second pass; these are closed, so the same way round
+        s = pv["strokes"]
+        k = next(n for n in range(len(order)) if s[order[n]]["l"] != red)
+        assert s[order[k + 1]]["pts"] == s[order[k]]["pts"]

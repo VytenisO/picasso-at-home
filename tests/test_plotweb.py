@@ -524,6 +524,30 @@ class TestDocument(SimServer):
         self.assertEqual(st["job"]["meta"]["start_at"], 5)
         self.assertEqual(st["job"]["progress"]["strokes"], len(d["order"]) - 5)
 
+    def test_04c_fill_inks_layer_modes_and_pen_memory(self):
+        fid = self.upload("filled.svg")
+        objs = [self.obj(fid, 80, 30, 60, 30)]
+        d = self.doc_preview(objs)
+        inks = {i["key"] for i in d["summary"]["fill_inks"]}
+        self.assertEqual(inks, {"#000000|", "#2463a6|"})
+        n0 = d["summary"]["strokes"]
+        fills = [{"key": "#2463a6|", "mode": "contour", "spacing": 1.0}, {"key": "#000000|", "mode": "hatch",
+                                                                          "spacing": 0.8, "angle": 0, "cross": True}]
+        d = self.doc_preview(objs, {"fills": fills, "layers": [{"key": "#000000|", "pen": "bic", "passes": 2,
+                                                                 "name": "Outline"}]})
+        self.assertTrue(d["ok"], d["problems"])
+        self.assertGreater(d["summary"]["strokes"], n0 + 10)      # rings and cross-hatch added
+        black = next(ly for ly in d["settings"]["layers"] if ly["key"] == "#000000|")
+        self.assertEqual((black["passes"], black["name"]), (2, "Outline"))
+        code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {
+            "fills": [{"key": "#2463a6|", "mode": "zigzag"}]}}})
+        self.assertEqual(code, 400)
+        # the colour remembers its pen: a new bed with black ink starts with the bic
+        fid2 = self.upload("two_layers.svg")
+        d = self.doc_preview([self.obj(fid2, 80, 30, 100, 60)])
+        black = next(ly for ly in d["settings"]["layers"] if ly["key"] == "#000000|")
+        self.assertEqual(black["pen"], "bic")
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

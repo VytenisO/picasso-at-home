@@ -169,7 +169,9 @@ class App:
         d = self.plan_dir / pid
         if not (d / "machine.json").exists():
             d.mkdir(exist_ok=True)
+            fills = {f["key"]: {k: x for k, x in f.items() if k != "key"} for f in v.get("fills") or []}
             for name, data in (("drawing.svg", svg_bytes), ("layers.json", json.dumps(v["layers"]).encode()),
+                               ("fills.json", json.dumps(fills).encode()),
                                ("machine.json", machine_bytes)):     # machine.json last: it marks the stage done
                 tmp = d / f".{name}.{secrets.token_hex(4)}"
                 tmp.write_bytes(data)
@@ -184,20 +186,24 @@ class App:
         data["file"] = e["id"]
         return data
 
-    def _doc_layers(self, svg_bytes, fill, fill_angle):
-        """Layer keys and layers of a composed document (one dry run per distinct document and fill)."""
-        memo = (hashlib.sha256(svg_bytes + planner_hash().encode()).hexdigest()[:20], fill, fill_angle)
+    def _doc_layers(self, svg_bytes, fill, fill_angle, fills=()):
+        """Layer keys and layers of a composed document (one dry run per distinct document and fill settings)."""
+        fills_json = json.dumps({f["key"]: {k: x for k, x in f.items() if k != "key"} for f in fills}, sort_keys=True)
+        memo = (hashlib.sha256(svg_bytes + planner_hash().encode()).hexdigest()[:20], fill, fill_angle, fills_json)
         hit = self._fill_layers.get(memo)
         if hit is None:
             req = self.plan_dir / f"docl_{secrets.token_hex(4)}"
             req.mkdir()
             try:
                 (req / "doc.svg").write_bytes(svg_bytes)
+                (req / "layers.json").write_text("[]")
+                (req / "fills.json").write_text(fills_json)
                 v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"],
                      "x": None, "y": None, "w": None, "paper": None, "layers": [], "absolute": True,
-                     "fill": fill, "fill_angle": fill_angle}
+                     "fill": fill, "fill_angle": fill_angle, "fills": list(fills)}
                 rc, out = plotjob.run_dry(plotjob.build_argv(self.s, req / "doc.svg", v, "dry", None,
-                                                             preview_json=req / "pv.json"))
+                                                             preview_json=req / "pv.json",
+                                                             layers_json=req / "layers.json"))
                 if not (req / "pv.json").exists():
                     tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
                     raise ApiError(400, "The bed cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"))
@@ -240,14 +246,42 @@ class App:
             svg_bytes = document.compose(objs, files, bed)
         except (document.DocError, ET.ParseError) as ex:
             raise ApiError(400, f"Could not put the drawings together: {ex}")
-        keys, layers = self._doc_layers(svg_bytes, fill, fill_angle)
         try:
-            v = plotjob.validate(dict(rs, x=None, y=None, w=None), bed, self.s.pens(), keys)
+            fills = plotjob.validate_fills(rs.get("fills"))
+        except plotjob.SettingsError as ex:
+            raise ApiError(400, str(ex))
+        keys, layers = self._doc_layers(svg_bytes, fill, fill_angle, fills)
+        # A layer seen for the first time takes the pen its colour had last time.
+        have = {ly.get("key") for ly in rs.get("layers") or [] if isinstance(ly, dict)}
+        pmap = self._pen_map()
+        pens = self.s.pens()
+        extra = [{"key": k, "pen": pmap[k.split("|")[0]]} for k in keys
+                 if k not in have and pmap.get(k.split("|")[0]) in pens]
+        try:
+            v = plotjob.validate(dict(rs, x=None, y=None, w=None, layers=list(rs.get("layers") or []) + extra), bed,
+                                 pens, keys)
         except plotjob.SettingsError as ex:
             raise ApiError(400, str(ex))
         v["absolute"] = True
         pid, d = self._stage(svg_bytes, machine_bytes, v)
         return v, objs, pid, layers, d
+
+    def _pen_map(self):
+        try:
+            m = json.loads((self.s.cache / "pen_map.json").read_text())
+            return m if isinstance(m, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _remember_pens(self, layers):
+        """Colour -> pen, from the layers of a checked plan: the next drawing in that colour starts with it."""
+        m = self._pen_map()
+        new = dict(m)
+        for ly in layers:
+            if ly.get("pen"):
+                new[ly["key"].split("|")[0]] = ly["pen"]
+        if new != m:
+            (self.s.cache / "pen_map.json").write_text(json.dumps(new, indent=1))
 
     def preview_doc(self, body):
         raw = body["doc"]
@@ -258,6 +292,7 @@ class App:
             raise ApiError(400, str(ex))
         v, objs, pid, layers, plan = self._resolve_doc(raw)
         ok, problems, pv, out = self._dry(plan, v, None)
+        self._remember_pens(v["layers"])
         with self.plans_lock:
             self.plans[pid] = {"file": None, "doc": True, "ok": ok, "created": time.time()}
             for k in [k for k, p in self.plans.items() if time.time() - p["created"] > 24 * 3600]:
@@ -702,7 +737,7 @@ def _thin(strokes):
 
 def _public_summary(sm):
     keep = ("strokes", "points", "est_seconds", "bbox_machine_mm", "paper_mm", "canvas_mm", "layers", "swaps",
-            "optimized", "file_order", "duplicates_dropped", "start_at", "total_in_order",
+            "optimized", "file_order", "duplicates_dropped", "start_at", "total_in_order", "fill_inks",
             "drawing_mm", "travel_mm", "lifts", "doc_mm", "scale", "start_mm", "speed", "travel_speed", "problems")
     return {k: sm.get(k) for k in keep}
 

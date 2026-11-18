@@ -43,7 +43,7 @@ niche.
    and start from stroke N.
 4. **Machine panel** (done 2026-11-18, simulator only). Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
    a calibration wizard. Then a pen and paper library editor.
-5. **Layer modes.** Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
+5. **Layer modes** (done 2026-11-18). Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
 6. **Canvas QoL.** Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
    selection bounds.
@@ -102,7 +102,7 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Upload by picker or drag-and-drop (12 MB) | HAVE | | `library.js` |
-| SVG import (text outlined, fills ignored) | PART | P1 | fills ignored, see section 9 |
+| SVG import (text outlined, fills ignored) | HAVE | | fills become lines: the job default hatch or each colour's own mode |
 | Raster image import (png, jpg, webp, bmp, gif, tif) | HAVE | | converted on upload |
 | 3D mesh import (stl, obj) as hidden-line wireframe | HAVE | | `mesh_to_svg.py` |
 | PDF import | TODO | P2 | vector pages |
@@ -233,17 +233,17 @@ niche.
 | Per layer: enable, pen profile, speed, pressure | HAVE | | |
 | Pen-swap pause between layers naming the pen | HAVE | | |
 | Show/hide a layer in the view without dropping it from the plot | TODO | P2 | today "enabled" does both |
-| Reorder layers (pen order) | TODO | P1 | |
-| Rename, recolour layers | TODO | P2 | |
+| Reorder layers (pen order) | HAVE | | Layers: arrows change the pen order; pen changes follow it |
+| Rename, recolour layers | PART | P3 | rename (shown at the pen change and in Run); no recolour |
 | Move objects to another layer (colour palette) | TODO | P1 | |
 | Merge layers that share a pen (one swap fewer) | TODO | P2 | |
-| Import colour -> pen mapping rules (remembered) | TODO | P1 | |
+| Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
 | Non-plotting guide layer | TODO | P2 | paper outline, guides, text paths |
-| Passes per layer (repeat strokes) | TODO | P1 | darker lines |
+| Passes per layer (repeat strokes) | HAVE | | 1 to 5; each stroke again right away, an open one back over itself |
 | Pressure step per pass | TODO | P3 | brush and felt tips |
 | Layer mode: line | HAVE | | the only mode today |
-| Layer mode: hatch fill (angle, spacing in mm, crosshatch, back-and-forth or one direction) | TODO | P1 | fills in SVGs are ignored today; hatch code exists in `fill_test.py` and `image_to_svg.py` |
-| Layer mode: contour fill (inward offsets, spacing) | TODO | P1 | "rings" exists in `fill_test.py` |
+| Layer mode: hatch fill (angle, spacing in mm, crosshatch, back-and-forth or one direction) | HAVE | | Layers, Filled shapes: per fill colour; spacing exact (the job default still scales by darkness) |
+| Layer mode: contour fill (inward offsets, spacing) | HAVE | | `fill.contour_rings`: exact distance transform on a capped grid, then marching squares; stdlib only |
 | Fill grouping: all shapes together / per group / per shape | TODO | P2 | travel and pen lifts |
 | Hatch overscan (start/end outside, clipped) | TODO | P3 | hides blobs at hatch ends |
 | Skip empty gaps in fills without lifting | TODO | P3 | |

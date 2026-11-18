@@ -36,7 +36,7 @@ export function layerInk(pv, l, layers, pens, css) {
   const pen = set.pen && pens ? pens[set.pen] : null;
   const hex = (pen && pen.colour_hex) || ly.color;
   return { color: readable(hex, css), raw: hex || '#111111', width: (pen && Number(pen.width_mm)) || DEFAULT_WIDTH_MM,
-    off: set.enabled === false, pen: set.pen || null, name: ly.name || `Layer ${l + 1}` };
+    off: set.enabled === false, pen: set.pen || null, name: set.name || ly.title || ly.name || `Layer ${l + 1}` };
 }
 
 export const inkMode = () => prefs('ink') !== false;

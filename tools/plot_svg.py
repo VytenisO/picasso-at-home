@@ -807,7 +807,9 @@ def main():
     ap.add_argument("--control", action="store_true", help="read CONTINUE/PAUSE/STOP/RETURN from stdin (web UI)")
     ap.add_argument("--sim-speed", type=float, help="with --sim: also run in real time at this speed factor")
     ap.add_argument("--preview-json", help="dry run: write the plotted strokes (machine mm) and summary here")
-    ap.add_argument("--layers", help="JSON file: per ink layer settings (enabled, speed, pressure, pen)")
+    ap.add_argument("--layers", help="JSON file: per ink layer settings (enabled, speed, pressure, pen, passes, rank, name)")
+    ap.add_argument("--fills", help="JSON file: {fill ink key: {mode: hatch|contour|off, spacing, angle, cross, "
+                                    "zigzag}}; inks without an entry follow --fill")
     ap.add_argument("--optimize", action="store_true",
                     help="less pen-up travel: within each pen, draw the nearest stroke next, reversing open strokes "
                          "and starting closed ones at the nearest point")
@@ -895,20 +897,52 @@ def main():
                   (ry1 - ry0) / max(1e-9, (raw[3] - raw[1]) * base_scale))
         scale = base_scale * fit   # fit the whole drawing into the chosen region
     strokes, metas = prepare(polys, metas, a.simplify, a.join, scale, 0.0, 0.0)
-    if a.fill and fills:
+    fills_cfg = {}
+    if a.fills:
+        fills_cfg = json.loads(pathlib.Path(a.fills).read_text())
+        if not isinstance(fills_cfg, dict):
+            sys.exit("--fills must be a JSON object")
+        for k, fc in fills_cfg.items():
+            if not isinstance(fc, dict) or fc.get("mode") not in ("hatch", "contour", "off"):
+                sys.exit(f"--fills {k}: mode must be hatch, contour or off")
+            if fc["mode"] != "off" and not 0.2 <= float(fc.get("spacing") or 0) <= 50:
+                sys.exit(f"--fills {k}: spacing must be 0.2..50 mm")
+    fill_inks = {}
+    for f in fills:
+        k = layer_key((f["color"], f["layer"]))
+        fill_inks.setdefault(k, {"key": k, "color": f["color"], "label": f["layer"], "shapes": 0})["shapes"] += 1
+    if fills and (a.fill or fills_cfg):
         fpolys, fmetas = [], []
         for f in fills:
             rings = [[(x * scale, y * scale) for x, y in r] for r in f["rings"]]
-            dark = fillmod.darkness(fillmod.color_luminance(f["color"]), f["opacity"])
+            fc = fills_cfg.get(layer_key((f["color"], f["layer"])))
             try:
-                lines = fillmod.fill_shape(rings, a.fill, dark, a.fill_angle, f["rule"])
+                if fc:
+                    # this ink's own fill: exactly the spacing given, whatever the colour's darkness
+                    sp, ang = float(fc.get("spacing") or 0), float(fc.get("angle", 45.0))
+                    if fc["mode"] == "off":
+                        lines = []
+                    elif fc["mode"] == "contour":
+                        lines = fillmod.contour_rings(rings, sp, f["rule"])
+                    else:
+                        zz = fc.get("zigzag", True) is not False
+                        lines = fillmod.hatch_rings(rings, sp, ang, f["rule"], zigzag=zz)
+                        if fc.get("cross"):
+                            lines += fillmod.hatch_rings(rings, sp, ang + 90.0, f["rule"], zigzag=zz)
+                elif a.fill:
+                    dark = fillmod.darkness(fillmod.color_luminance(f["color"]), f["opacity"])
+                    lines = fillmod.fill_shape(rings, a.fill, dark, a.fill_angle, f["rule"])
+                else:
+                    lines = []
             except ValueError as ex:
                 sys.exit(str(ex))
             for ln in lines:
                 fpolys.append(ln)
                 fmetas.append({"color": f["color"], "layer": f["layer"], "pressure": f["pressure"]})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
-        log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} hatch strokes at {a.fill} mm, {a.fill_angle:g} deg")
+        log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
+            + (f" (default hatch {a.fill} mm, {a.fill_angle:g} deg)" if a.fill else "")
+            + (f", {len(fills_cfg)} ink(s) set on their own" if fills_cfg else ""))
         for m in fmetas:
             m["fill"] = True
         strokes, metas = strokes + fstrokes, metas + fmetas      # inks keep the order of the outlines; fills are drawn first within an ink
@@ -939,9 +973,20 @@ def main():
             if want is not None and want != layer_key(groups[gi][0]):
                 sys.exit(f"layer {gi + 1}: settings are for {want!r} but this layer is {layer_key(groups[gi][0])!r}; "
                          "re-run the preview")
+            passes = ent.get("passes") or 1
+            if not isinstance(passes, int) or not 1 <= passes <= 5:
+                sys.exit(f"layer {gi + 1}: passes must be 1..5")
+            rank = ent.get("rank")
+            rank = gi if rank is None else rank
+            if not isinstance(rank, (int, float)) or isinstance(rank, bool):
+                sys.exit(f"layer {gi + 1}: rank must be a number")
+            nm = ent.get("name")
+            if nm is not None and (not isinstance(nm, str) or len(nm) > 40):
+                sys.exit(f"layer {gi + 1}: name must be short text")
             lset[gi] = {"enabled": ent.get("enabled", True) is not False,
                         "speed": float(sp_l) if sp_l is not None else None,
-                        "pressure": float(pr_l) if pr_l is not None else None, "pen": pen_l}
+                        "pressure": float(pr_l) if pr_l is not None else None, "pen": pen_l,
+                        "passes": passes, "rank": rank, "name": nm}
             for i in groups[gi][1]:
                 if lset[gi]["pressure"] is not None and metas[i].get("pressure") is None:
                     metas[i]["pressure"] = lset[gi]["pressure"]   # layer default; per-stroke data-pressure wins
@@ -985,7 +1030,10 @@ def main():
     by_layer = a.mode in ("plot", "dry") and len(groups) > 1
     order = [i for _, idxs in groups for i in idxs] if by_layer else list(range(len(strokes)))
     order = [i for i in order if lset[stroke_group[i]].get("enabled", True)]
-    order.sort(key=lambda i: (stroke_group[i] if by_layer else 0, not metas[i].get("fill")))   # stable: fill, then outline
+    # Layers plot in their rank order (the operator can reorder pens); within a layer fills come before outlines.
+    rank_of = [lset[gi].get("rank", gi) for gi in range(len(groups))]
+    order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0),
+                              not metas[i].get("fill")))
     speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     pen_s = a.pen_delay / 1000 + 0.15
     file_order = None
@@ -1004,6 +1052,21 @@ def main():
             o, cur = pathplan.order_block(strokes, idxs, cur)
             order += o
         file_order = {"travel_mm": t_file, "est_seconds": s_file}
+    if any((ls.get("passes") or 1) > 1 for ls in lset):
+        # Passes: each stroke is drawn again right away, an open one back over itself (no travel), so the
+        # extra passes are new strokes after the original in the order.
+        expanded = []
+        for i in order:
+            expanded.append(i)
+            for k in range(1, lset[stroke_group[i]].get("passes") or 1):
+                s = strokes[i]
+                closed = len(s) > 2 and math.dist(s[0], s[-1]) < 0.1
+                strokes.append(list(s) if closed or k % 2 == 0 else s[::-1])
+                metas.append(dict(metas[i]))
+                stroke_group[len(strokes) - 1] = stroke_group[i]
+                speed_of.append(speed_of[i])
+                expanded.append(len(strokes) - 1)
+        order = expanded
     total_in_order = len(order)
     if a.start_at:
         if not 0 < a.start_at < len(order):
@@ -1078,13 +1141,14 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                "on_paper": on_paper, "anchor": a.anchor,
                "layers": [{"key": layer_key(k), "color": k[0], "label": k[1], "name": color_label(k), "strokes": len(ix),
                            "enabled": lset[gi].get("enabled", True), "speed": lset[gi].get("speed") or a.speed,
-                           "pressure": lset[gi].get("pressure"), "pen": lset[gi].get("pen")}
+                           "pressure": lset[gi].get("pressure"), "pen": lset[gi].get("pen"),
+                           "title": lset[gi].get("name"), "passes": lset[gi].get("passes") or 1, "rank": rank_of[gi]}
                           for gi, (k, ix) in enumerate(groups)],
                "swaps": max(0, sum(1 for ls in lset if ls.get("enabled", True)) - 1),
                "drawing_mm": dd, "travel_mm": dt, "lifts": lifts, "doc_mm": [w_mm, h_mm], "scale": scale,
                "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed,
                "optimized": bool(file_order), "file_order": file_order, "duplicates_dropped": n_dup,
-               "start_at": a.start_at, "total_in_order": total_in_order}
+               "start_at": a.start_at, "total_in_order": total_in_order, "fill_inks": list(fill_inks.values())}
     summary["args"] = {k: v for k, v in vars(a).items() if k != "ctl"}
 
     if a.mode == "dry":
@@ -1170,7 +1234,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 gi = stroke_group[i]
                 if gi != cur_layer:
                     key = groups[gi][0]
-                    info = {"index": gi, "label": color_label(key), "color": key[0], "pen": lset[gi].get("pen"),
+                    info = {"index": gi, "label": lset[gi].get("name") or color_label(key), "color": key[0], "pen": lset[gi].get("pen"),
                             "speed": speed_of[i], "pressure": lset[gi].get("pressure"), "strokes": len(groups[gi][1])}
                     if cur_layer is not None and by_layer:
                         if not pause_for_swap(key, a, ctl, {"layer_index": gi, "pen": lset[gi].get("pen")}):

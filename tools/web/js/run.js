@@ -184,7 +184,7 @@ function renderRun() {
   } else { ps.className = 'note ok'; ps.textContent = 'Plan checked. Ready to plot.'; }
   if (pv && pv.summary) {
     const s = pv.summary, b = s.bbox_machine_mm;
-    const enabled = s.layers.filter((l) => l.enabled !== false);
+    const enabled = s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
     const fo = s.optimized && !s.start_at ? s.file_order : null;
     const rows = [
       ['Size', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])})`],
@@ -192,7 +192,7 @@ function renderRun() {
       ['Pen up', `${mm(s.travel_mm / 1000, 2)} m` + (fo ? ` (${mm(fo.travel_mm / 1000, 2)} m in file order)` : '') + `, ${s.lifts} lifts`],
       ['Strokes', `${s.start_at ? `${s.total_in_order - s.start_at} of ${s.total_in_order}` : s.strokes}, ${mm(s.drawing_mm / 1000, 2)} m of line` +
         (s.duplicates_dropped ? `; ${s.duplicates_dropped} repeated stroke${s.duplicates_dropped > 1 ? 's' : ''} skipped` : '')],
-      ['Layers', enabled.map((l) => l.name + (l.pen ? ` (${l.pen})` : '')).join(', ') + (s.swaps ? `; ${s.swaps} pen change${s.swaps > 1 ? 's' : ''}` : '')],
+      ['Layers', enabled.map((l) => (l.title || l.name) + (l.pen ? ` (${l.pen})` : '') + (l.passes > 1 ? ` x${l.passes}` : '')).join(', ') + (s.swaps ? `; ${s.swaps} pen change${s.swaps > 1 ? 's' : ''}` : '')],
       ['Speeds', `${s.speed} mm/s drawing, ${s.travel_speed} mm/s pen up`],
     ];
     kv.replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
@@ -245,7 +245,7 @@ async function start(mode) {
 function confirmStart(mode, pv) {
   return new Promise((resolve) => {
     const m = state.me.machine, s = pv.summary;
-    const first = s.layers.find((l) => l.enabled !== false);
+    const first = s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))[0];
     const title = mode === 'trace' ? 'Trace the frame (pen up)' : `Start plot${state.me.sim ? ' (simulator)' : ''}`;
     const b = s.bbox_machine_mm;
     const objs = state.doc.objects;
@@ -253,7 +253,7 @@ function confirmStart(mode, pv) {
       ['Area', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])}) mm`]];
     if (mode === 'plot') {
       rows.push(['Time', `about ${fmtTime(s.est_seconds)}`]);
-      rows.push(['Pens', s.layers.filter((l) => l.enabled !== false).map((l, i) => `${i + 1}. ${l.name}: ${l.pen || 'pen not set'}, ${l.speed} mm/s` +
+      rows.push(['Pens', s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)).map((l, i) => `${i + 1}. ${l.title || l.name}: ${l.pen || 'pen not set'}, ${l.speed} mm/s` +
         (l.pressure !== null && l.pressure !== undefined ? `, pressure ${l.pressure}` : '')).join('; ')]);
       if (s.swaps) rows.push(['Pen changes', `${s.swaps}: the plot pauses and asks for each one`]);
     } else rows.push(['Moves', 'Pen up around the drawing\'s frame and back to S. Nothing is drawn.']);

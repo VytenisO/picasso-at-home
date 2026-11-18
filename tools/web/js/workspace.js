@@ -206,32 +206,50 @@ function fromJobForm(e) {
 }
 
 // ------------------------------------------------------------------ layers
+// One card per ink layer, in plot order: name, pen, speed, pressure, passes, on/off, and arrows to change the pen
+// order. Below them, the filled shapes per fill colour: job default, hatch, contour rings or off.
+function layerRows() {
+  const pv = state.preview;
+  const fileLayers = (pv && pv.file_layers) || [];
+  const st = state.doc.settings;
+  const rows = fileLayers.map((fl, i) => ({ fl, i, s: (st.layers || []).find((x) => x.key === fl.key) || { key: fl.key, enabled: true } }));
+  const rank = (r) => (r.s.rank === null || r.s.rank === undefined ? r.i : r.s.rank);
+  return rows.sort((a, b) => rank(a) - rank(b) || a.i - b.i);
+}
+
 function renderLayers() {
   const list = $('layerList');
   const pv = state.preview;
   const fileLayers = (pv && pv.file_layers) || [];
   $('layerEmpty').hidden = fileLayers.length > 0;
   $('layerEmpty').textContent = state.doc && state.doc.objects.length ? 'Checking the layers...' : 'Add a drawing to see its layers.';
+  if (list.contains(document.activeElement) || $('fillList').contains(document.activeElement)) return;
+  renderFills();
   if (!fileLayers.length) { list.replaceChildren(); return; }
-  if (list.contains(document.activeElement)) return;       // do not rebuild under the operator's cursor
-  const st = state.doc.settings;
   const L = state.me.limits;
   const pens = state.me.pens || {};
   const locked = jobActive();
-  list.replaceChildren(...fileLayers.map((fl, i) => {
-    const s = (st.layers || []).find((x) => x.key === fl.key) || { key: fl.key, enabled: true };
-    const upd = (patch) => {
-      D.edit((d) => {
-        const cur = d.settings.layers || [];
-        d.settings.layers = fileLayers.map((x) => ({ ...(cur.find((y) => y.key === x.key) || { key: x.key, enabled: true, pen: null, speed: null, pressure: null }) }));
-        Object.assign(d.settings.layers[i], patch);
-      });
-    };
-    const pen = el('select', { 'aria-label': `Pen for layer ${i + 1}`, disabled: locked, onchange: (e) => {
+  const rows = layerRows();
+  // every change rewrites the whole list, in plot order, so ranks stay 0..n-1
+  const upd = (key, patch, coalesce) => D.edit((d) => {
+    const cur = d.settings.layers || [];
+    d.settings.layers = rows.map((r, n) => ({ ...(cur.find((y) => y.key === r.fl.key) || { key: r.fl.key, enabled: true, pen: null, speed: null, pressure: null }), rank: n }));
+    Object.assign(d.settings.layers.find((x) => x.key === key), patch);
+  }, { coalesce });
+  const move = (n, dir) => D.edit((d) => {
+    const cur = d.settings.layers || [];
+    const order = rows.map((r) => r.fl.key);
+    const j = n + dir;
+    if (j < 0 || j >= order.length) return false;
+    [order[n], order[j]] = [order[j], order[n]];
+    d.settings.layers = order.map((k, r) => ({ ...(cur.find((y) => y.key === k) || { key: k, enabled: true, pen: null, speed: null, pressure: null }), rank: r }));
+  });
+  list.replaceChildren(...rows.map(({ fl, s }, n) => {
+    const pen = el('select', { 'aria-label': `Pen for layer ${n + 1}`, disabled: locked, onchange: (e) => {
       const p = pens[e.target.value] || {};
-      upd({ pen: e.target.value || null, ...(p.speed ? { speed: p.speed } : {}), ...(p.pressure !== undefined ? { pressure: p.pressure } : {}) });
+      upd(fl.key, { pen: e.target.value || null, ...(p.speed ? { speed: p.speed } : {}), ...(p.pressure !== undefined ? { pressure: p.pressure } : {}) });
     } }, el('option', { value: '', text: 'Pen: not set' }),
-      Object.entries(pens).map(([n, p]) => el('option', { value: n, text: p.colour ? `${n} (${p.colour})` : n })));
+      Object.entries(pens).map(([nm, p]) => el('option', { value: nm, text: p.colour ? `${nm} (${p.colour})` : nm })));
     pen.value = s.pen || '';
     const num = (key, lim, ph, label) => {
       const i2 = el('input', { type: 'number', min: lim.min, max: lim.max, step: key === 'pressure' ? 0.05 : 1,
@@ -242,21 +260,90 @@ function renderLayers() {
         if (v !== null && (v < lim.min || v > lim.max)) {
           toast(`${label} must be between ${lim.min} and ${lim.max}.`, true); i2.value = s[key] ?? ''; return;
         }
-        upd({ [key]: v });
+        upd(fl.key, { [key]: v });
       };
       return el('label', { class: 'field' }, el('span', { text: label }), i2);
     };
-    const on_ = el('input', { type: 'checkbox', disabled: locked, 'aria-label': `Plot layer ${i + 1}` });
+    const passes = el('select', { 'aria-label': `Passes for layer ${n + 1}`, disabled: locked,
+      title: 'Draw every stroke this many times (darker lines). An open stroke is drawn back over itself.',
+      onchange: (e) => upd(fl.key, { passes: Number(e.target.value) }) },
+    [1, 2, 3, 4, 5].map((k) => el('option', { value: k, text: k === 1 ? '1 pass' : `${k} passes` })));
+    passes.value = String(s.passes || 1);
+    const on_ = el('input', { type: 'checkbox', disabled: locked, 'aria-label': `Plot layer ${n + 1}` });
     on_.checked = s.enabled !== false;
-    on_.onchange = () => upd({ enabled: on_.checked });
+    on_.onchange = () => upd(fl.key, { enabled: on_.checked });
     const swatch = el('span', { class: 'swatch' });
     swatch.style.background = fl.color || '#888';
+    const name = el('input', { class: 'layer-name', maxlength: 40, placeholder: fl.name, 'aria-label': `Name of layer ${n + 1}`,
+      disabled: locked, title: 'A name for this layer (shown at the pen change)' });
+    name.value = s.name || '';
+    name.onchange = () => upd(fl.key, { name: name.value.trim() || null }, 'name-' + fl.key);
+    const arrow = (dir, txt, title) => el('button', { class: 'icon', type: 'button', text: txt, title, disabled: locked || n + dir < 0 || n + dir >= rows.length,
+      onclick: () => move(n, dir) });
     return el('div', { class: 'layer' + (s.enabled === false ? ' off' : '') },
-      el('div', { class: 'layer-head' }, on_, swatch, el('b', { text: `${i + 1}. ${fl.name}` }),
-        el('span', { class: 'spacer' }), el('small', { text: `${fl.strokes} strokes` })),
+      el('div', { class: 'layer-head' }, on_, swatch, el('b', { text: `${n + 1}.` }), name,
+        arrow(-1, '▲', 'Plot this pen earlier'), arrow(1, '▼', 'Plot this pen later')),
       el('div', { class: 'layer-grid' }, el('label', { class: 'field' }, el('span', { text: 'Pen' }), pen),
-        num('speed', L.speed, String(st.speed ?? L.speed.default), 'Speed (mm/s)'),
-        num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')));
+        num('speed', L.speed, String(state.doc.settings.speed ?? L.speed.default), 'Speed (mm/s)'),
+        num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')),
+      el('div', { class: 'layer-foot' }, passes, el('small', { class: 'muted', text: `${fl.strokes} strokes` })));
+  }));
+}
+
+function renderFills() {
+  const box = $('fillList');
+  const pv = state.preview;
+  const inks = (pv && pv.summary && pv.summary.fill_inks) || [];
+  $('fillSection').hidden = !inks.length;
+  if (!inks.length) { box.replaceChildren(); return; }
+  const locked = jobActive();
+  const st = state.doc.settings;
+  const cur = (key) => (st.fills || []).find((f) => f.key === key) || { key, mode: 'default' };
+  const upd = (key, patch) => D.edit((d) => {
+    const all = (d.settings.fills || []).filter((f) => f.key !== key);
+    const f = { ...cur(key), ...patch };
+    if (f.mode !== 'default') all.push(f);
+    d.settings.fills = all;
+  });
+  const deflt = st.fill ? `job default: hatch ${st.fill} mm` : 'job default: not filled';
+  box.replaceChildren(...inks.map((ink) => {
+    const f = cur(ink.key);
+    const sw = el('span', { class: 'swatch' });
+    sw.style.background = ink.color;
+    const mode = el('select', { 'aria-label': `Fill for ${ink.color}`, disabled: locked, onchange: (e) => {
+      const m = e.target.value;
+      upd(ink.key, m === 'hatch' || m === 'contour' ? { mode: m, spacing: f.spacing || 1, angle: f.angle ?? 45 } : { mode: m });
+    } }, el('option', { value: 'default', text: deflt }), el('option', { value: 'hatch', text: 'Hatch' }),
+      el('option', { value: 'contour', text: 'Contour rings' }), el('option', { value: 'off', text: 'Outline only' }));
+    mode.value = f.mode || 'default';
+    const parts = [el('div', { class: 'layer-head' }, sw, el('b', { text: ink.color }), el('span', { class: 'spacer' }),
+      el('small', { class: 'muted', text: `${ink.shapes} shape${ink.shapes === 1 ? '' : 's'}` })), mode];
+    if (f.mode === 'hatch' || f.mode === 'contour') {
+      const n = (k, label, min, max, step, dv) => {
+        const i = el('input', { type: 'number', min, max, step, disabled: locked, 'aria-label': label });
+        i.value = f[k] ?? dv;
+        i.onchange = () => {
+          const v = Number(i.value);
+          if (!(v >= min && v <= max)) { toast(`${label}: ${min} to ${max}.`, true); i.value = f[k] ?? dv; return; }
+          upd(ink.key, { [k]: v });
+        };
+        return el('label', { class: 'field' }, el('span', { text: label }), i);
+      };
+      const row = [n('spacing', 'Spacing (mm)', 0.2, 50, 0.1, 1)];
+      if (f.mode === 'hatch') row.push(n('angle', 'Angle (deg)', 0, 180, 5, 45));
+      parts.push(el('div', { class: 'field-row' }, ...row));
+      if (f.mode === 'hatch') {
+        const chk = (k, label, title, dv) => {
+          const c = el('input', { type: 'checkbox', disabled: locked });
+          c.checked = f[k] === undefined ? dv : !!f[k];
+          c.onchange = () => upd(ink.key, { [k]: c.checked });
+          return el('label', { class: 'check inline', title }, c, ' ', label);
+        };
+        parts.push(el('div', { class: 'row' }, chk('cross', 'Cross-hatch', 'A second pass at right angles', false),
+          chk('zigzag', 'Back and forth', 'Join the lines into zigzags (fewer pen lifts). Off: every line the same way.', true)));
+      }
+    }
+    return el('div', { class: 'layer fill-ink' }, ...parts);
   }));
 }
 

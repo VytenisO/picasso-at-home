@@ -212,7 +212,7 @@ class DocStore:
         objs = clean_objects(objects, known)
         st = settings if isinstance(settings, dict) else {}
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
-                                       "dedupe")}
+                                       "dedupe", "fills")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

@@ -73,6 +73,10 @@ takes the new proportions instead of stretching it.
   A preview returns a `bed_key` (hash of the objects and settings without the resume point) and a plot job keeps it
   with its `start_at`: after a stopped plot, Run offers to resume only on the same bed. The scrubber under the bed
   toolbar walks through the plan order (Play, Travel, Start here).
+- **Layers** are listed in plot order with a name, pen, speed, pressure and passes, and arrows to change the pen
+  order. **Filled shapes** lists each fill colour with its mode (job default, hatch with spacing, angle,
+  cross-hatch and back-and-forth, contour rings, or outline only); `fills` is part of the job settings. A layer
+  seen for the first time takes the pen its colour had last time (`results/web/pen_map.json`).
 - **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
   (undoable); drawings no longer in the library are left out with a note.
 - **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
@@ -159,8 +163,9 @@ stay in the top bar on every tab. Prepare on a phone stacks the preview, the rec
 | `--optimize` | Less pen-up travel (`pathplan.py`): within each pen and each fill/outline run, the nearest stroke next; open strokes may be reversed, closed ones start at the nearest vertex. Pen changes stay where they are. The summary keeps the file-order travel and time for the readout. On by default in the UI. |
 | `--dedupe` | Skip strokes that exactly repeat an earlier one of the same ink and pressure (any direction, any start on a closed path). |
 | `--start-at N` | Skip the first N strokes of the final plot order: resume a stopped plot. The summary says where it starts and the whole count. |
+| `--fills FILE` | Per fill colour `{mode: hatch|contour|off, spacing, angle, cross, zigzag}`; colours without an entry follow `--fill`. Hatch spacing is exact here (the `--fill` default scales by darkness). The summary lists every fill colour (`fill_inks`) so the UI can offer them before any is filled. |
 | `--absolute` | The SVG's own millimetres are machine millimetres: no anchoring to the canvas, `--x0/--y0/--width` ignored. The bed document is planned this way. |
-| `--layers FILE` | Per ink layer `{key, enabled, speed, pressure, pen}`, in layer order; `key` must match. Same ceilings. Layer pressure is the default for strokes without their own `data-pressure`. Disabled layers are dropped after placement, so the others do not move. |
+| `--layers FILE` | Per ink layer `{key, enabled, speed, pressure, pen, passes, rank, name}` (passes 1..5: each stroke again at once, an open one back over itself; rank: pen order), in layer order; `key` must match. Same ceilings. Layer pressure is the default for strokes without their own `data-pressure`. Disabled layers are dropped after placement, so the others do not move. |
 | markers under `--track` | `__PROGRESS__`, `__LAYER__`, `__PAUSE__` (`kind: swap|operator`), `__RESUMED__`, `__RESULT__`. |
 
 Also changed (safety, independent of the UI): the far-edge check uses the physical travel on its own (before, a

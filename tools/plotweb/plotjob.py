@@ -11,6 +11,7 @@ settings. Starting a run requires the plan id the operator previewed; any change
 import hashlib
 import json
 import math
+import pathlib
 import re
 import subprocess
 
@@ -80,17 +81,53 @@ def validate(raw, bed, pens, layer_keys):
         if pen is not None and pen not in pens:
             raise SettingsError(f"layer {i + 1}: unknown pen {pen!r}; known pens: {', '.join(sorted(pens)) or 'none'}")
         pr = LIMITS["pressure"]
+        passes = ent.get("passes") or 1
+        if not isinstance(passes, int) or isinstance(passes, bool) or not 1 <= passes <= 5:
+            raise SettingsError(f"layer {i + 1}: passes must be 1 to 5")
+        name = ent.get("name") or None
+        if name is not None and (not isinstance(name, str) or len(name) > 40):
+            raise SettingsError(f"layer {i + 1}: the name must be text of at most 40 characters")
+        rank = ent.get("rank")
+        if rank is not None and (not isinstance(rank, (int, float)) or isinstance(rank, bool) or not math.isfinite(rank)):
+            raise SettingsError(f"layer {i + 1}: rank must be a number")
         by_key[ent["key"]] = {
             "key": ent["key"], "enabled": ent.get("enabled", True) is not False, "pen": pen,
             "speed": _num(ent, "speed", sp["min"], sp["max"], label=f"Layer {i + 1} speed"),
             "pressure": _num(ent, "pressure", pr["min"], pr["max"], label=f"Layer {i + 1} pressure"),
+            "passes": passes, "name": name, "rank": rank,
         }
     # Ordered like the drawing's layers; settings for layers the file does not have are dropped.
-    out["layers"] = [by_key.get(k) or {"key": k, "enabled": True, "pen": None, "speed": None, "pressure": None}
-                     for k in layer_keys]
+    out["layers"] = [by_key.get(k) or {"key": k, "enabled": True, "pen": None, "speed": None, "pressure": None,
+                                       "passes": 1, "name": None, "rank": None} for k in layer_keys]
+    out["fills"] = validate_fills(raw.get("fills"))
     if layer_keys and not any(ls["enabled"] for ls in out["layers"]):
         raise SettingsError("Every layer is switched off, so there is nothing to plot.")
     return out
+
+
+def validate_fills(raw):
+    """Per fill-ink settings: [{key, mode: hatch|contour|off, spacing, angle, cross, zigzag}], sorted by key."""
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list) or len(raw) > 64:
+        raise SettingsError("fills must be a list")
+    out = {}
+    for i, f in enumerate(raw):
+        if not isinstance(f, dict) or not isinstance(f.get("key"), str) or len(f["key"]) > 80:
+            raise SettingsError(f"fill {i + 1}: missing key")
+        mode = f.get("mode")
+        if mode in (None, "", "default"):
+            continue
+        if mode not in ("hatch", "contour", "off"):
+            raise SettingsError(f"fill {i + 1}: mode must be hatch, contour or off")
+        e = {"key": f["key"], "mode": mode}
+        if mode != "off":
+            e["spacing"] = _num(f, "spacing", 0.2, 50, 1.0, False, f"Fill {i + 1} spacing")
+            e["angle"] = _num(f, "angle", 0, 180, 45.0, False, f"Fill {i + 1} angle")
+            e["cross"] = f.get("cross") is True
+            e["zigzag"] = f.get("zigzag", True) is not False
+        out[f["key"]] = e
+    return [out[k] for k in sorted(out)]
 
 
 def canvas_of(bed, paper=None):
@@ -148,6 +185,9 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]
     if layers_json:
         argv += ["--layers", str(layers_json)]
+        fj = pathlib.Path(layers_json).with_name("fills.json")
+        if v.get("fills") and fj.exists():
+            argv += ["--fills", str(fj)]
     if preview_json:
         argv += ["--preview-json", str(preview_json)]
     if mode != "dry":
