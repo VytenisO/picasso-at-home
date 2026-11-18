@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <script type="module" src="/js/app.js"></script>
 </head>
-<body data-view="bed">
+<body data-view="bed" data-ws="plot">
 
 <div id="loginView" class="login" hidden>
   <h2>Pen plotter</h2>
@@ -25,6 +25,10 @@
 <div id="appView" hidden>
 <header class="topbar">
   <span class="brand">Pen plotter</span>
+  <nav class="ws-switch" role="tablist" aria-label="Workspace">
+    <button role="tab" id="wsBtn-prepare" data-ws="prepare" aria-selected="false" title="Turn an image, model or text into a drawing (1)">Prepare</button>
+    <button role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place the drawing on the bed and plot it (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
+  </nav>
   <span id="modeBadge" class="badge" title="Where jobs run"></span>
   <span id="linkPill" class="pill" title="Live connection to the server" aria-live="polite">connecting</span>
   <span id="statePill" class="pill" aria-live="polite">Idle</span>
@@ -35,7 +39,90 @@
   <button id="logoutBtn" class="icon hide-narrow" hidden>Log out</button>
 </header>
 
-<main class="workspace">
+<main class="prep" id="prepWs" aria-label="Prepare" hidden>
+  <aside class="panel prep-left" aria-label="Recipe">
+    <section class="section">
+      <h2>Source</h2>
+      <div id="prepSource"></div>
+      <input id="prepFile" type="file" hidden>
+    </section>
+    <section class="recipe" id="prepRecipe" aria-label="Recipe steps"></section>
+  </aside>
+
+  <section class="center prep-center" aria-label="Preview">
+    <div class="bed-toolbar">
+      <div class="seg" role="group" aria-label="Preview view" id="prepModes">
+        <button data-mode="result" aria-pressed="true" title="The drawing as the pen will draw it">Result</button>
+        <button data-mode="compare" aria-pressed="false" title="Source and result side by side">Compare</button>
+        <button data-mode="overlay" aria-pressed="false" title="The source under the result">Overlay</button>
+        <button data-mode="mask" aria-pressed="false" title="What the trace counts as ink">Mask</button>
+      </div>
+      <label class="fade" id="prepFadeBox" title="How strongly the source shows under the result">Source
+        <input type="range" id="prepFade" min="0" max="100" value="45" aria-label="Source opacity"></label>
+      <span class="spacer"></span>
+      <span id="prepBusy" class="busy-tag" aria-live="polite"></span>
+      <button class="icon" id="prepInk" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
+      <button class="icon" id="prepZoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
+      <button class="icon" id="prepZoomFit" title="Fit (0)">Fit</button>
+      <button class="icon" id="prepZoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
+    <div class="prep-stage" id="prepStage" data-mode="result">
+      <figure class="prep-side" id="prepSide">
+        <img id="prepSideImg" alt="">
+        <figcaption id="prepSideCap"></figcaption>
+      </figure>
+      <div class="prep-canvas-wrap">
+        <canvas id="prepCanvas" tabindex="0" aria-label="Result preview on the sheet: drag to pan, wheel to zoom"></canvas>
+        <div class="prep-empty" id="prepEmpty">
+          <p class="big">Start with a source</p>
+          <p>Drop an image, an SVG or a 3D model anywhere on this page, or start from text on the left.</p>
+          <p class="hint">Finished SVGs can go straight to Plot. Prepare is for everything that needs work first.</p>
+        </div>
+        <div class="prep-error" id="prepError" role="alert" hidden></div>
+        <div class="bed-coords" id="prepCoords"></div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel right prep-right" aria-label="Result">
+    <section class="section">
+      <h2>Result</h2>
+      <div class="result-head"><span class="result-size" id="prepSize">-</span><span class="muted" id="prepMethod"></span></div>
+      <dl class="kv" id="prepKv"></dl>
+      <div id="prepFit" class="note" hidden></div>
+      <ul id="prepProblems" class="problems" hidden></ul>
+    </section>
+    <section class="section">
+      <h2>Pens</h2>
+      <p class="hint" id="prepPenHint">One pen per ink layer. Plot pauses for each pen change.</p>
+      <div id="prepLayers"></div>
+    </section>
+    <section class="section">
+      <h2>Fill</h2>
+      <form id="prepFillForm" class="field-row">
+        <label class="field"><span>Spacing (mm, 0 = off)</span><input name="fill" type="number" step="0.1" min="0" max="50" value="0"></label>
+        <label class="field"><span>Angle (deg)</span><input name="fill_angle" type="number" step="5" min="0" max="180" value="45"></label>
+      </form>
+      <p class="hint">Shapes with a fill colour are hatched for solid ink. Traced images have no filled shapes; for tone, use Shading by hatching.</p>
+    </section>
+    <section class="section">
+      <h2>Save</h2>
+      <label class="field"><span>Name</span><input id="prepName" maxlength="80" placeholder="Name in the library"></label>
+      <p class="note" id="prepReplaceNote" hidden></p>
+      <div class="stack">
+        <button id="prepSend" class="primary big" disabled title="Save to the library and open it in Plot (Ctrl+Enter)">Send to Plot</button>
+        <div class="row">
+          <button id="prepSaveNew" disabled>Save as new</button>
+          <a id="prepDownload" class="btn" aria-disabled="true">Download SVG</a>
+          <span class="spacer"></span>
+          <button id="prepReset" class="link" type="button">Start over</button>
+        </div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<main class="workspace" id="plotWs">
   <!-- left: library, layers, tools -->
   <aside class="panel left" id="leftPanel">
     <nav class="tabs" role="tablist" aria-label="Side panel">
@@ -47,66 +134,11 @@
     <section id="tab-library" role="tabpanel" aria-labelledby="tabBtn-library">
       <div class="section">
         <h2>Add a drawing</h2>
-        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a file to upload">
-          Drop a file here or <b>choose one</b><br><small id="dropTypes"></small>
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a finished SVG to add as it is">
+          Drop a finished <b>SVG</b> here or <b>choose one</b><br><small>Added as it is, ready to place.</small>
         </div>
-        <input id="fileInput" type="file" hidden>
-        <div id="convBox" hidden>
-          <h3 id="convTitle"></h3>
-          <p class="hint" id="convHelp"></p>
-          <form id="convForm"></form>
-          <img id="convImg" class="conv-preview" alt="Pen paths after conversion" hidden>
-          <img id="convMask" class="conv-preview" alt="Dark-shape mask: what counts as ink" hidden>
-          <p class="hint" id="convStats"></p>
-          <div class="row">
-            <button id="convPreviewBtn" type="button">Preview conversion</button>
-            <button id="convAddBtn" class="primary" type="button">Add to library</button>
-            <button id="convCancel" type="button" class="link">Cancel</button>
-          </div>
-        </div>
-      </div>
-      <div class="section">
-        <details>
-          <summary>Text in a font</summary>
-          <form id="tpForm">
-            <label class="field"><span>Text</span><textarea name="text" rows="5" maxlength="4000" placeholder="Type or paste text. It is wrapped to the page."></textarea></label>
-            <div class="field-row">
-              <label class="field"><span>Font</span><input name="font" value="Comic Neue" list="fontList"></label>
-              <label class="field"><span>Letter height (mm)</span><input name="xheight" type="number" value="4.5" min="2" max="20" step="0.5"></label>
-            </div>
-            <div class="field-row">
-              <label class="check"><input type="checkbox" name="bold"> Bold</label>
-              <label class="check"><input type="checkbox" name="italic"> Italic</label>
-            </div>
-            <p class="hint">Letters are drawn as outlines, so a thick font looks like outlined type. Small sizes work best with the BIC.
-              Your own handwriting needs your samples (see research/handwriting.md).</p>
-            <p id="tpInfo" class="hint" hidden></p>
-            <img id="tpImg" class="conv-preview" alt="Text preview" hidden>
-            <div class="row"><button type="button" id="tpPreview">Preview</button>
-              <button type="button" id="tpAdd" class="primary">Add to library</button></div>
-          </form>
-          <datalist id="fontList"></datalist>
-        </details>
-        <details>
-          <summary>Text art</summary>
-          <form id="taForm">
-            <label class="field"><span>Text</span><input name="text" value="HELLO" maxlength="60"></label>
-            <div class="field-row">
-              <label class="field"><span>Size (mm)</span><input name="size" type="number" value="20" min="5" max="150"></label>
-              <label class="field"><span>Bend (0-100)</span><input name="bend" type="number" value="40" min="0" max="100"></label>
-            </div>
-            <div class="field-row">
-              <label class="field"><span>Effect</span><select name="effect">
-                <option value="plain">Plain</option><option value="arc" selected>Arc</option><option value="wave">Wave</option>
-                <option value="rise">Rise</option><option value="circle">Circle</option><option value="twist">Twist</option></select></label>
-              <label class="field"><span>Font</span><input name="font" value="DejaVu Sans" list="fontList"></label>
-            </div>
-            <label class="check"><input type="checkbox" name="bold"> Bold</label>
-            <img id="taImg" class="conv-preview" alt="Text art preview" hidden>
-            <div class="row"><button type="button" id="taPreview">Preview</button>
-              <button type="button" id="taAdd" class="primary">Add to library</button></div>
-          </form>
-        </details>
+        <input id="fileInput" type="file" accept=".svg" hidden>
+        <button id="toPrepare" class="wide-btn" type="button">Image, 3D model or text? Open Prepare</button>
       </div>
       <div class="section">
         <h2>Library</h2>
@@ -174,6 +206,7 @@
     <div class="bed-toolbar">
       <span class="title" id="bedTitle">No drawing open</span>
       <span class="spacer"></span>
+      <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
       <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
       <button class="icon" id="zoomFit" title="Fit the bed (0)">Fit</button>
       <button class="icon" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
@@ -237,9 +270,9 @@
       <h2>Placement</h2>
       <form id="placeForm">
         <div class="field-row">
-          <label class="field"><span>X (mm)</span><input name="x" type="number" step="0.5"></label>
-          <label class="field"><span>Y (mm)</span><input name="y" type="number" step="0.5"></label>
-          <label class="field"><span>Width (mm)</span><input name="w" type="number" step="0.5" min="1"></label>
+          <label class="field"><span>X (mm)</span><input name="x" type="number" step="any"></label>
+          <label class="field"><span>Y (mm)</span><input name="y" type="number" step="any"></label>
+          <label class="field"><span>Width (mm)</span><input name="w" type="number" step="any" min="1"></label>
         </div>
         <p class="hint" id="placeHint"></p>
         <div class="row">
@@ -340,7 +373,9 @@
   <div class="dlg">
     <h2 id="helpTitle">How plotting works here</h2>
     <ol>
-      <li>Add a drawing in the Library and open it.</li>
+      <li><b>Prepare</b> (optional): drop an image, 3D model or SVG, or start from text. Build a recipe (adjust,
+        method, clean up), check the result in ink, choose pens, and send it to Plot. A finished SVG can skip this.</li>
+      <li>In <b>Plot</b>, open the drawing from the Library.</li>
       <li>Move and resize it on the bed (drag it, drag a corner, or type X, Y, width). It must stay inside the dashed canvas.</li>
       <li>Set pens and speeds per layer in Layers.</li>
       <li><b>Preview</b> checks the plan with the plotter's own rules. <b>Simulate</b> runs it on a virtual machine.</li>
@@ -349,7 +384,9 @@
     </ol>
     <h3>Shortcuts</h3>
     <dl class="kv">
-      <dt><kbd>P</kbd></dt><dd>Preview</dd>
+      <dt><kbd>1</kbd> <kbd>2</kbd></dt><dd>Prepare, Plot</dd>
+      <dt><kbd>P</kbd></dt><dd>Preview (Plot)</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>Send to Plot (Prepare)</dd>
       <dt><kbd>Space</kbd></dt><dd>Pause / continue</dd>
       <dt><kbd>Shift</kbd>+<kbd>S</kbd></dt><dd>Stop</dd>
       <dt>Arrows</dt><dd>Move the drawing 1 mm (Shift: 10 mm), with the bed focused</dd>
@@ -376,6 +413,8 @@
   </form>
 </dialog>
 
+<datalist id="fontList"></datalist>
+<div id="dropOverlay" class="drop-overlay" hidden><div>Drop to prepare it</div></div>
 <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

@@ -126,12 +126,13 @@ def element_color(el):
             c = m.group(1) if m else None
         return c
 
-    c = find("stroke")
-    if not c or c.strip().lower() == "none":
-        c = find("fill")
-    if not c or c.strip().lower() == "none":
-        return "#000000"   # unstyled geometry uses the default black pen
-    return normalize_color(c) or "#000000"
+    # The pen is the stroke colour, else the fill colour. An element that sets neither inherits its group's
+    # (None here); the walk falls back to black at the top.
+    for prop in ("stroke", "fill"):
+        c = find(prop)
+        if c and c.strip().lower() not in ("none", "inherit"):
+            return normalize_color(c) or "#000000"
+    return None
 
 
 def element_layer(el):
@@ -451,7 +452,7 @@ def load_svg(path, ignore_unsupported):
             cur["layer"] = layer
         if el.get("data-pressure") is not None:
             cur["pressure"] = float(el.get("data-pressure"))
-        meta = {"color": cur.get("color"), "layer": cur.get("layer"), "pressure": cur.get("pressure")}
+        meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \

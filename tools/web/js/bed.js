@@ -2,6 +2,7 @@
 // carriage. Everything is in machine millimetres; the view maps mm to screen pixels (pan and zoom).
 import { state, on, jobActive } from './store.js';
 import { $ } from './ui.js';
+import { drawInk, inkMode, setInkMode } from './ink.js';
 
 let cv, ctx, W = 0, H = 0, dpr = 1;
 const view = { s: 2, ox: 20, oy: 20, fitted: false };
@@ -10,7 +11,6 @@ let draft = null;           // box while dragging {x, y, w, h}
 const pointers = new Map();
 let pinch = null;
 let onPlace = () => {};
-let cache = { key: null, layers: [] };       // Path2D per layer for the preview strokes
 let done = { key: null, n: 0, path: null };  // plotted strokes of the job preview
 let colors = {};
 let raf = 0;
@@ -29,6 +29,10 @@ export function initBed(placeCallback) {
   $('zoomIn').onclick = () => zoomBy(1.25);
   $('zoomOut').onclick = () => zoomBy(0.8);
   $('zoomFit').onclick = fit;
+  const inkBtn = $('inkBtn');
+  const showInk = () => { inkBtn.setAttribute('aria-pressed', String(inkMode())); inkBtn.textContent = inkMode() ? 'Ink' : 'Lines'; };
+  inkBtn.onclick = () => { setInkMode(!inkMode()); showInk(); redraw(); };
+  showInk();
   on(['me', 'settings', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'current', 'liveStrokes'], redraw);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { colors = {}; redraw(); });
 }
@@ -101,19 +105,6 @@ function redraw() {
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
 }
 
-function buildLayers(pv) {
-  const key = pv.plan_id || pv.file;
-  if (cache.key === key) return cache.layers;
-  const by = new Map();
-  pv.strokes.forEach((s) => {
-    if (!by.has(s.l)) by.set(s.l, new Path2D());
-    const p = by.get(s.l);
-    s.pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y)));
-  });
-  cache = { key, layers: [...by.entries()] };
-  return cache.layers;
-}
-
 function donePath(jp, n) {
   const key = jp.plan_id;
   if (done.key !== key || n < done.n) done = { key, n: 0, path: new Path2D() };
@@ -123,12 +114,6 @@ function donePath(jp, n) {
   }
   done.n = Math.max(done.n, Math.min(n, jp.order.length));
   return done.path;
-}
-
-function layerColor(pv, l) {
-  const ly = pv.summary && pv.summary.layers && pv.summary.layers[l];
-  const c = ly && ly.color;
-  return c && c !== '#000000' && c !== '#111111' ? c : css('--text');
 }
 
 function render() {
@@ -162,10 +147,9 @@ function render() {
     (jobActive() || (!state.preview && (!state.current || state.current.id === jp.file)));
   const lw = Math.max(0.3, 1.2 * px);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const pens = state.me.pens || {};
   if (showJob) {
-    ctx.globalAlpha = 0.28;
-    for (const [l, p] of buildLayers(jp)) { ctx.strokeStyle = layerColor(jp, l); ctx.lineWidth = lw; ctx.stroke(p); }
-    ctx.globalAlpha = 1;
+    drawInk(ctx, jp, { px, layers: jp.settings && jp.settings.layers, pens, css, alpha: 0.28 });
     const n = job.progress ? job.progress.done : 0;
     ctx.strokeStyle = css('--done'); ctx.lineWidth = lw * 1.3;
     ctx.stroke(donePath(jp, n));
@@ -175,12 +159,8 @@ function render() {
     const k = state.previewStale && box && (b[2] - b[0]) > 1e-6 ? box.w / (b[2] - b[0]) : 1;
     ctx.save();
     if (box && state.previewStale) { ctx.translate(box.x, box.y); ctx.scale(k, k); ctx.translate(-b[0], -b[1]); }
-    const enabled = (state.settings && state.settings.layers) || [];
-    for (const [l, p] of buildLayers(pv)) {
-      ctx.globalAlpha = enabled[l] && enabled[l].enabled === false ? 0.15 : (state.previewStale ? 0.55 : 1);
-      ctx.strokeStyle = layerColor(pv, l); ctx.lineWidth = lw / k;
-      ctx.stroke(p);
-    }
+    drawInk(ctx, pv, { px, layers: state.settings && state.settings.layers, pens, css,
+      alpha: state.previewStale ? 0.55 : 1, lineScale: k });
     ctx.restore();
     ctx.globalAlpha = 1;
     if (box && !jobActive()) {

@@ -71,8 +71,28 @@ export function schemaForm(form, params, pens, values = {}) {
         placeholder: p.optional ? 'not recorded' : undefined });
       const v = values[p.key] ?? p.default;
       input.value = v === null || v === undefined ? '' : v;
+      if (p.slider) {
+        // A slider for feel, the number box for exact values. Only the number box carries the name.
+        const num = input;
+        const range = el('input', { type: 'range', min: p.min, max: p.max, step: p.step || 'any', tabindex: '-1',
+          'aria-hidden': 'true' });
+        range.value = num.value;
+        range.oninput = () => { num.value = range.value; num.dispatchEvent(new Event('input', { bubbles: true })); };
+        range.onchange = () => num.dispatchEvent(new Event('change', { bubbles: true }));
+        num.addEventListener('input', () => { range.value = num.value; });
+        num.classList.add('slider-num');
+        const unit = p.unit ? ` (${p.unit})` : '';
+        form.append(el('label', { class: 'field slider', for: id }, el('span', { text: p.label + unit }),
+          el('div', { class: 'slider-row' }, range, num)));
+        if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
+        continue;
+      }
+    } else if (p.type === 'textarea') {
+      input = el('textarea', { id, name: p.key, rows: 5, maxlength: p.maxlength || 4000, placeholder: p.placeholder });
+      input.value = values[p.key] ?? p.default ?? '';
     } else {
-      input = el('input', { id, name: p.key, maxlength: p.maxlength || 80 });
+      input = el('input', { id, name: p.key, maxlength: p.maxlength || 80, placeholder: p.placeholder,
+        list: p.list === 'fonts' ? 'fontList' : undefined });
       input.value = values[p.key] ?? p.default ?? '';
     }
     const unit = p.unit ? ` (${p.unit})` : '';

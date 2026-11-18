@@ -84,7 +84,8 @@ class App:
         With a fill the layer list can have more inks (a fill colour the outlines do not have): that list is
         measured by its own dry run and remembered in memory."""
         data = svg_path.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()[:16]
+        # The planner decides the layers (colours, keys), so a new plot_svg.py invalidates the cached geometry.
+        digest = hashlib.sha256(data + planner_hash().encode()).hexdigest()[:16]
         if fill:
             g, _, _ = self.geometry(e, svg_path)
             memo = (digest, fill, fill_angle)
@@ -374,7 +375,10 @@ class App:
     # ------------------------------------------------------------ prepare workspace
     def _prep_dry(self, run, fill, fill_angle):
         """Dry run of a prepared SVG at its natural size, at the canvas top-left. Cached next to the stage."""
-        memo = self.prep.dir / f"st_{run['key']}_dry_{fill:g}_{fill_angle:g}.json"
+        # Keyed by what decides the strokes: the stage, the fill, the machine and the planner itself.
+        h = hashlib.sha256(self.s.machine_path.read_bytes())
+        h.update(planner_hash().encode())
+        memo = self.prep.dir / f"st_{run['key']}_dry_{fill:g}_{fill_angle:g}_{h.hexdigest()[:10]}.json"
         if memo.is_file():
             return json.loads(memo.read_text()), memo.with_suffix(".log").read_text() \
                 if memo.with_suffix(".log").is_file() else ""
@@ -425,7 +429,7 @@ class App:
                     and "canvas" not in p and "travel is" not in p and "edge margin" not in p] if sm["problems"] else []
         src = run["source"]
         return {"ok": True, "key": run["key"], "method": run["method"].id,
-                "image": run["image"].name[3:-4] if run["image"] else None, "mask": bool(run["mask"]),
+                "image": run["image"].name[3:-4] if run["image"] else None, "mask": run["mask"].name[3:-9] if run["mask"] else None,
                 "source": src and {k: v for k, v in src.items() if k != "path"},
                 "stats": run["stats"], "summary": _public_summary(sm), "placement": pv["placement"],
                 "order": pv["order"], "strokes": _thin(pv["strokes"]), "fit": round(fit, 4),
@@ -494,7 +498,8 @@ class App:
             if not use:
                 raise ApiError(404, "The drawing's files are missing on the server.")
             try:
-                src = self.prep.add_source(use.read_bytes(), e.get("name") or use.name)
+                # The type comes from the file itself: a prepared drawing is named .svg but its source may be a photo.
+                src = self.prep.add_source(use.read_bytes(), pathlib.Path(e.get("name") or use.name).stem + use.suffix)
             except prepare.PrepareError as ex:
                 raise ApiError(400, str(ex))
             if method and src["kind"] not in method.accepts:
@@ -506,6 +511,19 @@ class App:
                 "name": pathlib.Path(e.get("name") or "drawing").stem, "replace": e["id"],
                 "settings": {"fill": st.get("fill") or 0, "fill_angle": st.get("fill_angle", 45),
                              "layers": [{"key": ly.get("key"), "pen": ly.get("pen")} for ly in st.get("layers") or []]}}
+
+
+_PLANNER = {}
+
+
+def planner_hash():
+    """Short hash of plot_svg.py, re-read when the file changes."""
+    p = pathlib.Path(__file__).resolve().parent.parent / "plot_svg.py"
+    st = p.stat()
+    key = (st.st_mtime_ns, st.st_size)
+    if _PLANNER.get("key") != key:
+        _PLANNER.update(key=key, hash=hashlib.sha256(p.read_bytes()).hexdigest()[:12])
+    return _PLANNER["hash"]
 
 
 def _thin(strokes):

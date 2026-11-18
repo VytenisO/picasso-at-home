@@ -32,7 +32,7 @@ niche.
    counter readback), `QM` (motion idle) and `HM` (absolute move). The driver detects them from `V` and falls back
    to timed waits on 2.0.1, so the UI does not wait on the upgrade. The pen-depth pot patch (`firmware/`) comes
    after the stock upgrade is proven.
-1. **Workspace split.** Prepare and Plot as top-level tabs. Move image conversion out of the Library panel into
+1. **Workspace split** (done 2026-11-18). Prepare and Plot as top-level tabs. Move image conversion out of the Library panel into
    Prepare, with the plugin interface and the shared ink preview. The Plot workspace keeps the current bed, layers,
    tools and run panels. Everything below is placed in one of the two.
 2. **Document model.** Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
@@ -56,13 +56,15 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Two workspaces, Prepare and Plot, as top-level tabs (see `ui-design.md`) | TODO | P0 | user decision 2026-11-18. Prepare is optional: a finished SVG goes straight to Plot |
-| Prepare: conversion methods as plugins with a parameter schema; forms built from it | TODO | P1 | today the styles are fixed in `image_to_svg.py` and the Library form |
-| Prepare: recipe of chained steps (adjust, convert, fill, simplify, assign pens), saved with the result | TODO | P1 | reopen and re-tune instead of redoing |
-| Ink preview: pen colour and width, hatch fills, real size, stroke count, pen-down length, time | PART | P1 | Plot shows strokes. Make one renderer shared by both workspaces |
+| Two workspaces, Prepare and Plot, as top-level tabs (see `ui-design.md`) | HAVE | | user decision 2026-11-18. Prepare is optional: a finished SVG goes straight to Plot |
+| Prepare: conversion methods as plugins with a parameter schema; forms built from it | HAVE | | `prepare.py` `STEPS`; each trace style is its own method with only its own settings |
+| Prepare: recipe of chained steps (adjust, method, clean up; fill and pens as plot settings), saved with the result | HAVE | | reopen from the Library and re-tune; update in place or save as new |
+| Ink preview: pen colour and width, hatch fills, real size, stroke count, pen-down length, time | HAVE | | `ink.js`, shared by Prepare and Plot; Ink/Lines toggle. Pen widths default to 0.5 mm until `pens.json` has `width_mm` |
+| Prepare: recipe presets (named recipes to reuse on new sources) | TODO | P2 | today: Replace the source keeps the recipe |
+| Prepare: undo for recipe edits | TODO | P3 | |
 | Bed view drawn to machine size with paper, inset canvas and start point S | HAVE | | `bed.js` |
 | Three-panel layout with console row | HAVE | | `index.html`, `app.css` |
-| Phone layout with bottom tab bar | HAVE | | below 900 px. `ui-design.md` still says 800 px and five tabs; fix the doc |
+| Phone layout with bottom tab bar | HAVE | | below 900 px; Prepare stacks preview, recipe and result |
 | Dark/light/system theme | HAVE | | `app.js` |
 | Collapse side panels to maximise the bed | TODO | P2 | one key toggles all panels |
 | Reset panel layout | TODO | P3 | only once panels can be resized or moved |
@@ -206,10 +208,10 @@ niche.
 | Freehand drawing on the bed | PART | P2 | the writing pad plots live; add "draw into the scene" |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |
 | Trim at intersections (click to delete a piece) | TODO | P3 | |
-| Join touching paths | PART | P1 | `--join 0.1` fixed and hidden; expose the tolerance and a "join selected" action |
+| Join touching paths | PART | P1 | Prepare clean-up step "Join touching strokes" (tolerance); add a "join selected" action in Plot |
 | Close nearly closed paths within a tolerance | TODO | P3 | |
 | Remove duplicate and overlapping lines | TODO | P1 | double-inking darkens lines and wears paper |
-| Simplify paths (tolerance, before/after node count) | PART | P1 | `--simplify 0.05` fixed; expose it |
+| Simplify paths (tolerance, before/after node count) | PART | P2 | Prepare clean-up step "Simplify" with the point count in Result; the planner's own `--simplify 0.05` stays fixed |
 | Smooth / fit arcs | TODO | P3 | |
 | Break apart into separate paths | TODO | P2 | |
 | Reverse path direction | TODO | P2 | |
@@ -385,18 +387,19 @@ niche.
 | Convert styles: contour, line art, halftone, one-line | HAVE | | `image_to_svg.py` |
 | Parameters: inks, levels, width, threshold, density, blur, single pen | HAVE | | |
 | Live conversion preview with mask and stats | HAVE | | |
-| Side-by-side or overlay original vs result, synced zoom | PART | P2 | result only; add the original and a fade slider |
-| Brightness, contrast, gamma before converting | TODO | P1 | photos need it most |
-| Sharpen / denoise | TODO | P3 | |
-| Invert (light ink on dark paper) | TODO | P2 | |
-| Crop region | TODO | P2 | |
+| Side-by-side or overlay original vs result, synced zoom | PART | P3 | Prepare: Compare, Overlay with fade, Mask. Zoom is not synced between the panes |
+| Brightness, contrast, gamma before converting | HAVE | | Prepare adjust step "Tone" |
+| Sharpen / denoise | HAVE | | Prepare adjust step |
+| Invert (light ink on dark paper) | HAVE | | Prepare adjust step |
+| Crop region | PART | P3 | Prepare crop step by edge percentages; no drag-a-box crop yet |
+| Rotate and mirror the image | HAVE | | Prepare adjust step |
 | Mask by a vector shape | TODO | P3 | |
 | Centre-line trace (single stroke down a line) | TODO | P1 | one pass per drawn line instead of a double outline |
 | Edge/sketch trace for photos of drawings | TODO | P2 | |
-| Ignore specks under N px | PART | P1 | `--min-len` in the CLI; expose it |
-| Smoothness / simplify tolerance | PART | P1 | `--simplify` and `--px` in the CLI; expose them |
+| Ignore specks under N px | HAVE | | trace setting, plus the "Remove short strokes" clean-up step in mm |
+| Smoothness / simplify tolerance | HAVE | | trace setting and trace resolution, plus the "Simplify" clean-up step in mm |
 | Brightness window (lower and upper cutoff) | TODO | P3 | |
-| Transparent PNG handled as background | TODO | P2 | |
+| Transparent PNG handled as background | HAVE | | Prepare flattens transparency onto white paper |
 | Dither styles drawn as stipple dots (error diffusion, ordered) | TODO | P2 | the image research names stipple/TSP as a tone option |
 | Variable pressure by tone | TODO | P3 | servo is coarse; hatch density is the main tone tool |
 | Hatch angle per tone level / crosshatch for darks | PART | P2 | in halftone; expose angles |

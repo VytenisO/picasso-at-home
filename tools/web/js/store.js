@@ -4,6 +4,7 @@ const subs = new Map();
 
 export const state = {
   me: null,            // /api/me: sim, machine (bed, paper, canvas, start), limits, pens
+  ws: null,            // shown workspace: prepare | plot
   files: [],
   converters: [],
   tools: [],

@@ -3,10 +3,10 @@
 One workspace in the spirit of LightBurn: the bed is the centre of attention, everything else is a panel around
 it. Stdlib Python server, plain ES modules, no build step, no CDN. Research behind the rules: `ui-research.md`.
 
-## Workspaces: Prepare and Plot (decided 2026-11-18, not built yet)
+## Workspaces: Prepare and Plot (decided and built 2026-11-18)
 
-Two top-level tabs, the way a slicer splits preparing a model from printing it. The layout below becomes the Plot
-workspace.
+Two top-level tabs in the top bar (keys `1` and `2`, or `#prepare` / `#plot` in the address), the way a slicer
+splits preparing a model from printing it. The layout below is the Plot workspace.
 
 - **Prepare** turns an input (photo, drawing, mesh, text, an SVG that needs work) into a plot-ready SVG.
   Each conversion method is a plugin: a Python module that declares its parameters as a schema (like
@@ -23,7 +23,32 @@ workspace.
 - **One renderer for both.** Prepare and Plot draw the ink preview with the same code from the same plan data,
   so what Prepare shows is what Plot plots.
 - **Stop and the state pill stay in the top bar in both workspaces.** A running job keeps running while you
-  work in Prepare.
+  work in Prepare. The Plot tab shows a dot while a job runs (pulsing when it waits for you), and a pen change
+  also raises a toast in Prepare.
+
+How Prepare is built:
+
+- **Recipe** = `{source, steps: [{step, on, params}]}`. Stages run in order: `adjust` (image -> image, Pillow,
+  any number), `method` (exactly one: trace styles, SVG as is, 3D wireframe, or a text generator that needs no
+  source), `clean` (on the drawn polylines, any number; refused for drawings with filled shapes, which they
+  would lose). Fill and pens are plot settings, not steps: they are saved with the result and Plot can still
+  change them.
+- **Plugins** live in `tools/plotweb/prepare.py` (`STEPS`): id, title, stage, accepted source kinds, a params
+  schema and a function. The UI builds every form from `/api/prepare/steps`, so a new step needs no frontend
+  code. Schema types: `number` (optionally `slider`), `select`, `bool`, `text` (optionally `list: fonts`),
+  `textarea`.
+- **Preview** = the method output dry-run by `plot_svg.py` at natural size at the canvas top-left: the same
+  strokes, summary and placement a Plot preview gets. Too big for the canvas is reported as the scale Plot
+  will shrink it to, not as a problem. Views: Result, Compare (source after adjustments beside the result),
+  Overlay (source under the strokes, with a fade slider), Mask (what the trace counts as ink).
+- **Cache.** Sources and every stage result are kept under `results/web/prepare/` for two days, keyed by a
+  hash of the source and the steps up to that stage; dry runs are also keyed by `machine.json` and
+  `plot_svg.py`. Changing a late step does not redo the early ones.
+- **Saving** stores the SVG, a copy of the source as the original, the recipe and the plot settings (fill,
+  pen per layer with that pen's speed and pressure). Library "Prepare" reopens any drawing: its own recipe,
+  or one rebuilt from an older upload's converter settings. "Update" keeps the drawing's id and its place on
+  the bed; "Save as new" keeps the old one.
+- The browser keeps the recipe being edited (`localStorage`), so a reload resumes the work.
 
 ## Layout
 
@@ -46,8 +71,8 @@ workspace.
 +----------------------------------------------------------------------------------+
 ```
 
-Phone (< 800 px): one column, bottom tab bar (Bed, Library, Layers, Run, Console); the state pill and Stop stay
-in the top bar on every tab. Dark and light via `prefers-color-scheme` with a manual toggle.
+Phone (< 900 px): one column, bottom tab bar (Bed, Library, Layers, Tools, Run, Console); the state pill and Stop
+stay in the top bar on every tab. Prepare on a phone stacks the preview, the recipe and the result. Dark and light via `prefers-color-scheme` with a manual toggle.
 
 ## Safety model (UI never weakens `plot_svg.py`)
 
@@ -100,7 +125,8 @@ time estimates in plot order, and an end of input at the confirmation prompt cou
 | `runner.py` | `JobRunner`: reservation, subprocess, output parsing, state machine, control commands, stop escalation |
 | `plotjob.py` | settings validation, `plot_svg.py` argv, plan ids, plain-language problems |
 | `library.py` | manifest, uploads and conversion, per-file saved settings and geometry |
-| `converters.py` | registry of upload converters (svg, raster, mesh) with a parameter schema |
+| `converters.py` | registry of upload converters (svg, raster, mesh) with a parameter schema; the Library's direct SVG upload |
+| `prepare.py` | Prepare: step plugins (`STEPS`), recipe checks, the per-stage cache (`Workshop`) |
 | `tools.py` | registry of tools: stroke/fill/pressure sheets, result recording, pen height test |
 | `hardware.py` | the only direct EBB access: read-only `V` check, last-resort pen-up/motors-off |
 | `api.py` | HTTP routes, orchestration (preview, start, tools), SSE |
@@ -126,8 +152,14 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | POST `/api/files/upload` | raw body; `X-Filename`, `X-Params` (URL-encoded JSON) | `{file}` |
 | POST `/api/files/convert_preview` | same | `{svg, stats, mask}`; nothing stored |
 | POST `/api/files/delete` | `{id}` | refused while that file is plotting |
-| POST `/api/text_art` | `{text, size, bend, effect, font, bold, add}` | `{svg}` or `{file}` |
+| POST `/api/text_art`, `/api/text_page` | `{text, ..., add}` | `{svg}` or `{file}`; the UI now uses the Prepare text methods |
 | GET `/api/converters`, `/api/tools`, `/api/pens` | | schemas, pen profiles |
+| GET `/api/prepare/steps` | | `{steps, kinds, max_bytes}`: the step plugins and their schemas |
+| POST `/api/prepare/source` | raw body; `X-Filename` | `{source: {id, name, kind, px, bytes}}`; id = content hash |
+| POST `/api/prepare/run` | `{recipe, settings: {fill, fill_angle}}` | `{key, method, image, mask, stats, summary, placement, order, strokes, layers, fit, problems}` |
+| POST `/api/prepare/save` | `{recipe, settings: {fill, fill_angle, layers: [{key, pen}]}, name, replace?}` | `{file}`; refused for a drawing being plotted |
+| POST `/api/prepare/from_library` | `{file}` | `{source, recipe, name, replace, settings}` |
+| GET `/api/prepare/file?kind=png|mask|svg&key=`, `?kind=source&id=` | | stage images, the SVG (`download=1`), the source (sandboxed CSP) |
 | POST `/api/preview` | `{id, settings}` | `{ok, plan_id, problems, settings, summary, placement, order, strokes, file_layers}`; saves the settings |
 | POST `/api/job/start` | `{id, settings, plan_id, mode: plot|trace|simulate, confirm: {parked}}` | `{job}`, or 400/409 with the reason |
 | GET `/api/job/preview` | | strokes and order of the current/last plot job (for a reloaded page) |
@@ -162,11 +194,13 @@ States: `starting, running, pausing, paused, stopping, returning, complete, stop
 
 `api.js` (fetch with plain errors, SSE with resume), `store.js` (one state object, subscriptions, local
 preferences), `ui.js` (DOM helpers, toast, prompt, schema forms), `bed.js` (canvas 2D bed view, pan/zoom,
-drag/resize, progress, carriage), `workspace.js` (open drawing, settings, automatic previews, placement form,
+drag/resize, progress, carriage), `ink.js` (the ink renderer both workspaces use: pen colour, pen width
+`width_mm` in `pens.json` or 0.5 mm, Ink/Lines toggle), `ws.js` (the two workspaces), `prepare.js` (source, recipe
+editor, preview views, pens, save), `workspace.js` (open drawing, settings, automatic previews, placement form,
 layers), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
 `console.js`, `app.js` (boot, login, events, tabs, theme, shortcuts). Styles: `tools/web/app.css`.
 
-Keyboard: `?` help, `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge
+Keyboard: `?` help, `1`/`2` Prepare/Plot, `Ctrl+Enter` send to Plot (Prepare), `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge
 the drawing 1 mm (Shift 10 mm) with the bed focused, `+`/`-`/`0` zoom/fit, `Esc` closes dialogs (never stops).
 
 ## Tests

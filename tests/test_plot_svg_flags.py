@@ -26,6 +26,17 @@ class TestFlags(unittest.TestCase):
         f.write_text(json.dumps(data))
         return f
 
+    def test_unstyled_paths_take_their_group_colour(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        from plot_svg import load_svg
+        svg = self.tmp / "groups.svg"
+        svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="10mm" viewBox="0 0 20 10">'
+                       '<g style="stroke:#2463a6;fill:none"><path d="M0 0 L5 5"/><path d="M1 0 L6 5" fill="none"/></g>'
+                       '<g stroke="#c0392b"><path d="M2 0 L7 5" stroke="#111111"/></g>'
+                       '<path d="M3 0 L8 5"/></svg>')
+        _, metas, _, _ = load_svg(str(svg), False)
+        self.assertEqual([m["color"] for m in metas], ["#2463a6", "#2463a6", "#111111", "#000000"])
+
     def test_layer_limits(self):
         svg = FIX / "two_layers.svg"
         rc, out = run(svg, "--layers", self.layers([{"speed": 41}]))

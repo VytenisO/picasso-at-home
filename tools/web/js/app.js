@@ -10,6 +10,8 @@ import { initLibrary } from './library.js';
 import { initTools } from './tools.js';
 import { initLive } from './live.js';
 import { initConsole, addEvents, resetConsole } from './console.js';
+import { initWs, showWs } from './ws.js';
+import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
 
 let stream = null;
 
@@ -51,6 +53,8 @@ function initOnce() {
   initLive();
   initConsole();
   initTabs();
+  initWs();
+  initPrepare();
   initTheme();
   initKeys();
   on('job', followJob);
@@ -185,17 +189,21 @@ function initKeys() {
     const t = e.target;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (e.key === 'S' && e.shiftKey && !e.ctrlKey && !e.metaKey && !typing) { e.preventDefault(); stop(); return; }
+    if (state.ws === 'prepare' && !document.querySelector('dialog[open]') && prepKey(e)) return;
     if (typing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+    const prep = state.ws === 'prepare';
     if (e.key === '?') { $('helpDlg').showModal(); e.preventDefault(); }
-    else if (e.key === 'p' || e.key === 'P') { if (!jobActive()) runPreview(); }
+    else if (e.key === '1') showWs('prepare');
+    else if (e.key === '2') showWs('plot');
+    else if ((e.key === 'p' || e.key === 'P') && !prep) { if (!jobActive()) runPreview(); }
     else if (e.key === ' ' && !e.repeat && !(t && t.closest && t.closest('button, a, summary, [role=button], [role=tab]'))) {
       e.preventDefault();
       if (state.job && state.job.state === 'running') pause();
       else if (state.job && state.job.state === 'paused') resume();
     }
-    else if (e.key === '+' || e.key === '=') zoomIn();
-    else if (e.key === '-') zoomOut();
-    else if (e.key === '0') fit();
+    else if (e.key === '+' || e.key === '=') (prep ? prepZoom(1.25) : zoomIn());
+    else if (e.key === '-') (prep ? prepZoom(0.8) : zoomOut());
+    else if (e.key === '0') (prep ? prepFit() : fit());
   });
 }
 

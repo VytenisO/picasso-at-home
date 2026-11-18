@@ -12,7 +12,7 @@ from . import converters
 
 MAX_UPLOAD = 12 * 1024 * 1024
 PUBLIC = ("id", "name", "kind", "bytes", "uploaded", "svg", "orig", "conversion", "style", "mask", "vector",
-          "pen", "test", "settings", "layers", "geom")
+          "pen", "test", "settings", "layers", "geom", "method", "recipe")
 
 
 def safe_name(name):
@@ -144,6 +144,43 @@ class Library:
                  "svg": svg, "orig": svg}
         entry.update(extra)
         return self._add(entry)
+
+    def add_prepared(self, svg_path, name, src_path, method, recipe, settings, replace=None):
+        """Store a Prepare result: its SVG, a copy of its source as the original, the recipe and plot settings.
+
+        With replace (an entry), that entry gets the new files and keeps its id, so Plot reopens it as before."""
+        svg_text = pathlib.Path(svg_path).read_text(encoding="utf-8")
+        ET.fromstring(svg_text.encode())
+        safe = safe_name(name)
+        stem = pathlib.Path(safe).stem if pathlib.Path(safe).suffix.lower() in (".svg", ".png", ".jpg") else safe
+        stamp = f"{time.strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(2)}"
+        svg = f"{stamp}_{stem}_plot.svg"
+        (self.s.input / svg).write_text(svg_text, encoding="utf-8")
+        orig = svg
+        if src_path:
+            orig = f"{stamp}_{stem}_source{pathlib.Path(src_path).suffix.lower()}"
+            (self.s.input / orig).write_bytes(pathlib.Path(src_path).read_bytes())
+        fields = {"name": f"{stem}.svg", "kind": "prepared", "method": method, "bytes": len(svg_text.encode()),
+                  "uploaded": datetime.datetime.now().isoformat(timespec="seconds"), "svg": svg, "orig": orig,
+                  "recipe": recipe, "settings": settings, "geom": None, "layers_keys": None, "layers": None,
+                  "mask": None}
+        if not replace:
+            return self._add(dict(fields, id=svg))
+        with self.lock:
+            entries = self._load()
+            e = next((x for x in entries if x.get("id") == replace["id"]), None)
+            if e is None:
+                raise ValueError("The drawing to update is no longer in the library.")
+            old = [self.path(e, f) for f in ("svg", "orig", "mask")]
+            e.update(fields)
+            self._save(entries)
+        for p in old:
+            if p and p.name not in (svg, orig):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+        return e
 
     def convert_preview(self, raw, filename, params, canvas):
         """Convert without storing. -> {svg, stats, mask(base64)}"""
