@@ -4,7 +4,9 @@ import { api, post, connectEvents, setUnauthorizedHandler } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, toast } from './ui.js';
 import { initBed, fit, zoomIn, zoomOut, themeChanged } from './bed.js';
-import { initWorkspace, openFile, refreshFiles, changeSettings, runPreview } from './workspace.js';
+import { initDoc } from './doc.js';
+import { initWorkspace, openFile, refreshFiles, runPreview } from './workspace.js';
+import * as D from './doc.js';
 import { initRun, pause, resume, stop } from './run.js';
 import { initLibrary } from './library.js';
 import { initTools } from './tools.js';
@@ -45,7 +47,8 @@ let inited = false;
 function initOnce() {
   if (inited) return;
   inited = true;
-  initBed((placement) => changeSettings(placement, { now: true }));
+  initBed();
+  initDoc();
   initWorkspace();
   initRun();
   initLibrary();
@@ -58,7 +61,6 @@ function initOnce() {
   initTheme();
   initKeys();
   on('job', followJob);
-  on('current', () => { if (!state.current) $('bedTitle').textContent = 'No drawing open'; });
 }
 
 // Snapshot + console history, then the live stream from that point on.
@@ -67,7 +69,8 @@ async function syncState() {
   if (state.me && st.epoch !== state.me.epoch) {
     // The server restarted (maybe in another mode, with another calibration): reload everything it serves.
     await loadServerInfo(await api('/api/me'));
-    set({ preview: null, previewStale: true, jobPreview: null });
+    set({ preview: null, previewStale: true, jobPreview: null, naturals: {} });
+    state.doc = null;
     toast('The server restarted. The view was reloaded.');
     st = await api('/api/state');
   }
@@ -76,10 +79,12 @@ async function syncState() {
   resetConsole();
   addEvents(log.events);
   if (st.job && st.job.kind === 'plot') loadJobPreview();
-  const last = prefs('lastFile');
-  const jobFile = st.job && jobActive() && st.job.meta && st.job.meta.file;
-  const want = jobFile || last;
-  if (want && state.files.some((f) => f.id === want) && (!state.current || state.current.id !== want)) openFile(want, { quiet: true });
+  if (!state.doc) {
+    await D.loadDoc();
+    // First visit since the bed holds several drawings: put the last opened one on it.
+    const last = prefs('lastFile');
+    if (!state.doc.objects.length && last && state.files.some((f) => f.id === last) && !jobActive()) openFile(last);
+  }
   if (stream) stream.reopen(st.epoch, st.seq);
   else stream = connectEvents({ epoch: st.epoch, seq: st.seq, onEvent, onLink: (link) => set({ link, lastEventAt: Date.now() }) });
 }
@@ -99,7 +104,7 @@ function followJob() {
   if (j.id !== lastJobId && j.kind === 'plot' && j.state !== 'starting') { lastJobId = j.id; loadJobPreview(); }
   if (!jobActive()) {
     set({ pos: null });
-    if (state.current && !state.preview && !state.previewing) runPreview();
+    if (state.doc && state.doc.objects.length && !state.preview && !state.previewing) runPreview();
   }
 }
 
@@ -110,6 +115,7 @@ function onEvent(ev) {
     case 'state': set({ job: ev.job, position: ev.position, lastEventAt: Date.now() }); break;
     case 'pos': set({ pos: { x: ev.x, y: ev.y, pen: ev.pen } }); break;
     case 'files': refreshFiles(); break;
+    case 'doc': D.onDocEvent(ev); break;
     case 'reset': syncState().catch((e) => toast(e.message, true)); break;
     default: set({ lastEventAt: Date.now() });
   }
@@ -190,6 +196,7 @@ function initKeys() {
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (e.key === 'S' && e.shiftKey && !e.ctrlKey && !e.metaKey && !typing) { e.preventDefault(); stop(); return; }
     if (state.ws === 'prepare' && !document.querySelector('dialog[open]') && prepKey(e)) return;
+    if (state.ws === 'plot' && !typing && !document.querySelector('dialog[open]') && docKey(e)) return;
     if (typing || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
     const prep = state.ws === 'prepare';
     if (e.key === '?') { $('helpDlg').showModal(); e.preventDefault(); }
@@ -205,6 +212,22 @@ function initKeys() {
     else if (e.key === '-') (prep ? prepZoom(0.8) : zoomOut());
     else if (e.key === '0') (prep ? prepFit() : fit());
   });
+}
+
+// Editing the bed: undo/redo, clipboard, select all, delete. Returns true when the key was used.
+function docKey(e) {
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) D.redo(); else D.undo(); return true; }
+  if (mod && k === 'y') { e.preventDefault(); D.redo(); return true; }
+  if (jobActive()) return false;
+  if (mod && k === 'a') { e.preventDefault(); D.selectAll(); return true; }
+  if (mod && k === 'd') { e.preventDefault(); D.duplicateSel(); return true; }
+  if (mod && k === 'c' && state.sel.length && !String(window.getSelection())) { D.copySel(); return true; }
+  if (mod && k === 'x' && state.sel.length) { e.preventDefault(); D.cutSel(); return true; }
+  if (mod && k === 'v') { e.preventDefault(); D.paste(); return true; }
+  if (!mod && (e.key === 'Delete' || e.key === 'Backspace') && state.sel.length) { e.preventDefault(); D.removeSel(); return true; }
+  if (!mod && e.key === 'Escape' && state.sel.length) { D.select([]); return true; }
+  return false;
 }
 
 boot();

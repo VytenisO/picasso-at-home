@@ -8,9 +8,12 @@ export const state = {
   files: [],
   converters: [],
   tools: [],
-  current: null,       // {id, name, entry} of the open drawing
-  settings: null,      // settings for the open drawing: x, y, w, speed, travel_speed, paper, layers
-  preview: null,       // last /api/preview result for the open drawing
+  doc: null,           // the bed: {name, objects: [{id, file, x, y, w, h, rot, fx, fy, g}], settings}
+  sel: [],             // ids of the selected objects
+  naturals: {},        // file id -> the drawing at natural size: {geom, layers, strokes}
+  projects: [],        // saved projects: [{slug, name, objects, saved}]
+  history: 0,          // undo depth, for the buttons
+  preview: null,       // last /api/preview result for the bed
   previewStale: true,  // settings changed since the preview
   previewing: false,
   job: null,           // runner snapshot job

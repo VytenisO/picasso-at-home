@@ -1,0 +1,393 @@
+// The bed document: the objects on the bed, the job settings, the selection, undo/redo, the clipboard and saved
+// projects. The server keeps the working document (saved with every preview), so a reload or another device sees
+// the same bed. Every change goes through edit(), which records undo and schedules a preview.
+import { api, post } from './api.js';
+import { state, set, on, jobActive, prefs } from './store.js';
+import { toast } from './ui.js';
+import * as G from './geom.js';
+
+export const CLIENT = Math.random().toString(36).slice(2, 10);
+const undoStack = [], redoStack = [];
+const MAX_UNDO = 200;
+let timer = null, seq = 0, lastCoalesce = null, pasteN = 0;
+
+const newId = () => Math.random().toString(16).slice(2, 10);
+const snap = () => JSON.stringify({ name: state.doc.name, objects: state.doc.objects, settings: state.doc.settings });
+
+export const selected = () => (state.doc ? state.doc.objects.filter((o) => state.sel.includes(o.id)) : []);
+export const fileName = (o) => (state.files.find((f) => f.id === o.file) || {}).name || 'missing drawing';
+export const canUndo = () => undoStack.length > 0;
+export const canRedo = () => redoStack.length > 0;
+
+export function initDoc() {
+  on('files', refreshNaturals);
+}
+
+// ------------------------------------------------------------------ editing
+// fn(draft) changes a copy of the document; returning false cancels. coalesce: edits with the same key within
+// 1.5 s are one undo step (typing in a field, holding an arrow key).
+export function edit(fn, { coalesce = null, sel = null } = {}) {
+  if (!state.doc) return false;
+  if (jobActive()) { toast('A job is running: the bed is locked until it ends.', true); return false; }
+  const before = snap();
+  const d = structuredClone(state.doc);
+  if (fn(d) === false) return false;
+  if (JSON.stringify({ name: d.name, objects: d.objects, settings: d.settings }) === before) return false;
+  const now = Date.now();
+  if (!(coalesce && lastCoalesce && lastCoalesce.key === coalesce && now - lastCoalesce.t < 1500)) {
+    undoStack.push(before);
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+  }
+  lastCoalesce = coalesce ? { key: coalesce, t: now } : null;
+  redoStack.length = 0;
+  apply(d, sel);
+  return true;
+}
+
+function apply(d, sel = null) {
+  const ids = new Set(d.objects.map((o) => o.id));
+  set({ doc: d, sel: (sel || state.sel).filter((id) => ids.has(id)), previewStale: true, history: undoStack.length });
+  schedule();
+}
+
+function schedule(now = false) {
+  seq++;                                   // an older preview still in flight must not overwrite this change
+  clearTimeout(timer);
+  timer = setTimeout(runPreview, now ? 0 : 600);
+}
+
+function restore(s) {
+  lastCoalesce = null;
+  apply({ ...state.doc, ...JSON.parse(s) });
+}
+
+export function undo() {
+  if (!undoStack.length || jobActive()) return;
+  redoStack.push(snap());
+  restore(undoStack.pop());
+}
+
+export function redo() {
+  if (!redoStack.length || jobActive()) return;
+  undoStack.push(snap());
+  restore(redoStack.pop());
+}
+
+export function setSettings(patch, opts = {}) {
+  return edit((d) => { Object.assign(d.settings, patch); }, opts);
+}
+
+export function select(ids, { add = false, toggle = false } = {}) {
+  let s = add ? [...state.sel] : [];
+  for (const id of [].concat(ids)) {
+    if (toggle && s.includes(id)) s = s.filter((x) => x !== id);
+    else if (!s.includes(id)) s.push(id);
+  }
+  set({ sel: s });
+}
+
+export function selectAll() { if (state.doc) select(state.doc.objects.map((o) => o.id)); }
+
+// ------------------------------------------------------------------ server
+export async function loadDoc() {
+  const r = await api('/api/doc');
+  set({ projects: r.projects });
+  await adopt(r.doc, { record: false });
+}
+
+// Take a document from the server (another device, a project). It can be undone like any edit.
+async function adopt(d, { record = true } = {}) {
+  await ensureNaturals(d.objects);
+  for (const o of d.objects) refit(o);
+  if (record && state.doc) { undoStack.push(snap()); redoStack.length = 0; }
+  set({ doc: { name: d.name || '', objects: d.objects, settings: d.settings }, sel: [], preview: null, previewStale: true,
+    history: undoStack.length });
+  schedule(true);
+}
+
+export function onDocEvent(ev) {
+  if (ev.client === CLIENT) return;
+  // Someone else changed the bed. Mid-drag or mid-typing the change waits for the next event.
+  api('/api/doc').then((r) => {
+    if (r.doc.client === CLIENT) return;
+    adopt(r.doc).then(() => toast('The bed was changed on another device.'));
+  }).catch(() => {});
+}
+
+export async function runPreview() {
+  clearTimeout(timer);
+  const d = state.doc;
+  if (!d) return null;
+  const my = ++seq;
+  const body = { name: d.name, objects: d.objects, settings: d.settings };
+  if (!d.objects.length || jobActive()) {
+    // nothing to check (or the bed is locked): keep the server's copy up to date anyway
+    post('/api/doc', { ...body, client: CLIENT }).catch(() => {});
+    if (!d.objects.length) set({ preview: null, previewStale: false });
+    return null;
+  }
+  set({ previewing: true });
+  try {
+    const r = await post('/api/preview', { doc: body, client: CLIENT });
+    if (my !== seq) return null;           // a newer change superseded this preview
+    // The server's layer list is the truth: settings for every ink the bed has now. Not an undo step.
+    set({ preview: r, previewStale: false, doc: { ...state.doc, settings: { ...state.doc.settings, layers: r.settings.layers } } });
+    return r;
+  } catch (e) {
+    if (my === seq) {
+      set({ preview: { ok: false, problems: [e.message], error: true }, previewStale: false });
+      toast(e.message, true);
+    }
+    return null;
+  } finally {
+    if (my === seq) set({ previewing: false });
+  }
+}
+
+// ------------------------------------------------------------------ drawings (natural geometry)
+async function natural(id, force = false) {
+  if (!force && state.naturals[id]) return state.naturals[id];
+  const n = await api(`/api/files/natural?id=${encodeURIComponent(id)}`);
+  state.naturals[id] = n;
+  set({ naturals: state.naturals });
+  return n;
+}
+
+async function ensureNaturals(objs) {
+  const ids = [...new Set(objs.map((o) => o.file))].filter((id) => !state.naturals[id]);
+  await Promise.all(ids.map((id) => natural(id).catch(() => null)));
+}
+
+// A drawing changed in the library (Prepare's Update keeps its id): keep each object's width and take the new
+// drawing's proportions, so it is never stretched by the change.
+function refit(o) {
+  const n = state.naturals[o.file];
+  if (!n) return false;
+  const g = n.geom;
+  if (o.g === g.svg_hash) return false;
+  if (o.g && g.raw_w > 1e-6) o.h = G.r2(Math.max(0.1, o.w * g.raw_h / g.raw_w));
+  o.g = g.svg_hash;
+  return true;
+}
+
+async function refreshNaturals() {
+  if (!state.doc) return;
+  const files = [...new Set(state.doc.objects.map((o) => o.file))];
+  const changed = [];
+  await Promise.all(files.map(async (id) => {
+    const entry = state.files.find((f) => f.id === id);
+    const have = state.naturals[id];
+    if (!entry || !have || (entry.geom && entry.geom.svg_hash === have.geom.svg_hash)) return;
+    const n = await natural(id, true).catch(() => null);
+    if (n && n.geom.svg_hash !== have.geom.svg_hash) changed.push(id);
+  }));
+  if (!changed.length) return;
+  const d = structuredClone(state.doc);
+  for (const o of d.objects) if (changed.includes(o.file)) refit(o);
+  set({ doc: d, previewStale: true });
+  schedule();
+}
+
+// ------------------------------------------------------------------ adding and arranging
+// Put a library drawing on the bed at natural size (shrunk to fit the canvas), next to what is there.
+export async function addFile(id, { select: pick = true } = {}) {
+  const entry = state.files.find((f) => f.id === id);
+  if (!entry) { toast('That file is no longer in the library.', true); return null; }
+  if (jobActive()) { toast('A job is running: add it to the bed when it ends.', true); return null; }
+  let n;
+  try { n = await natural(id); } catch (e) { toast(e.message, true); return null; }
+  const g = n.geom, c = G.canvasRect().canvas;
+  let w = Math.max(g.raw_w, 0.5), h = Math.max(g.raw_h, 0.5);
+  const fit = Math.min(1, (c[2] - c[0]) / w, (c[3] - c[1]) / h);
+  w *= fit; h *= fit;
+  const o = { id: newId(), file: id, x: c[0], y: c[1], w: G.r2(w), h: G.r2(h), rot: 0, fx: false, fy: false, g: g.svg_hash };
+  const s = entry.settings || {};
+  const others = state.doc.objects;
+  if (!others.length && s.x !== null && s.x !== undefined && s.w) {
+    // the drawing's place from before the bed held several objects
+    o.x = s.x; o.y = s.y; o.w = G.r2(s.w); o.h = G.r2(g.raw_w > 1e-6 ? s.w * g.raw_h / g.raw_w : h);
+  } else if (others.length) {
+    const b = G.bounds(others), gap = 5;
+    if (b.x1 + gap + o.w <= c[2]) { o.x = G.r2(b.x1 + gap); o.y = G.r2(Math.max(c[1], b.y0)); }
+    else if (b.y1 + gap + o.h <= c[3]) { o.x = c[0]; o.y = G.r2(b.y1 + gap); }
+  }
+  edit((d) => {
+    d.objects.push(o);
+    if (entry.pen) {
+      // A test sheet belongs to one pen: preset it on the sheet's layers that have no pen yet.
+      for (const ly of n.layers) {
+        const cur = d.settings.layers.find((x) => x.key === ly.key);
+        if (!cur) d.settings.layers.push({ key: ly.key, enabled: true, pen: entry.pen, speed: null, pressure: null });
+        else if (!cur.pen) cur.pen = entry.pen;
+      }
+    }
+  }, { sel: pick ? [o.id] : null });
+  prefs('lastFile', id);
+  return o;
+}
+
+export function removeSel() {
+  const ids = state.sel;
+  if (!ids.length) return;
+  edit((d) => { d.objects = d.objects.filter((o) => !ids.includes(o.id)); }, { sel: [] });
+}
+
+export function clearBed() {
+  edit((d) => { d.objects = []; d.name = ''; }, { sel: [] });
+}
+
+export function duplicateSel(offset = 5) {
+  const src = selected();
+  if (!src.length) return;
+  const copies = src.map((o) => ({ ...structuredClone(o), id: newId(), x: G.r2(o.x + offset), y: G.r2(o.y + offset) }));
+  edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
+}
+
+export function copySel() {
+  const src = selected();
+  if (!src.length) return false;
+  prefs('clipboard', src);
+  pasteN = 0;
+  toast(`Copied ${src.length} object${src.length > 1 ? 's' : ''}.`);
+  return true;
+}
+
+export function cutSel() { if (copySel()) removeSel(); }
+
+export async function paste() {
+  const clip = prefs('clipboard');
+  if (!Array.isArray(clip) || !clip.length) return;
+  const known = clip.filter((o) => state.files.some((f) => f.id === o.file));
+  if (!known.length) { toast('The copied drawings are no longer in the library.', true); return; }
+  await ensureNaturals(known);
+  pasteN++;
+  const copies = known.map((o) => ({ ...o, id: newId(), x: G.r2(o.x + 5 * pasteN), y: G.r2(o.y + 5 * pasteN) }));
+  edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
+}
+
+// Move the selection by (dx, dy) mm.
+export function nudge(dx, dy) {
+  const ids = state.sel;
+  if (!ids.length) return;
+  edit((d) => { for (const o of d.objects) if (ids.includes(o.id)) { o.x = G.r2(o.x + dx); o.y = G.r2(o.y + dy); } },
+    { coalesce: 'nudge' });
+}
+
+// Run fn(objs, d) on the selected objects of a draft.
+export function editSel(fn, opts = {}) {
+  const ids = state.sel;
+  if (!ids.length) return false;
+  return edit((d) => {
+    const objs = d.objects.filter((o) => ids.includes(o.id));
+    if (fn(objs, d) === false) return false;
+    for (const o of objs) { o.x = G.r2(o.x); o.y = G.r2(o.y); o.w = G.r2(o.w); o.h = G.r2(o.h); }
+  }, opts);
+}
+
+// Align: with one object, to the canvas; with several, to the selection's own bounds.
+export function align(kind) {
+  editSel((objs) => {
+    const ref = objs.length > 1 ? G.bounds(objs) : (() => { const c = G.canvasRect().canvas; return { x0: c[0], y0: c[1], x1: c[2], y1: c[3] }; })();
+    for (const o of objs) {
+      const b = G.bounds([o]);
+      let dx = 0, dy = 0;
+      if (kind === 'left') dx = ref.x0 - b.x0;
+      if (kind === 'right') dx = ref.x1 - b.x1;
+      if (kind === 'hcenter') dx = (ref.x0 + ref.x1) / 2 - (b.x0 + b.x1) / 2;
+      if (kind === 'top') dy = ref.y0 - b.y0;
+      if (kind === 'bottom') dy = ref.y1 - b.y1;
+      if (kind === 'vcenter') dy = (ref.y0 + ref.y1) / 2 - (b.y0 + b.y1) / 2;
+      o.x += dx; o.y += dy;
+    }
+  });
+}
+
+// Equal gaps between three or more objects, left to right or top to bottom.
+export function distribute(axis) {
+  editSel((objs) => {
+    if (objs.length < 3) return false;
+    const bs = objs.map((o) => ({ o, b: G.bounds([o]) }));
+    const k0 = axis === 'x' ? 'x0' : 'y0', k1 = axis === 'x' ? 'x1' : 'y1';
+    bs.sort((p, q) => p.b[k0] - q.b[k0]);
+    const span = bs[bs.length - 1].b[k1] - bs[0].b[k0];
+    const total = bs.reduce((s, p) => s + (p.b[k1] - p.b[k0]), 0);
+    const gap = (span - total) / (bs.length - 1);
+    let at = bs[0].b[k0];
+    for (const p of bs) {
+      const d = at - p.b[k0];
+      if (axis === 'x') p.o.x += d; else p.o.y += d;
+      at += (p.b[k1] - p.b[k0]) + gap;
+    }
+  });
+}
+
+// Put the selection's anchor point on the same anchor point of the canvas (top-left on top-left, centre on centre).
+export function toCanvasAnchor(anchor) {
+  editSel((objs) => {
+    const b = G.bounds(objs), c = G.canvasRect().canvas;
+    const cb = { x0: c[0], y0: c[1], w: c[2] - c[0], h: c[3] - c[1] };
+    const [tx, ty] = G.anchorPoint(cb, anchor), [sx, sy] = G.anchorPoint(b, anchor);
+    for (const o of objs) { o.x += tx - sx; o.y += ty - sy; }
+  });
+}
+
+// Scale the selection to fill the canvas (keeping proportions) and centre it.
+export function fitCanvas() {
+  editSel((objs) => {
+    const b = G.bounds(objs), c = G.canvasRect().canvas;
+    const k = Math.min((c[2] - c[0]) / b.w, (c[3] - c[1]) / b.h);
+    G.scaleAbout(objs, b.x0, b.y0, k, k);
+    const nb = G.bounds(objs);
+    for (const o of objs) { o.x += (c[0] + c[2]) / 2 - (nb.x0 + nb.x1) / 2; o.y += (c[1] + c[3]) / 2 - (nb.y0 + nb.y1) / 2; }
+  });
+}
+
+export function rotateSel(deg) {
+  editSel((objs) => { const b = G.bounds(objs); G.rotateAbout(objs, b.x0 + b.w / 2, b.y0 + b.h / 2, deg); });
+}
+
+export function mirrorSel(axis) {
+  editSel((objs) => { const b = G.bounds(objs); G.mirror(objs, axis, b.x0 + b.w / 2, b.y0 + b.h / 2); });
+}
+
+// Plot order: the objects later in the list are drawn later within each pen.
+export function reorder(dir) {
+  const ids = state.sel;
+  if (!ids.length) return;
+  edit((d) => {
+    const pick = d.objects.filter((o) => ids.includes(o.id)), rest = d.objects.filter((o) => !ids.includes(o.id));
+    if (dir === 'first') d.objects = [...pick, ...rest];
+    else if (dir === 'last') d.objects = [...rest, ...pick];
+    else {
+      const arr = d.objects.slice();
+      const order = dir === 'up' ? [...arr.keys()].reverse() : [...arr.keys()];
+      for (const i of order) {
+        const j = dir === 'up' ? i + 1 : i - 1;
+        if (ids.includes(arr[i].id) && j >= 0 && j < arr.length && !ids.includes(arr[j].id)) [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      d.objects = arr;
+    }
+  });
+}
+
+// ------------------------------------------------------------------ projects
+export async function saveProject(name) {
+  await runPreview();                       // the server's copy must be this bed
+  const r = await post('/api/projects/save', { name });
+  set({ projects: r.projects, doc: { ...state.doc, name: r.doc.name } });
+  toast(`Saved the bed as "${r.doc.name}".`);
+}
+
+export async function openProject(slug) {
+  if (jobActive()) { toast('A job is running: open the project when it ends.', true); return; }
+  const r = await post('/api/projects/open', { slug });
+  await adopt(r.doc);
+  set({ projects: (await api('/api/doc')).projects });
+  toast(`Opened "${r.doc.name}"` + (r.missing ? `. ${r.missing} drawing${r.missing > 1 ? 's are' : ' is'} no longer in the library and was left out.` : '.'),
+    !!r.missing);
+}
+
+export async function deleteProject(slug) {
+  const r = await post('/api/projects/delete', { slug });
+  set({ projects: r.projects });
+}

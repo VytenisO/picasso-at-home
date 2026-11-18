@@ -3,6 +3,7 @@ import { post, ApiError } from './api.js';
 import { state, set, on, jobActive } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
+import { fileName } from './doc.js';
 
 const TITLES = {
   idle: 'Idle', starting: 'Starting', running: 'Plotting', pausing: 'Pausing', paused: 'Paused',
@@ -32,9 +33,11 @@ export function initRun() {
   document.querySelectorAll('.dlg-stop').forEach((b) => { b.onclick = stop; });
   on('job', () => document.querySelectorAll('.dlg-stop').forEach((b) => { b.hidden = !jobActive(); }));
   on(['job', 'position', 'link', 'me', 'lastEventAt'], renderStatus);
-  on(['job', 'preview', 'previewStale', 'previewing', 'current', 'me'], renderRun);
+  on(['job', 'preview', 'previewStale', 'previewing', 'doc', 'me'], renderRun);
   setInterval(renderStale, 2000);
 }
+
+const hasBed = () => !!(state.doc && state.doc.objects.length);
 
 export function title(job) { return job ? TITLES[job.state] || job.state : 'Idle'; }
 export function dotClass(job) { return job ? DOT[job.state] || '' : ''; }
@@ -43,7 +46,7 @@ function nextStep(job) {
   if (!job || !jobActive()) {
     if (state.position && state.position.state !== 'at_start')
       return 'Before the next run: motors off, slide the carriage by hand to S (the paper\'s top-left), pen up.';
-    if (!state.current) return 'Open a drawing from the Library.';
+    if (!hasBed()) return 'Add a drawing to the bed from the Library.';
     if (!state.preview || state.previewStale) return 'Preview to check the plan.';
     if (!state.preview.ok) return 'Fix the problems listed under Run, then preview again.';
     return 'Ready. Start plot when the carriage is parked at S with the pen up.';
@@ -138,8 +141,8 @@ function renderRun() {
   $('idleButtons').hidden = active;
   $('jobButtons').hidden = !active || isPentest;
   $('pentestButtons').hidden = !isPentest;
-  const ready = !!(pv && pv.ok && !stale && !state.previewing && state.current);
-  $('previewBtn').disabled = !state.current || state.previewing;
+  const ready = !!(pv && pv.ok && !stale && !state.previewing && hasBed());
+  $('previewBtn').disabled = !hasBed() || state.previewing;
   $('previewBtn').textContent = state.previewing ? 'Checking...' : 'Preview';
   for (const b of ['simBtn', 'traceBtn', 'plotBtn']) $(b).disabled = !ready;
   if (active && !isPentest) {
@@ -154,7 +157,7 @@ function renderRun() {
   kv.replaceChildren();
   ps.hidden = kv.hidden = active;
   if (active) return;
-  if (!state.current) { ps.className = 'note'; ps.textContent = 'Open a drawing, then preview it.'; return; }
+  if (!hasBed()) { ps.className = 'note'; ps.textContent = 'Add a drawing to the bed, then preview it.'; return; }
   if (state.previewing) { ps.className = 'note'; ps.textContent = 'Checking the plan...'; }
   else if (!pv || stale) { ps.className = 'note warn'; ps.textContent = 'Settings changed. Preview to check again.'; }
   else if (!pv.ok) {
@@ -199,8 +202,9 @@ async function start(mode) {
     }
   }
   try {
-    const r = await post('/api/job/start', { id: pv.file, settings: pv.settings, plan_id: pv.plan_id, mode,
-      confirm: mode === 'simulate' ? undefined : { parked: true } });
+    const d = state.doc;
+    const r = await post('/api/job/start', { doc: { name: d.name, objects: d.objects, settings: d.settings },
+      plan_id: pv.plan_id, mode, confirm: mode === 'simulate' ? undefined : { parked: true } });
     toast(mode === 'simulate' ? 'Simulation started: nothing moves.' : 'Started.');
     return r;
   } catch (e) {
@@ -215,7 +219,8 @@ function confirmStart(mode, pv) {
     const first = s.layers.find((l) => l.enabled !== false);
     const title = mode === 'trace' ? 'Trace the frame (pen up)' : `Start plot${state.me.sim ? ' (simulator)' : ''}`;
     const b = s.bbox_machine_mm;
-    const rows = [['Drawing', state.current.name],
+    const objs = state.doc.objects;
+    const rows = [['Drawing', objs.length === 1 ? fileName(objs[0]) : `${objs.length} objects: ${[...new Set(objs.map(fileName))].join(', ')}`],
       ['Area', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])}) mm`]];
     if (mode === 'plot') {
       rows.push(['Time', `about ${fmtTime(s.est_seconds)}`]);

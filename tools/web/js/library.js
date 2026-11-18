@@ -4,6 +4,7 @@ import { api, post } from './api.js';
 import { state, on, jobActive } from './store.js';
 import { $, el, toast, ask } from './ui.js';
 import { openFile, refreshFiles } from './workspace.js';
+import { addFile } from './doc.js';
 import { showWs } from './ws.js';
 import { prepareFile, prepareFromLibrary } from './prepare.js';
 
@@ -20,7 +21,7 @@ export function initLibrary() {
   input.onchange = () => { if (input.files[0]) choose(input.files[0]); input.value = ''; };
   $('toPrepare').onclick = () => showWs('prepare');
   api('/api/fonts').then((r) => { $('fontList').replaceChildren(...r.fonts.map((f) => el('option', { value: f }))); }).catch(() => {});
-  on(['files', 'current', 'job'], renderFiles);
+  on(['files', 'doc', 'job'], renderFiles);
 }
 
 // An SVG goes in as it is; everything else is handed to Prepare.
@@ -43,9 +44,11 @@ function renderFiles() {
   $('fileEmpty').hidden = state.files.length > 0;
   const locked = jobActive();
   list.replaceChildren(...state.files.map((f) => {
-    const sel = state.current && state.current.id === f.id;
-    const open = el('button', { class: 'link', text: f.name, title: 'Open on the bed', disabled: locked && !sel,
-      onclick: () => openFile(f.id) });
+    const sel = !!(state.doc && state.doc.objects.some((o) => o.file === f.id));
+    const open = el('button', { class: 'link', text: f.name, title: sel ? 'On the bed: select it' : 'Put it on the bed',
+      disabled: locked, onclick: () => openFile(f.id) });
+    const add = el('button', { class: 'icon', text: 'Add', disabled: locked,
+      title: sel ? 'Put another copy on the bed' : 'Put it on the bed', onclick: () => addFile(f.id) });
     const tags = [f.kind && el('span', { class: 'tag', text: KIND[f.kind] || f.kind }),
       f.pen && el('span', { class: 'tag', text: `pen ${f.pen}` })];
     const prep = el('button', { class: 'icon', text: 'Prepare', title: f.recipe ? 'Reopen its recipe in Prepare' : 'Open it in Prepare',
@@ -59,6 +62,6 @@ function renderFiles() {
     return el('li', { class: sel ? 'selected' : '' },
       el('img', { src: `/api/files/svg?id=${encodeURIComponent(f.id)}`, alt: '', loading: 'lazy' }),
       el('div', {}, el('div', { class: 'name' }, open), el('div', { class: 'meta' }, ...tags, ' ', f.uploaded ? f.uploaded.replace('T', ' ') : '')),
-      el('div', { class: 'row' }, prep, dl, del));
+      el('div', { class: 'row' }, add, prep, dl, del));
   }));
 }

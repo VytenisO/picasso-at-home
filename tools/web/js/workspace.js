@@ -1,78 +1,163 @@
-// The open drawing: its settings (placement, speeds, paper, layers), automatic previews, the placement form and the
-// layer list. Settings live on the server (saved with every preview), so a reload or another device sees the same.
-import { api, post } from './api.js';
+// The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
+// settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
+import { api } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
-import { $, el, toast } from './ui.js';
-import { canvasRect } from './bed.js';
+import { $, el, toast, ask } from './ui.js';
+import * as G from './geom.js';
+import * as D from './doc.js';
 
-let timer = null;
-let seq = 0;
+export const runPreview = D.runPreview;
+
+const ANCHORS = [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]];
+const ANCHOR_NAMES = ['top-left', 'top', 'top-right', 'left', 'centre', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+let anchor = prefs('anchor') || [0, 0];
 
 export function initWorkspace() {
   const f = $('placeForm');
-  f.addEventListener('change', fromForm);
+  f.addEventListener('change', fromJobForm);
   f.addEventListener('submit', (e) => e.preventDefault());
-  $('placeTL').onclick = () => placeAt('tl');
-  $('placeCenter').onclick = () => placeAt('center');
-  $('placeFit').onclick = () => placeAt('fit');
-  on(['settings', 'preview', 'me'], fillForm);
-  on(['settings', 'preview', 'current', 'job'], renderLayers);
+  const xf = $('xfForm');
+  xf.addEventListener('change', fromXfForm);
+  xf.addEventListener('submit', (e) => e.preventDefault());
+  $('anchorGrid').replaceChildren(...ANCHORS.map((a, i) => el('button', { type: 'button', role: 'radio',
+    title: `Reference point: ${ANCHOR_NAMES[i]}`, 'aria-label': ANCHOR_NAMES[i], onclick: () => setAnchor(a) })));
+  for (const b of $('xfBox').querySelectorAll('[data-act]')) b.onclick = () => act(b.dataset.act);
+  $('undoBtn').onclick = D.undo;
+  $('redoBtn').onclick = D.redo;
+  $('projForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try { await D.saveProject($('projName').value); } catch (err) { toast(err.message, true); }
+  };
+  $('bedClear').onclick = async () => {
+    if (!state.doc.objects.length) return;
+    if (await ask('Clear the bed', 'Take every drawing off the bed? They stay in the Library, and Undo brings them back.', 'Clear')) D.clearBed();
+  };
+  on(['doc', 'preview', 'me'], fillJobForm);
+  on(['doc', 'sel', 'job', 'naturals'], renderArrange);
+  on(['doc', 'preview', 'job'], renderLayers);
+  on(['doc', 'sel', 'files', 'job'], renderObjects);
+  on(['projects', 'doc', 'job'], renderProjects);
+  on(['doc', 'history', 'job'], renderTitle);
   on(['job'], () => { f.querySelectorAll('input').forEach((i) => { i.disabled = jobActive(); }); });
+  setAnchor(anchor);
 }
 
-export async function openFile(id, { quiet = false } = {}) {
-  const entry = state.files.find((f) => f.id === id);
-  if (!entry) { if (!quiet) toast('That file is no longer in the library.', true); return; }
-  const saved = entry.settings || {};
-  const pens = state.me.pens || {};
-  // Test sheets belong to one pen: preset it on every layer.
-  let layers = saved.layers || [];
-  if (entry.pen && !layers.length && entry.layers) {
-    layers = entry.layers.map((l) => ({ key: l.key, enabled: true, pen: entry.pen, speed: null, pressure: null }));
-  }
-  set({ current: { id, name: entry.name, entry }, preview: null, previewStale: true,
-    settings: { x: saved.x ?? null, y: saved.y ?? null, w: saved.w ?? null,
-      speed: saved.speed ?? state.me.limits.speed.default, travel_speed: saved.travel_speed ?? state.me.limits.travel_speed.default,
-      fill: saved.fill || 0, fill_angle: saved.fill_angle ?? 45,
-      paper: saved.paper || null, layers: layers.filter((l) => !l.pen || pens[l.pen]) } });
-  prefs('lastFile', id);
-  $('bedTitle').textContent = entry.name + (entry.pen ? `  (test sheet for pen ${entry.pen})` : '');
-  if (!jobActive()) await runPreview();
+// The Library's "open": select the drawing if it is on the bed already, else put it there. ("Add" always adds.)
+export async function openFile(id) {
+  const there = state.doc ? state.doc.objects.filter((o) => o.file === id) : [];
+  if (there.length) { D.select(there.map((o) => o.id)); return there[0]; }
+  return D.addFile(id);
 }
 
-export function changeSettings(patch, { now = false } = {}) {
-  if (!state.settings || jobActive()) return;
-  seq++;                                   // an older preview still in flight must not overwrite this change
-  set({ settings: { ...state.settings, ...patch }, previewStale: true });
-  clearTimeout(timer);
-  timer = setTimeout(runPreview, now ? 0 : 500);
+function renderTitle() {
+  const d = state.doc;
+  const n = d ? d.objects.length : 0;
+  $('bedTitle').textContent = !n ? 'The bed is empty'
+    : (d.name ? d.name + ': ' : '') + (n === 1 ? D.fileName(d.objects[0]) : `${n} objects`);
+  $('undoBtn').disabled = !D.canUndo() || jobActive();
+  $('redoBtn').disabled = !D.canRedo() || jobActive();
 }
 
-export async function runPreview() {
-  clearTimeout(timer);
-  if (!state.current) return null;
-  const my = ++seq;
-  set({ previewing: true });
-  try {
-    const r = await post('/api/preview', { id: state.current.id, settings: state.settings });
-    if (my !== seq) return null;           // a newer preview superseded this one
-    const layers = r.settings.layers.map((l) => ({ ...l }));
-    set({ preview: r, previewStale: false, settings: { ...state.settings, ...r.settings, layers } });
-    return r;
-  } catch (e) {
-    if (my === seq) {
-      set({ preview: { ok: false, problems: [e.message], error: true }, previewStale: false });
-      toast(e.message, true);
+// ------------------------------------------------------------------ arrange
+function setAnchor(a) {
+  anchor = a;
+  prefs('anchor', a);
+  const i = ANCHORS.findIndex((x) => x[0] === a[0] && x[1] === a[1]);
+  [...$('anchorGrid').children].forEach((b, k) => b.setAttribute('aria-checked', String(k === i)));
+  $('toAnchor').textContent = `To canvas ${ANCHOR_NAMES[i]}`;
+  renderArrange();
+}
+
+function renderArrange() {
+  const sel = D.selected();
+  const box = $('xfBox'), xf = $('xfForm');
+  box.hidden = !sel.length;
+  if (!sel.length) return;
+  const locked = jobActive();
+  box.querySelectorAll('input, button').forEach((x) => { x.disabled = locked; });
+  const b = G.bounds(sel);
+  const [ax, ay] = G.anchorPoint(b, anchor);
+  const one = sel.length === 1 ? sel[0] : null;
+  const val = (name, v) => { if (document.activeElement !== xf[name]) xf[name].value = v; };
+  val('x', G.r2(ax)); val('y', G.r2(ay));
+  // One unturned object: its own size. Otherwise: the bounds of what is selected.
+  const own = one && one.rot % 90 === 0;
+  val('w', G.r2(own && one.rot % 180 === 0 ? one.w : own ? one.h : b.w));
+  val('h', G.r2(own && one.rot % 180 === 0 ? one.h : own ? one.w : b.h));
+  val('rot', one ? G.r2(one.rot) : '');
+  xf.rot.disabled = locked || !one;
+  xf.rot.placeholder = one ? '' : 'one only';
+  $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to canvas';
+  for (const k of ['distx', 'disty']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
+}
+
+function fromXfForm(e) {
+  const xf = $('xfForm');
+  const name = e.target.name;
+  if (name === 'lock' || !name) return;
+  const v = Number(xf[name].value);
+  if (xf[name].value === '' || !Number.isFinite(v)) { renderArrange(); return; }
+  D.editSel((objs) => {
+    const b = G.bounds(objs);
+    const [ax, ay] = G.anchorPoint(b, anchor);
+    if (name === 'x' || name === 'y') {
+      const dx = name === 'x' ? v - ax : 0, dy = name === 'y' ? v - ay : 0;
+      for (const o of objs) { o.x += dx; o.y += dy; }
+    } else if (name === 'w' || name === 'h') {
+      if (v < 0.1) { toast('Width and height must be at least 0.1 mm.', true); return false; }
+      const cur = name === 'w' ? b.w : b.h;
+      if (cur < 1e-6) return false;
+      const k = v / cur;
+      const keep = xf.lock.checked;
+      G.scaleAbout(objs, ax, ay, name === 'w' || keep ? k : 1, name === 'h' || keep ? k : 1);
+    } else if (name === 'rot' && objs.length === 1) {
+      const o = objs[0];
+      const before = G.bounds([o]);
+      const [px, py] = G.anchorPoint(before, [0.5, 0.5]);
+      G.rotateAbout([o], px, py, v - o.rot);
     }
-    return null;
-  } finally {
-    if (my === seq) set({ previewing: false });
-  }
+  }, { coalesce: 'xf-' + name });
+  renderArrange();
 }
 
-function fillForm() {
-  const f = $('placeForm'), st = state.settings, me = state.me;
-  if (!me) return;
+function act(a) {
+  if (a === 'rot90') D.rotateSel(90);
+  else if (a === 'rot-90') D.rotateSel(-90);
+  else if (a === 'mirx') D.mirrorSel('x');
+  else if (a === 'miry') D.mirrorSel('y');
+  else if (a === 'distx') D.distribute('x');
+  else if (a === 'disty') D.distribute('y');
+  else if (a === 'anchor') D.toCanvasAnchor(anchor);
+  else if (a === 'fit') D.fitCanvas();
+  else if (a === 'dup') D.duplicateSel();
+  else if (a === 'del') D.removeSel();
+  else D.align(a);
+}
+
+function renderObjects() {
+  const list = $('objList');
+  const d = state.doc;
+  const objs = d ? d.objects : [];
+  $('objEmpty').hidden = objs.length > 0;
+  const locked = jobActive();
+  list.replaceChildren(...objs.map((o, i) => {
+    const sel = state.sel.includes(o.id);
+    const name = el('button', { class: 'link', text: `${i + 1}. ${D.fileName(o)}`, title: 'Select (Shift: add to the selection)',
+      onclick: (e) => D.select(o.id, { add: e.shiftKey || e.ctrlKey || e.metaKey, toggle: e.shiftKey || e.ctrlKey || e.metaKey }) });
+    const size = el('small', { class: 'muted', text: `${G.r2(o.w)} x ${G.r2(o.h)}${o.rot ? `, ${G.r2(o.rot)} deg` : ''}${G.outside(o) ? ', outside' : ''}` });
+    const mv = (dir, label, title) => el('button', { class: 'icon', text: label, title, disabled: locked,
+      onclick: () => { D.select(o.id); D.reorder(dir); } });
+    return el('li', { class: (sel ? 'selected' : '') + (G.outside(o) ? ' bad' : '') }, name, size,
+      el('span', { class: 'spacer' }),
+      mv('down', '▲', 'Plot earlier (within each pen)'), mv('up', '▼', 'Plot later (within each pen)'));
+  }));
+}
+
+// ------------------------------------------------------------------ job settings
+function fillJobForm() {
+  const f = $('placeForm'), me = state.me;
+  if (!me || !state.doc) return;
+  const st = state.doc.settings;
   const L = me.limits;
   $('speedLbl').textContent = `Drawing (mm/s, max ${L.speed.max})`;
   $('travelLbl').textContent = `Pen up (mm/s, max ${L.travel_speed.max})`;
@@ -81,39 +166,30 @@ function fillForm() {
   const [px0, py0, pw, ph] = me.machine.paper;
   $('paperHint').textContent = `Configured sheet: ${pw} x ${ph} mm with its top-left at (${px0}, ${py0}) mm on the bed and a ` +
     `${me.machine.margin} mm margin. The corner stays where it is; only the size can change here.`;
-  if (!st) return;
   const set_ = (name, v) => { if (document.activeElement !== f[name]) f[name].value = v ?? ''; };
-  set_('x', st.x); set_('y', st.y); set_('w', st.w);
   set_('speed', st.speed); set_('travel_speed', st.travel_speed);
   set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
-  f.paper_w.disabled = f.paper_h.disabled = !st.paper;
-  const pv = state.preview;
-  if (pv && pv.summary) {
-    const b = pv.summary.bbox_machine_mm;
-    const c = canvasRect().canvas;
-    $('placeHint').textContent = `Size ${(b[2] - b[0]).toFixed(1)} x ${(b[3] - b[1]).toFixed(1)} mm. Canvas: ` +
-      `x ${c[0].toFixed(0)}-${c[2].toFixed(0)}, y ${c[1].toFixed(0)}-${c[3].toFixed(0)} mm.`;
-  }
+  f.paper_w.disabled = f.paper_h.disabled = !st.paper || jobActive();
 }
 
-function fromForm(e) {
+function fromJobForm(e) {
   const f = $('placeForm');
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
-  const patch = { x: num('x'), y: num('y'), w: num('w'), speed: num('speed'), travel_speed: num('travel_speed'),
-    fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45 };
+  const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45 };
+  const st = state.doc.settings;
   if (patch.fill && (patch.fill < 0.2 || patch.fill > 50)) {
     toast('Fill spacing must be 0 (off) or between 0.2 and 50 mm.', true);
-    f.fill.value = state.settings.fill || 0;
+    f.fill.value = st.fill || 0;
     return;
   }
   const L = state.me.limits;
   for (const [k, lim] of [['speed', L.speed], ['travel_speed', L.travel_speed]]) {
     if (patch[k] === null || patch[k] < lim.min || patch[k] > lim.max) {
       toast(`${k === 'speed' ? 'Drawing' : 'Pen-up'} speed must be between ${lim.min} and ${lim.max} mm/s.`, true);
-      f[k].value = state.settings[k];
+      f[k].value = st[k];
       return;
     }
   }
@@ -123,41 +199,30 @@ function fromForm(e) {
   } else {
     patch.paper = f.paper_custom.checked ? { width: num('paper_w'), height: num('paper_h') } : null;
   }
-  changeSettings(patch);
-}
-
-function placeAt(where) {
-  const pv = state.preview;
-  if (!pv || !pv.summary || !state.settings) return;
-  const c = canvasRect().canvas, b = pv.summary.bbox_machine_mm;
-  const ar = (b[3] - b[1]) / Math.max(1e-6, b[2] - b[0]);
-  let w = state.settings.w || (b[2] - b[0]);
-  if (where === 'fit') w = Math.min(c[2] - c[0], (c[3] - c[1]) / ar);
-  const h = w * ar;
-  const r2 = (v) => Math.round(v * 100) / 100;
-  if (where === 'tl') changeSettings({ x: c[0], y: c[1], w: r2(w) }, { now: true });
-  else changeSettings({ x: r2((c[0] + c[2] - w) / 2), y: r2((c[1] + c[3] - h) / 2), w: r2(w) }, { now: true });
+  D.setSettings(patch, { coalesce: 'job-' + (e && e.target.name) });
 }
 
 // ------------------------------------------------------------------ layers
 function renderLayers() {
   const list = $('layerList');
   const pv = state.preview;
-  const fileLayers = (pv && pv.file_layers) || (state.current && state.current.entry.layers) || [];
+  const fileLayers = (pv && pv.file_layers) || [];
   $('layerEmpty').hidden = fileLayers.length > 0;
+  $('layerEmpty').textContent = state.doc && state.doc.objects.length ? 'Checking the layers...' : 'Add a drawing to see its layers.';
   if (!fileLayers.length) { list.replaceChildren(); return; }
   if (list.contains(document.activeElement)) return;       // do not rebuild under the operator's cursor
-  const st = state.settings || {};
+  const st = state.doc.settings;
   const L = state.me.limits;
   const pens = state.me.pens || {};
   const locked = jobActive();
   list.replaceChildren(...fileLayers.map((fl, i) => {
     const s = (st.layers || []).find((x) => x.key === fl.key) || { key: fl.key, enabled: true };
     const upd = (patch) => {
-      const cur = (state.settings && state.settings.layers) || [];
-      const layers = fileLayers.map((x) => ({ ...(cur.find((y) => y.key === x.key) || { key: x.key, enabled: true, pen: null, speed: null, pressure: null }) }));
-      Object.assign(layers[i], patch);
-      changeSettings({ layers });
+      D.edit((d) => {
+        const cur = d.settings.layers || [];
+        d.settings.layers = fileLayers.map((x) => ({ ...(cur.find((y) => y.key === x.key) || { key: x.key, enabled: true, pen: null, speed: null, pressure: null }) }));
+        Object.assign(d.settings.layers[i], patch);
+      });
     };
     const pen = el('select', { 'aria-label': `Pen for layer ${i + 1}`, disabled: locked, onchange: (e) => {
       const p = pens[e.target.value] || {};
@@ -192,14 +257,25 @@ function renderLayers() {
   }));
 }
 
+// ------------------------------------------------------------------ projects
+function renderProjects() {
+  const list = $('projList');
+  const locked = jobActive();
+  if (state.doc && document.activeElement !== $('projName')) $('projName').value = state.doc.name || '';
+  list.replaceChildren(...(state.projects || []).map((p) => el('li', {},
+    el('div', {}, el('div', { class: 'name' }, el('button', { class: 'link', text: p.name, disabled: locked,
+      title: 'Open: replaces what is on the bed (Undo brings it back)', onclick: () => D.openProject(p.slug).catch((e) => toast(e.message, true)) })),
+    el('div', { class: 'meta' }, `${p.objects} object${p.objects === 1 ? '' : 's'}, saved ${(p.saved || '').replace('T', ' ')}`)),
+    el('div', { class: 'row' }, el('button', { class: 'icon', text: 'Delete', 'aria-label': `Delete project ${p.name}`, onclick: async () => {
+      if (!(await ask('Delete project', `Delete the project ${p.name}? The drawings stay in the Library.`, 'Delete'))) return;
+      try { await D.deleteProject(p.slug); } catch (e) { toast(e.message, true); }
+    } })))));
+  $('bedClear').disabled = locked || !(state.doc && state.doc.objects.length);
+}
+
 export async function refreshFiles() {
   try {
     const r = await api('/api/files');
     set({ files: r.files });
-    if (state.current) {
-      const e = r.files.find((f) => f.id === state.current.id);
-      if (!e) set({ current: null, preview: null, settings: null });
-      else state.current.entry = e;
-    }
   } catch (e) { toast(e.message, true); }
 }

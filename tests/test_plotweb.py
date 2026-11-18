@@ -431,5 +431,99 @@ class TestApi(SimServer):
         self.wait_state(("stopped", "complete"))
 
 
+class TestDocument(SimServer):
+    """Several objects on the bed, composed into one plan."""
+
+    def obj(self, fid, x, y, w, h, **kw):
+        return dict({"id": f"o{x:g}{y:g}", "file": fid, "x": x, "y": y, "w": w, "h": h, "rot": 0, "fx": False,
+                     "fy": False}, **kw)
+
+    def doc_preview(self, objects, settings=None):
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": objects, "settings": settings or {}}})
+        self.assertEqual(code, 200, d)
+        return d
+
+    def test_01_natural_geometry(self):
+        fid = self.upload("two_layers.svg")
+        code, n = self.call("GET", f"/api/files/natural?id={fid}")
+        self.assertEqual(code, 200, n)
+        g = n["geom"]
+        # the line runs corner to corner of the 100 x 60 mm document
+        self.assertAlmostEqual(g["raw_x"], 0, places=1)
+        self.assertAlmostEqual(g["raw_w"], 100, places=1)
+        self.assertAlmostEqual(g["raw_h"], 60, places=1)
+        self.assertEqual([ly["key"] for ly in n["layers"]], ["#000000|", "#c0392b|"])
+        self.assertTrue(n["strokes"])
+
+    def test_02_two_objects_rotated_and_mirrored(self):
+        fid = self.upload("two_layers.svg")
+        a = self.obj(fid, 80, 30, 100, 60)
+        b = self.obj(fid, 200, 100, 50, 60, rot=90, fx=True)       # non-uniform, turned a quarter, mirrored
+        d = self.doc_preview([a, b])
+        self.assertTrue(d["ok"], d["problems"])
+        bb = d["summary"]["bbox_machine_mm"]
+        self.assertAlmostEqual(bb[0], 80, delta=0.2)
+        self.assertAlmostEqual(bb[1], 30, delta=0.2)
+        # b is 50 x 60 turned 90 degrees about its centre (225, 130): it spans x 195..255, y 105..155
+        self.assertAlmostEqual(bb[2], 255, delta=0.2)
+        self.assertAlmostEqual(bb[3], 155, delta=0.2)
+        self.assertEqual(len(d["summary"]["layers"]), 2)       # same inks merge into one layer each
+        self.assertEqual(d["summary"]["layers"][0]["strokes"], 2 * 2)
+        # the bed is the server's working document now
+        code, cur = self.call("GET", "/api/doc")
+        self.assertEqual([o["id"] for o in cur["doc"]["objects"]], [a["id"], b["id"]])
+
+    def test_03_outside_the_canvas_is_a_problem(self):
+        fid = self.upload("two_layers.svg")
+        d = self.doc_preview([self.obj(fid, 300, 30, 100, 60)])
+        self.assertFalse(d["ok"])
+        self.assertTrue(any("right edge" in p for p in d["problems"]), d["problems"])
+
+    def test_04_run_the_bed_and_reject_a_changed_one(self):
+        fid = self.upload("many_strokes.svg")
+        objs = [self.obj(fid, 80, 30, 40, 40), self.obj(fid, 140, 30, 40, 40, rot=45)]
+        d = self.doc_preview(objs)
+        self.assertTrue(d["ok"], d["problems"])
+        moved = [dict(objs[0], x=81), objs[1]]
+        code, r = self.call("POST", "/api/job/start", {"doc": {"objects": moved, "settings": {}},
+                                                      "plan_id": d["plan_id"], "mode": "simulate"})
+        self.assertEqual(code, 409)
+        self.assertIn("changed since the preview", r["error"])
+        code, r = self.call("POST", "/api/job/start", {"doc": {"objects": objs, "settings": {}},
+                                                      "plan_id": d["plan_id"], "mode": "simulate"})
+        self.assertEqual(code, 200, r)
+        code, pv = self.call("GET", "/api/job/preview")
+        self.assertTrue(pv["doc"])
+        st = self.wait_state(("complete",), timeout=120)
+        self.assertEqual(st["job"]["meta"]["name"], "many_strokes.svg x2")
+
+    def test_05_empty_bed_and_bad_objects(self):
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
+        self.assertEqual(code, 400)
+        self.assertIn("empty", d["error"])
+        fid = self.upload("two_layers.svg")
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": [self.obj(fid, 80, 30, 0, 60)]}})
+        self.assertEqual(code, 400)
+        self.assertIn("width", d["error"])
+
+    def test_06_projects(self):
+        fid = self.upload("two_layers.svg")
+        self.doc_preview([self.obj(fid, 80, 30, 100, 60)], {"speed": 20})
+        code, r = self.call("POST", "/api/projects/save", {"name": "Card front"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["slug"], "card-front")
+        code, _ = self.call("POST", "/api/doc", {"objects": [], "settings": {}})
+        self.assertEqual(code, 200)
+        code, r = self.call("POST", "/api/projects/open", {"slug": "card-front"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(len(r["doc"]["objects"]), 1)
+        self.assertEqual(r["doc"]["settings"]["speed"], 20)
+        self.assertEqual(r["doc"]["name"], "Card front")
+        code, r = self.call("POST", "/api/projects/delete", {"slug": "card-front"})
+        self.assertEqual(r["projects"], [])
+        code, r = self.call("POST", "/api/projects/open", {"slug": "../etc"})
+        self.assertEqual(code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

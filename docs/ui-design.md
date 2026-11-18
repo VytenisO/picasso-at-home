@@ -50,6 +50,33 @@ How Prepare is built:
   the bed; "Save as new" keeps the old one.
 - The browser keeps the recipe being edited (`localStorage`), so a reload resumes the work.
 
+## The bed document (built 2026-11-18)
+
+The Plot workspace edits a **document**: several library drawings on the bed, each an object
+`{id, file, x, y, w, h, rot, fx, fy, g}`. `(x, y, w, h)` is the object's box in machine mm before rotation; it turns
+`rot` degrees clockwise about the box centre and `fx`/`fy` mirror it inside the box. The drawing's geometry box
+(its strokes at natural size) is stretched to fill the box, so width and height scale independently. `g` is the
+drawing's geometry hash when it was placed: if Prepare's Update changes the drawing, the page keeps the width and
+takes the new proportions instead of stretching it.
+
+- **One plan for the whole bed.** `document.py` composes the objects into one bed-sized SVG in machine mm (each
+  drawing wrapped in a `<g transform="matrix(...)">`) and `plot_svg.py --absolute` plans it. Layers, pen changes,
+  time, the canvas check and the plan id work as they did for one file. Object order is file order, so within a
+  pen the earlier object plots first.
+- **Instant editing.** Each drawing's natural strokes come once from `/api/files/natural`; the bed draws them
+  through each object's transform while dragging. A fresh preview replaces that with the planner's exact strokes.
+- **Undo** is client-side (200 steps). The working document is saved on the server with every preview (and with
+  `POST /api/doc` when there is nothing to preview), so reloads and other devices see the same bed; a `doc` event
+  tells the other pages, which take the change as an undoable step.
+- **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
+  (undoable); drawings no longer in the library are left out with a note.
+- **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
+  point with keep-proportions, a turn angle (one object), turn 90, mirror, align (to each other, or to the canvas
+  for one), spread, to-canvas-anchor, fit, duplicate, remove. On the bed: click, Shift/Ctrl-click, box select (left
+  to right encloses, right to left touches), drag to move (snaps to 0.5 mm, Alt for none), side handles stretch,
+  corner handles keep proportions (Shift: free), the round handle turns in 15 degree steps (Shift: free). Right or
+  middle drag pans; a finger on empty bed pans.
+
 ## Layout
 
 ```
@@ -59,13 +86,14 @@ How Prepare is built:
 | Library    |                                               | Status              |
 |  upload,   |          bed (368 x 227.5 mm)                 |  state, next action |
 |  convert,  |          paper, inset canvas,                 |  progress, ETA      |
-|  files     |          design (drag / resize handles),      |  layer, pen, up/dn  |
-| Layers     |          drawn strokes, carriage dot,         |  x/y mm, speed, prs |
-|  pen,speed,|          start point S                        | Run                 |
-|  pressure  |          pan: drag empty space / wheel zoom   |  Preview, Simulate, |
-| Tools      |                                               |  Start, Pause,      |
-|  sheets,   |                                               |  Continue, Stop     |
-|  pen test  |                                               | Placement (x,y,w)   |
+|  files,    |          objects (select, move, stretch,      |  layer, pen, up/dn  |
+|  projects  |          turn handles), strokes, carriage,    |  x/y mm, speed, prs |
+| Layers     |          start point S                        | Run                 |
+|  pen,speed,|          box select; right-drag pans; wheel   |  Preview, Simulate, |
+|  pressure  |                                               |  Start, Pause, Stop |
+| Tools      |                                               | Arrange (objects,   |
+|  sheets    |                                               |  X/Y/W/H, align)    |
+|  pen test  |                                               | Job (speeds, fill)  |
 +------------+-----------------------------------------------+---------------------+
 | Console  [Info|Debug] [search] [copy] [auto-scroll]                               |
 +----------------------------------------------------------------------------------+
@@ -107,6 +135,7 @@ stay in the top bar on every tab. Prepare on a phone stacks the preview, the rec
 | `--control` | Line protocol on stdin: `CONTINUE`, `PAUSE` (at the next stroke end; pen up, motors on), `STOP` (same cleanup as Ctrl-C, checked before every SM and SP), `RETURN` (at the stroke end: travel back to S). End of input = `STOP`. The confirmation word is read through the same reader. In `--sim` the swap pause waits too. |
 | `--sim-speed F` | The virtual clock also sleeps `dt / F` real seconds, so a simulated run can be watched and paused. |
 | `--preview-json FILE` | Dry run writes the plotted strokes (machine mm, layer, pressure), the plot order and the summary. |
+| `--absolute` | The SVG's own millimetres are machine millimetres: no anchoring to the canvas, `--x0/--y0/--width` ignored. The bed document is planned this way. |
 | `--layers FILE` | Per ink layer `{key, enabled, speed, pressure, pen}`, in layer order; `key` must match. Same ceilings. Layer pressure is the default for strokes without their own `data-pressure`. Disabled layers are dropped after placement, so the others do not move. |
 | markers under `--track` | `__PROGRESS__`, `__LAYER__`, `__PAUSE__` (`kind: swap|operator`), `__RESUMED__`, `__RESULT__`. |
 
@@ -127,6 +156,7 @@ time estimates in plot order, and an end of input at the confirmation prompt cou
 | `library.py` | manifest, uploads and conversion, per-file saved settings and geometry |
 | `converters.py` | registry of upload converters (svg, raster, mesh) with a parameter schema; the Library's direct SVG upload |
 | `prepare.py` | Prepare: step plugins (`STEPS`), recipe checks, the per-stage cache (`Workshop`) |
+| `document.py` | the bed document: object validation and transforms, composing one SVG, the working copy and projects (`DocStore`) |
 | `tools.py` | registry of tools: stroke/fill/pressure sheets, result recording, pen height test |
 | `hardware.py` | the only direct EBB access: read-only `V` check, last-resort pen-up/motors-off |
 | `api.py` | HTTP routes, orchestration (preview, start, tools), SSE |
@@ -160,8 +190,13 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | POST `/api/prepare/save` | `{recipe, settings: {fill, fill_angle, layers: [{key, pen}]}, name, replace?}` | `{file}`; refused for a drawing being plotted |
 | POST `/api/prepare/from_library` | `{file}` | `{source, recipe, name, replace, settings}` |
 | GET `/api/prepare/file?kind=png|mask|svg&key=`, `?kind=source&id=` | | stage images, the SVG (`download=1`), the source (sandboxed CSP) |
-| POST `/api/preview` | `{id, settings}` | `{ok, plan_id, problems, settings, summary, placement, order, strokes, file_layers}`; saves the settings |
-| POST `/api/job/start` | `{id, settings, plan_id, mode: plot|trace|simulate, confirm: {parked}}` | `{job}`, or 400/409 with the reason |
+| POST `/api/preview` | `{doc: {name, objects, settings}, client}` | `{ok, plan_id, problems, settings, summary, placement, order, strokes, file_layers, objects}`; saves the bed |
+| POST `/api/preview` | `{id, settings}` (one file, the old form; kept for tools and tests) | as above, without `objects`; saves the file's settings |
+| POST `/api/job/start` | `{doc, plan_id, mode: plot|trace|simulate, confirm: {parked}}` (or `{id, settings, ...}`) | `{job}`, or 400/409 with the reason |
+| GET `/api/files/natural?id=` | | `{geom: {raw_x, raw_y, raw_w, raw_h, svg_hash}, layers, strokes}`: the drawing at natural size in its own mm |
+| GET `/api/doc` | | `{doc: {rev, name, objects, settings}, projects}` |
+| POST `/api/doc` | `{name, objects, settings, client}` | `{doc}`: replaces the working bed |
+| POST `/api/projects/save`, `open`, `delete` | `{name}` / `{slug}` | `{projects, doc}`; open also says how many drawings were missing |
 | GET `/api/job/preview` | | strokes and order of the current/last plot job (for a reloaded page) |
 | POST `/api/job/pause`, `/api/job/return` | `{job}` | refused for traces and stale job ids |
 | POST `/api/job/continue` | `{job, pause}` | only for that exact pause id |
@@ -181,6 +216,7 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | `state` | `{job, position, busy}` | no: `/api/state` is the snapshot |
 | `pos` | `x, y, pen` (commanded) | no |
 | `files` | `rev` | no |
+| `doc` | `rev, client` (the page that changed the bed) | no |
 | `reset` | `epoch, seq` | client re-reads `/api/state` and `/api/log` |
 | `ping` | every 15 s without other events | no |
 
@@ -194,14 +230,17 @@ States: `starting, running, pausing, paused, stopping, returning, complete, stop
 
 `api.js` (fetch with plain errors, SSE with resume), `store.js` (one state object, subscriptions, local
 preferences), `ui.js` (DOM helpers, toast, prompt, schema forms), `bed.js` (canvas 2D bed view, pan/zoom,
-drag/resize, progress, carriage), `ink.js` (the ink renderer both workspaces use: pen colour, pen width
+selection, move/resize/turn handles, box select, progress, carriage), `geom.js` (object transforms, bounds,
+align/scale/turn/mirror maths, the canvas rectangle), `doc.js` (the bed document: edits with undo/redo, selection,
+clipboard, add/arrange, projects, server sync and previews), `ink.js` (the ink renderer both workspaces use: pen colour, pen width
 `width_mm` in `pens.json` or 0.5 mm, Ink/Lines toggle), `ws.js` (the two workspaces), `prepare.js` (source, recipe
-editor, preview views, pens, save), `workspace.js` (open drawing, settings, automatic previews, placement form,
-layers), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
+editor, preview views, pens, save), `workspace.js` (the Arrange panel, objects list, job settings, layers,
+projects), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
 `console.js`, `app.js` (boot, login, events, tabs, theme, shortcuts). Styles: `tools/web/app.css`.
 
 Keyboard: `?` help, `1`/`2` Prepare/Plot, `Ctrl+Enter` send to Plot (Prepare), `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge
-the drawing 1 mm (Shift 10 mm) with the bed focused, `+`/`-`/`0` zoom/fit, `Esc` closes dialogs (never stops).
+the selection 1 mm (Shift 10 mm, Alt 0.1 mm) with the bed focused, `Ctrl+Z`/`Ctrl+Shift+Z`/`Ctrl+Y` undo/redo,
+`Ctrl+A/C/X/V/D` select all, copy, cut, paste, duplicate, `Delete` removes from the bed, `+`/`-`/`0` zoom/fit, `Esc` closes dialogs (never stops).
 
 ## Tests
 

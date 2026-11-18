@@ -430,8 +430,8 @@ async function send(open, asNew = false) {
     save();
     await refreshFiles();
     if (open) {
-      if (jobActive() && !(state.current && state.current.id === r.file.id)) {
-        toast(`${r.file.name} saved. A job is running: open it from the Library when it ends.`);
+      if (jobActive()) {
+        toast(`${r.file.name} saved. A job is running: add it to the bed from the Library when it ends.`);
       } else {
         showWs('plot');
         await openFile(r.file.id);

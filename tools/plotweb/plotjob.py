@@ -125,9 +125,11 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--paper-width", f"{v['paper']['width']:g}", "--paper-height", f"{v['paper']['height']:g}"]
     bed = bed or s.bed()
     c = canvas_of(bed, v.get("paper"))
-    if v.get("x") is not None:
+    if v.get("absolute"):
+        argv.append("--absolute")      # a composed document: its millimetres are machine millimetres
+    elif v.get("x") is not None:
         argv += ["--x0", f"{v['x'] - c[0]:.3f}", "--y0", f"{v['y'] - c[1]:.3f}"]
-    if v.get("w") and geom and geom.get("raw_w", 0) > 1e-6:
+    if v.get("w") and geom and geom.get("raw_w", 0) > 1e-6 and not v.get("absolute"):
         argv += ["--width", f"{v['w'] * geom['doc_w'] / geom['raw_w']:.4f}"]
     if v.get("fill"):
         argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]

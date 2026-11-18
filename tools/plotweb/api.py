@@ -13,9 +13,10 @@ import shutil
 import threading
 import time
 import urllib.parse
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import converters, hardware, plotjob, prepare, tools
+from . import converters, document, hardware, plotjob, prepare, tools
 from .auth import COOKIE, SESSION_AGE, Auth
 from .config import LIMITS, WEB
 from .events import EventLog
@@ -42,6 +43,7 @@ class App:
         self.lib = Library(settings, self.ev)
         self.runner = JobRunner(settings, self.ev)
         self.prep = prepare.Workshop(settings)
+        self.docs = document.DocStore(settings, self.lib, self.ev)
         self.plans = {}
         self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
         self.plans_lock = threading.Lock()
@@ -107,22 +109,29 @@ class App:
                 self._fill_layers[memo] = hit
             return g, hit[0], hit[1]
         g = e.get("geom")
-        if g and g.get("svg_hash") == digest and e.get("layers_keys") is not None:
+        natural = self.plan_dir / f"natural_{digest}.json"
+        if g and g.get("svg_hash") == digest and g.get("raw_x") is not None and e.get("layers_keys") is not None \
+                and natural.exists():
             return g, e["layers_keys"], e.get("layers") or []
         tmp = self.plan_dir / f"geom_{digest}_{secrets.token_hex(4)}.json"
+        # Measured in absolute mode: the strokes come out in the drawing's own millimetres, which is what an
+        # object's transform starts from. The placement problems this reports do not matter here.
         v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"],
-             "x": None, "y": None, "w": None, "paper": None, "layers": []}
+             "x": None, "y": None, "w": None, "paper": None, "layers": [], "absolute": True}
         rc, out = plotjob.run_dry(plotjob.build_argv(self.s, svg_path, v, "dry", None, preview_json=tmp))
         if not tmp.exists():
             tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
             raise ApiError(400, "This drawing cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"),
                            output=out[-4000:])
         pv = json.loads(tmp.read_text())
-        tmp.unlink()
         sm = pv["summary"]
-        b, sc = sm["bbox_machine_mm"], sm["scale"] or 1.0
-        g = {"svg_hash": digest, "raw_w": (b[2] - b[0]) / sc, "raw_h": (b[3] - b[1]) / sc,
+        b = sm["bbox_machine_mm"]
+        g = {"svg_hash": digest, "raw_x": b[0], "raw_y": b[1], "raw_w": b[2] - b[0], "raw_h": b[3] - b[1],
              "doc_w": sm["doc_mm"][0], "doc_h": sm["doc_mm"][1]}
+        tmp.write_text(json.dumps({"geom": g, "strokes": _thin(pv["strokes"]),
+                                   "layers": [{k: ly.get(k) for k in ("key", "name", "color", "strokes")}
+                                              for ly in sm["layers"]]}, separators=(",", ":")))
+        tmp.replace(natural)
         layers = [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]]
         keys = [ly["key"] for ly in layers]
         self.lib.update(e["id"], geom=g, layers_keys=keys, layers=layers)
@@ -152,6 +161,10 @@ class App:
         except plotjob.SettingsError as ex:
             raise ApiError(400, str(ex))
         plotjob.resolve_placement(v, bed, g)
+        pid, d = self._stage(svg_bytes, machine_bytes, v)
+        return v, g, pid, layers, d
+
+    def _stage(self, svg_bytes, machine_bytes, v):
         pid = plotjob.plan_id(svg_bytes, machine_bytes, v)
         d = self.plan_dir / pid
         if not (d / "machine.json").exists():
@@ -161,7 +174,107 @@ class App:
                 tmp = d / f".{name}.{secrets.token_hex(4)}"
                 tmp.write_bytes(data)
                 tmp.replace(d / name)
-        return v, g, pid, layers, d
+        return pid, d
+
+    def natural(self, ident):
+        """A drawing at natural size in its own mm: geometry box, layers and strokes, for drawing objects."""
+        e, p = self._entry(ident)
+        g, _, _ = self.geometry(e, p)
+        data = json.loads((self.plan_dir / f"natural_{g['svg_hash']}.json").read_text())
+        data["file"] = e["id"]
+        return data
+
+    def _doc_layers(self, svg_bytes, fill, fill_angle):
+        """Layer keys and layers of a composed document (one dry run per distinct document and fill)."""
+        memo = (hashlib.sha256(svg_bytes + planner_hash().encode()).hexdigest()[:20], fill, fill_angle)
+        hit = self._fill_layers.get(memo)
+        if hit is None:
+            req = self.plan_dir / f"docl_{secrets.token_hex(4)}"
+            req.mkdir()
+            try:
+                (req / "doc.svg").write_bytes(svg_bytes)
+                v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"],
+                     "x": None, "y": None, "w": None, "paper": None, "layers": [], "absolute": True,
+                     "fill": fill, "fill_angle": fill_angle}
+                rc, out = plotjob.run_dry(plotjob.build_argv(self.s, req / "doc.svg", v, "dry", None,
+                                                             preview_json=req / "pv.json"))
+                if not (req / "pv.json").exists():
+                    tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
+                    raise ApiError(400, "The bed cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"))
+                sm = json.loads((req / "pv.json").read_text())["summary"]
+            finally:
+                shutil.rmtree(req, ignore_errors=True)
+            lay = [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]]
+            hit = ([ly["key"] for ly in lay], lay)
+            if len(self._fill_layers) > 200:
+                self._fill_layers.clear()
+            self._fill_layers[memo] = hit
+        return hit
+
+    def _resolve_doc(self, raw_doc):
+        """The bed document -> resolved settings, objects, plan id, layers, plan dir (like _resolve)."""
+        raw_doc = raw_doc if isinstance(raw_doc, dict) else {}
+        known = {e["id"] for e in self.lib.list()}
+        try:
+            objs = document.clean_objects(raw_doc.get("objects") or [], known)
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        if not objs:
+            raise ApiError(400, "The bed is empty. Add a drawing from the Library.")
+        rs = raw_doc.get("settings") if isinstance(raw_doc.get("settings"), dict) else {}
+        try:
+            fill = float(rs.get("fill") or 0)
+            fill_angle = float(rs.get("fill_angle", 45.0) if rs.get("fill_angle") not in (None, "") else 45.0)
+        except (TypeError, ValueError):
+            fill, fill_angle = 0.0, 45.0
+        if not 0.2 <= fill <= 50 or not 0 <= fill_angle <= 180:
+            fill = 0.0       # out of range: validate() below says so
+        files = {}
+        for o in objs:
+            if o["file"] not in files:
+                e, p = self._entry(o["file"])
+                files[o["file"]] = (p, self.geometry(e, p)[0])
+        machine_bytes = self.s.machine_path.read_bytes()
+        bed = self.s.bed_from(machine_bytes)
+        try:
+            svg_bytes = document.compose(objs, files, bed)
+        except (document.DocError, ET.ParseError) as ex:
+            raise ApiError(400, f"Could not put the drawings together: {ex}")
+        keys, layers = self._doc_layers(svg_bytes, fill, fill_angle)
+        try:
+            v = plotjob.validate(dict(rs, x=None, y=None, w=None), bed, self.s.pens(), keys)
+        except plotjob.SettingsError as ex:
+            raise ApiError(400, str(ex))
+        v["absolute"] = True
+        pid, d = self._stage(svg_bytes, machine_bytes, v)
+        return v, objs, pid, layers, d
+
+    def preview_doc(self, body):
+        raw = body["doc"]
+        try:
+            self.docs.put(raw.get("objects") or [], raw.get("settings"), name=raw.get("name"),
+                          client=body.get("client"))
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        v, objs, pid, layers, plan = self._resolve_doc(raw)
+        ok, problems, pv, out = self._dry(plan, v, None)
+        with self.plans_lock:
+            self.plans[pid] = {"file": None, "doc": True, "ok": ok, "created": time.time()}
+            for k in [k for k, p in self.plans.items() if time.time() - p["created"] > 24 * 3600]:
+                self.plans.pop(k, None)
+        names = ", ".join(sorted({(self.lib.get(o["file"]) or {}).get("name", "?") for o in objs}))
+        self.ev.log("info" if ok else "warn",
+                    f"Preview of the bed ({len(objs)} object{'s' if len(objs) != 1 else ''}: {names}): "
+                    + ("ready to plot." if ok else "; ".join(problems)))
+        for ln in out.splitlines():
+            if ln.strip() and not ln.startswith("__"):
+                self.ev.log("debug", ln, "plot")
+        res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "doc": True, "file": None,
+               "file_layers": layers, "objects": objs}
+        if pv:
+            res.update(summary=_public_summary(pv["summary"]), placement=pv["placement"], order=pv["order"],
+                       strokes=_thin(pv["strokes"]))
+        return res
 
     def _dry(self, plan, v, g):
         req = plan / f"req_{secrets.token_hex(4)}"
@@ -214,12 +327,27 @@ class App:
             plan = self.plans.get(pid)
         if not plan or plan.get("used"):
             raise ApiError(409, "This preview has expired or was already used. Preview again, then start.")
-        e, svg_path = self._entry(body.get("id"))
-        ok, job_id = self.runner.reserve("plot", mode, sim, {"file": e["id"], "name": e["name"], "plan_id": pid})
+        if isinstance(body.get("doc"), dict):
+            known = {x["id"]: x["name"] for x in self.lib.list()}
+            objs = [o for o in body["doc"].get("objects") or [] if isinstance(o, dict) and o.get("file") in known]
+            names = sorted({known[o["file"]] for o in objs})
+            name = str(body["doc"].get("name") or "").strip()[:80] or (
+                (names[0] + (f" x{len(objs)}" if len(objs) > 1 else "")) if len(names) == 1
+                else f"{len(objs)} objects: {', '.join(names)}"[:120])
+            e = {"id": None, "name": name}
+            resolve = lambda: self._resolve_doc(body["doc"])  # noqa: E731
+            meta = {"doc": True, "file": None, "name": name, "plan_id": pid}
+        else:
+            e, svg_path = self._entry(body.get("id"))
+            resolve = lambda: self._resolve(e, svg_path, body.get("settings"))  # noqa: E731
+            meta = {"file": e["id"], "name": e["name"], "plan_id": pid}
+        ok, job_id = self.runner.reserve("plot", mode, sim, meta)
         if not ok:
             raise ApiError(409, job_id)
         try:
-            v, g, now_pid, _, plan = self._resolve(e, svg_path, body.get("settings"))
+            v, g, now_pid, _, plan = resolve()
+            if meta.get("doc"):
+                g = None
             if now_pid != pid:
                 raise ApiError(409, "The drawing, its settings or the machine calibration changed since the preview. "
                                     "Preview again and re-check before starting.")
@@ -241,7 +369,8 @@ class App:
                                       control=True)
             word = None if sim else ("TRACE\n" if mode == "trace" else "PLOT\n")
             job_pv = {"order": pv["order"], "strokes": _thin(pv["strokes"]), "placement": pv["placement"],
-                      "summary": _public_summary(pv["summary"]), "file": e["id"], "plan_id": pid}
+                      "summary": _public_summary(pv["summary"]), "file": e["id"], "doc": bool(meta.get("doc")),
+                      "plan_id": pid, "settings": {"layers": v["layers"]}}
             launched, msg = self.runner.launch(job_id, argv, word, preview=job_pv)
             if not launched:
                 raise ApiError(409, msg)
@@ -880,7 +1009,44 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- routes: plotting
     def r_preview(self):
-        self.send(200, self.app.preview(self.json_body()))
+        body = self.json_body()
+        self.send(200, self.app.preview_doc(body) if isinstance(body.get("doc"), dict) else self.app.preview(body))
+
+    def r_natural(self):
+        self.send(200, self.app.natural(self.query().get("id", "")))
+
+    # ---- routes: the bed document and saved projects
+    def r_doc(self):
+        self.send(200, {"doc": self.app.docs.get(), "projects": self.app.docs.projects()})
+
+    def r_doc_put(self):
+        b = self.json_body()
+        try:
+            d = self.app.docs.put(b.get("objects") or [], b.get("settings"), name=b.get("name"), client=b.get("client"))
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, {"doc": d})
+
+    def r_project_save(self):
+        try:
+            slug = self.app.docs.save_project(self.json_body().get("name"))
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, {"slug": slug, "projects": self.app.docs.projects(), "doc": self.app.docs.get()})
+
+    def r_project_open(self):
+        try:
+            d, missing = self.app.docs.open_project(self.json_body().get("slug"))
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, {"doc": d, "missing": missing})
+
+    def r_project_delete(self):
+        try:
+            self.app.docs.delete_project(self.json_body().get("slug"))
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, {"projects": self.app.docs.projects()})
 
     def r_start(self):
         self.send(200, self.app.start(self.json_body()))
@@ -966,6 +1132,8 @@ ROUTES_GET = {
     "/api/tools": (Handler.r_tools, True),
     "/api/pens": (Handler.r_pens, True),
     "/api/job/preview": (Handler.r_job_preview, True),
+    "/api/files/natural": (Handler.r_natural, True),
+    "/api/doc": (Handler.r_doc, True),
     "/api/plotter": (Handler.r_plotter, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
@@ -982,6 +1150,10 @@ ROUTES_POST = {
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
     "/api/preview": (Handler.r_preview, True),
+    "/api/doc": (Handler.r_doc_put, True),
+    "/api/projects/save": (Handler.r_project_save, True),
+    "/api/projects/open": (Handler.r_project_open, True),
+    "/api/projects/delete": (Handler.r_project_delete, True),
     "/api/job/start": (Handler.r_start, True),
     "/api/job/pause": (Handler.r_pause, True),
     "/api/job/continue": (Handler.r_continue, True),

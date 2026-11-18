@@ -807,6 +807,9 @@ def main():
     ap.add_argument("--sim-speed", type=float, help="with --sim: also run in real time at this speed factor")
     ap.add_argument("--preview-json", help="dry run: write the plotted strokes (machine mm) and summary here")
     ap.add_argument("--layers", help="JSON file: per ink layer settings (enabled, speed, pressure, pen)")
+    ap.add_argument("--absolute", action="store_true",
+                    help="the SVG's own millimetres are machine millimetres: no anchoring, --x0/--y0/--width ignored "
+                         "(the web UI composes a bed-sized document)")
     a = ap.parse_args()
     if a.sim_speed is not None and not (a.sim and 0 < a.sim_speed <= 1000):
         sys.exit("--sim-speed needs --sim and a factor in (0, 1000]")
@@ -951,7 +954,9 @@ def main():
     else:
         shift_x, shift_y = (tx0 + tx1) / 2 - (px0 + px1) / 2, (ty0 + ty1) / 2 - (py0 + py1) / 2
     ox, oy = a.x0, a.y0
-    if a.anchor == "top-left":
+    if a.absolute:
+        ox, oy = -a.start_x, -a.start_y         # document mm = machine mm, S is the origin of the motion
+    elif a.anchor == "top-left":
         ox += shift_x - x0
         oy += shift_y - y0
     elif a.anchor == "top-center":

@@ -35,7 +35,7 @@ niche.
 1. **Workspace split** (done 2026-11-18). Prepare and Plot as top-level tabs. Move image conversion out of the Library panel into
    Prepare, with the plugin interface and the shared ink preview. The Plot workspace keeps the current bed, layers,
    tools and run panels. Everything below is placed in one of the two.
-2. **Document model.** Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
+2. **Document model** (done 2026-11-18). Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
    mirror). Add selection, undo/redo, a numeric transform panel with a 9-point anchor, duplicate/delete/copy/paste,
    align and move to page anchors, and saving the project.
 3. **Path planning.** Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
@@ -120,11 +120,11 @@ niche.
 | Download original | HAVE | | "Save" button |
 | Delete with confirmation; refused while plotting | HAVE | | |
 | Trash / undo delete | TODO | P2 | delete is permanent today |
-| Project file: scene of several objects with layers and settings | TODO | P1 | today the per-file settings are saved server-side, one drawing at a time |
-| New / open / save / save as project | TODO | P1 | |
-| Recent projects | TODO | P2 | the last file reopens today |
+| Project file: scene of several objects with layers and settings | HAVE | | the bed document (`document.py`): objects with their own transform, composed into one SVG in machine mm and planned with `plot_svg.py --absolute` |
+| New / open / save / save as project | HAVE | | Library tab, Projects: save the bed under a name, open (undoable), delete, clear the bed |
+| Recent projects | PART | P3 | projects are listed newest first; no separate recent list |
 | Templates (project that opens as a copy, keeps layer/pen setup) | TODO | P3 | |
-| Autosave and recovery after reload or crash | PART | P1 | settings save on preview; make the whole scene autosave |
+| Autosave and recovery after reload or crash | HAVE | | the bed is saved on the server with every change and reloads on every device |
 | Warn on leaving with unsaved changes | TODO | P1 | browser leave prompt |
 | Project notes (free text shown on open) | TODO | P3 | pen and paper reminders |
 | Export flattened plot SVG | TODO | P1 | exactly what will be plotted, in machine mm |
@@ -136,10 +136,10 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Click select | TODO | P1 | one drawing is always "selected" today |
-| Box select: enclosing (drag right) and crossing (drag left) | TODO | P1 | |
-| Shift add, Ctrl toggle | TODO | P1 | |
-| Select all, deselect with Esc or empty click | TODO | P1 | Esc must still never stop a job |
+| Click select | HAVE | |  |
+| Box select: enclosing (drag right) and crossing (drag left) | HAVE | | a mouse or pen on empty bed; a finger pans |
+| Shift add, Ctrl toggle | HAVE | | Shift and Ctrl both toggle |
+| Select all, deselect with Esc or empty click | HAVE | | Ctrl+A; Esc only deselects, it never stops a job |
 | Select all on a layer (pen) | TODO | P1 | |
 | Tab cycles through objects | TODO | P3 | |
 | Invert selection | TODO | P3 | |
@@ -153,16 +153,16 @@ niche.
 | Move by drag, arrow-key nudge 1 mm / Shift 10 mm | HAVE | | |
 | Nudge distances as a setting | TODO | P3 | |
 | Uniform scale by corner handles | HAVE | | aspect locked |
-| Non-uniform scale (edge handles, unlock aspect) | TODO | P1 | |
-| Rotate (handle, 15 degree snap with Shift, rotate 90 keys) | TODO | P1 | needs `plot_svg.py` to accept transforms, or flatten before |
-| Flip horizontal / vertical | TODO | P1 | |
+| Non-uniform scale (edge handles, unlock aspect) | HAVE | | edge handles stretch one way; corners keep proportions unless Shift |
+| Rotate (handle, 15 degree snap with Shift, rotate 90 keys) | HAVE | | turn handle snaps to 15 degrees (Shift: free), Turn left/right buttons, typed angle |
+| Flip horizontal / vertical | HAVE | | Mirror H / Mirror V about the selection's centre |
 | Mirror about a drawn line | TODO | P3 | |
 | Shear | TODO | P3 | |
-| Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | PART | P1 | X/Y/W only, top-left anchor; no H, no rotation |
+| Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | HAVE | | X/Y/W/H are the selection's bounds at the chosen reference point; a group scales about it |
 | Unit-aware and arithmetic input (`100/3`, `2in`) | TODO | P2 | |
-| Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | TODO | P1 | |
+| Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | HAVE | | 200 steps per page; typing and arrow nudges coalesce into one step |
 | Undo history list | TODO | P3 | |
-| Copy / cut / paste / paste in place / duplicate / delete | TODO | P1 | |
+| Copy / cut / paste / paste in place / duplicate / delete | PART | P3 | copy, cut, paste (offset each time), duplicate, delete; no paste in place |
 | Group / ungroup | TODO | P2 | |
 | Lock object (no move/resize/delete) | TODO | P2 | |
 | Make same width / height | TODO | P3 | |
@@ -175,11 +175,11 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Quick placement: canvas top-left, centre, fit canvas | HAVE | | `workspace.js` |
-| Move to any page anchor (corners, edge midpoints, centre) | PART | P1 | add the other anchors |
-| Align left/right/top/bottom/centres | TODO | P1 | needs several objects |
-| Distribute by edges or centres | TODO | P2 | |
+| Move to any page anchor (corners, edge midpoints, centre) | HAVE | | "To canvas ..." uses the 9-point reference |
+| Align left/right/top/bottom/centres | HAVE | | to each other with several selected, to the canvas with one |
+| Distribute by edges or centres | PART | P3 | Spread H/V gives equal gaps between edges; not by centres |
 | Move together (abut) and dock to edge | TODO | P3 | |
-| Draw order: forward/back/front/back, per-object priority | TODO | P1 | order decides pen travel and what is drawn on top |
+| Draw order: forward/back/front/back, per-object priority | PART | P2 | objects list order (earlier/later) is the plot order within each pen; path planning (step 3) may reorder strokes |
 | Grid array (rows, columns, spacing, stagger, alternate mirror) | TODO | P2 | sheets of cards or labels |
 | Circular array | TODO | P3 | |
 | Copy along path | TODO | P3 | |

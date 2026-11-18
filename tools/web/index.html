@@ -145,6 +145,16 @@
         <ul id="fileList" class="files" aria-label="Uploaded drawings"></ul>
         <p id="fileEmpty" class="hint">Nothing here yet. Add a drawing above.</p>
       </div>
+      <div class="section">
+        <h2>Projects</h2>
+        <p class="hint">A project is the whole bed: the drawings, where they sit, pens and speeds.</p>
+        <form id="projForm" class="proj-form">
+          <input id="projName" maxlength="80" placeholder="Name this bed" aria-label="Project name" required>
+          <button type="submit">Save</button>
+        </form>
+        <ul id="projList" class="files projs" aria-label="Saved projects"></ul>
+        <button id="bedClear" type="button" class="link">Clear the bed</button>
+      </div>
     </section>
 
     <section id="tab-layers" role="tabpanel" aria-labelledby="tabBtn-layers" hidden>
@@ -204,7 +214,9 @@
   <!-- centre: the bed -->
   <section class="center" id="bedPane" aria-label="Bed view">
     <div class="bed-toolbar">
-      <span class="title" id="bedTitle">No drawing open</span>
+      <span class="title" id="bedTitle">The bed is empty</span>
+      <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
       <span class="spacer"></span>
       <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
       <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
@@ -212,7 +224,7 @@
       <button class="icon" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
     </div>
     <div class="bed-wrap">
-      <canvas id="bed" tabindex="0" aria-label="Bed: drag the drawing to move it, drag a corner to resize, drag empty space to pan, wheel to zoom"></canvas>
+      <canvas id="bed" tabindex="0" aria-label="Bed: click a drawing to select it, drag to move, drag a handle to resize or turn, drag empty space to select several, right-drag to pan, wheel to zoom"></canvas>
       <div id="swapBanner" class="swap-banner" role="alert" hidden>
         <h3 id="swapTitle"></h3>
         <p id="swapText"></p>
@@ -267,19 +279,50 @@
     </section>
 
     <section class="section" id="placeBox">
-      <h2>Placement</h2>
+      <h2>Arrange</h2>
+      <ul id="objList" class="objs" aria-label="Objects on the bed, in plot order"></ul>
+      <p id="objEmpty" class="hint">The bed is empty. Add a drawing from the Library.</p>
+      <div id="xfBox">
+        <form id="xfForm" autocomplete="off">
+          <div class="xf-grid">
+            <div class="anchor-grid" id="anchorGrid" role="radiogroup" aria-label="Reference point for X, Y and resizing"></div>
+            <label class="field"><span>X (mm)</span><input name="x" type="number" step="any"></label>
+            <label class="field"><span>Y (mm)</span><input name="y" type="number" step="any"></label>
+            <label class="field"><span>Width</span><input name="w" type="number" step="any" min="0.1"></label>
+            <label class="field"><span>Height</span><input name="h" type="number" step="any" min="0.1"></label>
+            <label class="field"><span>Turn (deg)</span><input name="rot" type="number" step="any"></label>
+            <label class="check lock" title="Keep the proportions when width or height changes"><input type="checkbox" name="lock" checked> Keep proportions</label>
+          </div>
+        </form>
+        <div class="tool-row" role="group" aria-label="Turn and mirror">
+          <button type="button" data-act="rot-90" title="Turn 90 degrees anticlockwise">Turn left</button>
+          <button type="button" data-act="rot90" title="Turn 90 degrees clockwise">Turn right</button>
+          <button type="button" data-act="mirx" title="Mirror left to right">Mirror H</button>
+          <button type="button" data-act="miry" title="Mirror top to bottom">Mirror V</button>
+        </div>
+        <div class="tool-row" role="group" aria-label="Align">
+          <span class="muted" id="alignTo">Align to canvas</span>
+          <button type="button" data-act="left" title="Align left edges">Left</button>
+          <button type="button" data-act="hcenter" title="Centre horizontally">Centre</button>
+          <button type="button" data-act="right" title="Align right edges">Right</button>
+          <button type="button" data-act="top" title="Align top edges">Top</button>
+          <button type="button" data-act="vcenter" title="Centre vertically">Middle</button>
+          <button type="button" data-act="bottom" title="Align bottom edges">Bottom</button>
+          <button type="button" data-act="distx" title="Equal gaps left to right (three or more)">Spread H</button>
+          <button type="button" data-act="disty" title="Equal gaps top to bottom (three or more)">Spread V</button>
+        </div>
+        <div class="tool-row" role="group" aria-label="Place">
+          <button type="button" data-act="anchor" id="toAnchor" title="Put the reference point on the same point of the canvas">To canvas top-left</button>
+          <button type="button" data-act="fit" title="Scale to fill the canvas and centre">Fit canvas</button>
+          <button type="button" data-act="dup" title="Duplicate (Ctrl+D)">Duplicate</button>
+          <button type="button" data-act="del" class="danger-text" title="Remove from the bed (Delete)">Remove</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="jobBox">
+      <h2>Job</h2>
       <form id="placeForm">
-        <div class="field-row">
-          <label class="field"><span>X (mm)</span><input name="x" type="number" step="any"></label>
-          <label class="field"><span>Y (mm)</span><input name="y" type="number" step="any"></label>
-          <label class="field"><span>Width (mm)</span><input name="w" type="number" step="any" min="1"></label>
-        </div>
-        <p class="hint" id="placeHint"></p>
-        <div class="row">
-          <button type="button" id="placeTL">Canvas top-left</button>
-          <button type="button" id="placeCenter">Centre</button>
-          <button type="button" id="placeFit">Fit canvas</button>
-        </div>
         <h3>Speeds</h3>
         <div class="field-row">
           <label class="field"><span id="speedLbl">Drawing (mm/s)</span><input name="speed" type="number" step="1"></label>
@@ -375,8 +418,9 @@
     <ol>
       <li><b>Prepare</b> (optional): drop an image, 3D model or SVG, or start from text. Build a recipe (adjust,
         method, clean up), check the result in ink, choose pens, and send it to Plot. A finished SVG can skip this.</li>
-      <li>In <b>Plot</b>, open the drawing from the Library.</li>
-      <li>Move and resize it on the bed (drag it, drag a corner, or type X, Y, width). It must stay inside the dashed canvas.</li>
+      <li>In <b>Plot</b>, add drawings from the Library. Several can share the bed.</li>
+      <li>Arrange them: drag to move, drag a handle to resize (sides stretch, corners keep proportions), drag the round
+        handle to turn. Or type the numbers under Arrange. Everything must stay inside the dashed canvas.</li>
       <li>Set pens and speeds per layer in Layers.</li>
       <li><b>Preview</b> checks the plan with the plotter's own rules. <b>Simulate</b> runs it on a virtual machine.</li>
       <li>Switch the plotter on with the motors off, slide the carriage by hand to <b>S</b> (the paper's top-left), pen up.</li>
@@ -389,7 +433,13 @@
       <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>Send to Plot (Prepare)</dd>
       <dt><kbd>Space</kbd></dt><dd>Pause / continue</dd>
       <dt><kbd>Shift</kbd>+<kbd>S</kbd></dt><dd>Stop</dd>
-      <dt>Arrows</dt><dd>Move the drawing 1 mm (Shift: 10 mm), with the bed focused</dd>
+      <dt>Arrows</dt><dd>Move the selection 1 mm (Shift: 10 mm, Alt: 0.1 mm), with the bed focused</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dt><dd>Undo, redo</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> <kbd>D</kbd> <kbd>A</kbd></dt><dd>Copy, cut, paste, duplicate, select all</dd>
+      <dt><kbd>Delete</kbd></dt><dd>Remove the selection from the bed (the drawing stays in the Library)</dd>
+      <dt>Shift-click, drag a box</dt><dd>Select several. A box dragged left to right takes what is fully inside; right to left, anything it touches</dd>
+      <dt>Shift while dragging</dt><dd>A corner: stretch freely. The turn handle: any angle (else 15 degree steps)</dd>
+      <dt>Alt while dragging</dt><dd>No snapping to the 0.5 mm grid</dd>
       <dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
       <dt><kbd>Esc</kbd></dt><dd>Close a dialog (never stops a job)</dd>
     </dl>
