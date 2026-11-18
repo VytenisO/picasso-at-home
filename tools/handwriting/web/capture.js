@@ -70,8 +70,8 @@ function drawStroke(s) {
 // ---- pen input
 function accept(e) {
   if (e.pointerType === "pen") { sawPen = true; return true; }
-  if (e.pointerType === "touch") return !(sawPen || $("penonly").checked);
-  return e.button === 0; // mouse
+  if (e.pointerType === "touch") return !(sawPen || $("penonly").checked);   // finger: ignored once a pen was seen, or when asked
+  return e.button === 0; // mouse, and drawing tablets that act as a mouse
 }
 
 function addPoint(e) {
@@ -90,6 +90,7 @@ pad.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   pad.setPointerCapture(e.pointerId);
   pointerKind = e.pointerType;
+  say("input: " + e.pointerType + (e.pointerType === "mouse" ? " (a tablet in mouse mode has no pressure)" : ""));
   live = []; strokes.push(live); dirty = true;
   addPoint(e);
   if (live.length === 1) { ctx.beginPath(); ctx.arc(live[0][0], live[0][1], 1.2 + 2.2 * live[0][3], 0, 6.2832); ctx.fill(); }
@@ -103,7 +104,6 @@ pad.addEventListener("pointermove", (e) => {
 function end(e) {
   if (!live) return;
   live = null;
-  say("");
 }
 pad.addEventListener("pointerup", end);
 pad.addEventListener("pointercancel", end);
@@ -179,8 +179,8 @@ async function save() {
 $("save").onclick = save;
 $("skip").onclick = () => show(cur + 1);
 $("prev").onclick = () => show(cur - 1);
-$("undo").onclick = () => { strokes.pop(); dirty = strokes.length > 0 || dirty; redraw(); };
-$("clear").onclick = () => { if (!strokes.length || confirm("Clear this prompt?")) { strokes = []; dirty = false; t0 = null; tBase = 0; redraw(); } };
+$("undo").onclick = () => { strokes.pop(); dirty = strokes.length > 0; if (!strokes.length) { t0 = null; tBase = 0; } redraw(); };
+$("clear").onclick = () => { strokes = []; live = null; dirty = false; t0 = null; tBase = 0; redraw(); };
 $("size").oninput = () => {
   xh = +$("size").value; $("sizeout").textContent = xh + " px"; store("xh", xh);
   if (!strokes.length) layout();
@@ -190,9 +190,11 @@ $("section").onchange = () => { store("section", $("section").value); buildOrder
 window.addEventListener("resize", () => { if (!strokes.length) layout(); else redraw(); });
 window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
-  if (e.key === "Enter") { e.preventDefault(); save(); }
-  else if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); $("undo").click(); }
+  const typing = e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA" ||
+    (e.target.tagName === "INPUT" && !["checkbox", "range", "button"].includes(e.target.type));
+  if (typing) return;
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); $("undo").click(); }      // works after clicking the checkbox or slider too
+  else if (e.key === "Enter" && e.target.tagName !== "BUTTON") { e.preventDefault(); save(); }
 });
 
 const BASE = (location.pathname.match(/^\/w\/[^/]+/) || [""])[0];     // /w/<writer> when several people share one server
