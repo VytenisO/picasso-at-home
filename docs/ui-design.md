@@ -79,7 +79,7 @@ time estimates in plot order, and an end of input at the confirmation prompt cou
 | `plotjob.py` | settings validation, `plot_svg.py` argv, plan ids, plain-language problems |
 | `library.py` | manifest, uploads and conversion, per-file saved settings and geometry |
 | `converters.py` | registry of upload converters (svg, raster, mesh) with a parameter schema |
-| `tools.py` | registry of tools: stroke/fill/pressure sheets, result recording, pen height test, homing |
+| `tools.py` | registry of tools: stroke/fill/pressure sheets, result recording, pen height test |
 | `hardware.py` | the only direct EBB access: read-only `V` check, last-resort pen-up/motors-off |
 | `api.py` | HTTP routes, orchestration (preview, start, tools), SSE |
 | `../plot_server.py` | entry point (kept for the systemd unit), `--sim`, `--sim-speed`, `--data` |
@@ -130,7 +130,7 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | `reset` | `epoch, seq` | client re-reads `/api/state` and `/api/log` |
 | `ping` | every 15 s without other events | no |
 
-Job: `{id, kind: plot|pentest|live|home, mode: plot|trace|simulate, sim, state, message, meta: {file, name, plan_id},
+Job: `{id, kind: plot|pentest, mode: plot|trace|simulate, sim, state, message, meta: {file, name, plan_id},
 progress: {done, strokes, layer, fraction, elapsed_s, eta_s, est_done_s, est_total_s}, layer: {index, label, pen,
 speed, pressure}, pos, pen, pause: {id, kind, label, pen, layer_index, resuming} | null, result}`.
 

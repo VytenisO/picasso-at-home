@@ -1,7 +1,7 @@
 // Status panel, run controls, the start confirmation and the pen-swap prompt.
 import { post, ApiError } from './api.js';
 import { state, set, on, jobActive } from './store.js';
-import { $, el, toast, ask, fmtTime, mm } from './ui.js';
+import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
 
 const TITLES = {
@@ -28,7 +28,6 @@ export function initRun() {
   $('ptToggle').onclick = () => pentest('toggle');
   $('ptSweep').onclick = () => pentest('sweep');
   $('ptQuit').onclick = () => pentest('quit');
-  $('homeBtn').onclick = home;
   // Modal dialogs make the page behind them inert, so each carries its own Stop while a job runs.
   document.querySelectorAll('.dlg-stop').forEach((b) => { b.onclick = stop; });
   on('job', () => document.querySelectorAll('.dlg-stop').forEach((b) => { b.hidden = !jobActive(); }));
@@ -43,13 +42,12 @@ export function dotClass(job) { return job ? DOT[job.state] || '' : ''; }
 function nextStep(job) {
   if (!job || !jobActive()) {
     if (state.position && state.position.state !== 'at_start')
-      return 'Before the next run: press Home the carriage, or switch the motors off and slide the carriage by hand to S (the paper\'s top-left), pen up.';
+      return 'Before the next run: motors off, slide the carriage by hand to S (the paper\'s top-left), pen up.';
     if (!state.current) return 'Open a drawing from the Library.';
     if (!state.preview || state.previewStale) return 'Preview to check the plan.';
     if (!state.preview.ok) return 'Fix the problems listed under Run, then preview again.';
     return 'Ready. Start plot when the carriage is parked at S with the pen up.';
   }
-  if (job.kind === 'home' && job.state === 'running') return 'The carriage drives slowly into the upper-left stops (a buzz there is expected), then travels to S. Shift+S stops before the next move chunk.';
   if (job.kind === 'live' && job.state === 'running') return 'Type a line under Tools, Live writing, and press Write. Finish returns to S; Stop finishes the move already sent, then lifts the pen.';
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
@@ -65,7 +63,7 @@ function nextStep(job) {
 function renderStatus() {
   const job = state.job;
   const active = jobActive();
-  $('stTitle').textContent = job ? (job.kind === 'pentest' ? 'Pen test: ' : job.kind === 'live' ? 'Live writing: ' : job.kind === 'home' ? 'Homing: ' : '') + title(job) : 'Idle';
+  $('stTitle').textContent = job ? (job.kind === 'pentest' ? 'Pen test: ' : job.kind === 'live' ? 'Live writing: ' : '') + title(job) : 'Idle';
   $('stDot').className = 'state-dot ' + dotClass(job);
   $('stMsg').textContent = job ? job.message || '' : '';
   $('stNext').textContent = nextStep(job);
@@ -97,11 +95,7 @@ function renderStatus() {
   const p = state.position;
   const pn = $('stPos');
   pn.className = 'note ' + (p && p.state === 'at_start' ? 'ok' : p && p.state === 'unknown' ? 'err' : 'warn');
-  $('homeRow').hidden = active;
-  if (active && job.kind === 'home') {
-    pn.className = 'note';
-    pn.textContent = 'Carriage: homing. The position is unknown until both axes have reached their stops.';
-  } else if (active && (job.kind === 'plot' || job.kind === 'live')) {
+  if (active && (job.kind === 'plot' || job.kind === 'live')) {
     pn.className = 'note';
     pn.textContent = 'Carriage: under the job\'s control. The position above is the commanded one (no readback).';
   } else pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
@@ -149,7 +143,7 @@ function renderRun() {
   $('previewBtn').textContent = state.previewing ? 'Checking...' : 'Preview';
   for (const b of ['simBtn', 'traceBtn', 'plotBtn']) $(b).disabled = !ready;
   if (active && !isPentest) {
-    const live = job.kind === 'live' || job.kind === 'home';   // no pause or return: let it finish or stop it
+    const live = job.kind === 'live';   // a live session has no pause or return: finish it or stop it
     $('pauseBtn').disabled = job.state !== 'running' || live;
     $('continueBtn').disabled = job.state !== 'paused' || (job.pause && job.pause.resuming);
     $('returnBtn').disabled = live || !['running', 'pausing', 'paused'].includes(job.state);
@@ -267,15 +261,4 @@ export function resume() {
 }
 function returnToStart() { if (state.job) control('/api/job/return', { job: state.job.id }); }
 export function stop() { if (jobActive()) control('/api/job/stop', { job: state.job.id }); }
-async function home() {
-  if (jobActive()) return;
-  const sim = state.me && state.me.sim ? ' (Simulator: nothing moves.)' : '';
-  const ok = await ask('Home the carriage', 'Pen up and in its holder? The carriage drives slowly into the upper-left end ' +
-    'stops (a buzz at the stops is expected), then travels to S, the paper\'s top-left. Up to about 80 s. Keep hands ' +
-    'and cables clear; Stop works before each move chunk.' + sim, 'Home');
-  if (!ok) return;
-  try {
-    await post('/api/tools/run', { tool: 'home', params: { axis: 'both', speed: 8, dot: false }, confirm: { ok: true } });
-  } catch (e) { toast(e.message, true); }
-}
 function pentest(cmd) { if (state.job) control('/api/pentest', { job: state.job.id, cmd }); }

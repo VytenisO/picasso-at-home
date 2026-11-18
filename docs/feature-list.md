@@ -26,10 +26,9 @@ niche.
 
 ## Build order (proposed)
 
-0. **Homing and firmware.** Crash homing first: pen up, drive slowly past full travel into the upper-left end stops
-   (solid stops on every end, confirmed by the user 2026-11-18), then travel to S. This turns "position unknown"
-   into "known" without a hand park, and makes jog, go-to, resume and return-to-S safe after a crash or stop. Then
-   upgrade the EBB from 2.0.1 to stock 3.x (prebuilt image, no compiler needed) for `ES` (instant stop), `QS` (step
+0. **Firmware.** (Crash homing was planned here and dropped on 2026-11-18 after the user watched it run on the
+   machine; the start corner stays a hand park.) Upgrade the EBB from 2.0.1 to stock 3.x (prebuilt image, no
+   compiler needed) for `ES` (instant stop), `QS` (step
    counter readback), `QM` (motion idle) and `HM` (absolute move). The driver detects them from `V` and falls back
    to timed waits on 2.0.1, so the UI does not wait on the upgrade. The pen-depth pot patch (`firmware/`) comes
    after the stock upgrade is proven.
@@ -288,7 +287,7 @@ niche.
 | Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
 | Stale-connection warning | HAVE | | |
-| Start from stroke N (resume an interrupted or stopped job) | TODO | P1 | record the last finished stroke; home or re-park, re-preview, resume. With `QS`, the exact stop point is known |
+| Start from stroke N (resume an interrupted or stopped job) | TODO | P1 | record the last finished stroke; re-park, re-preview, resume. With `QS`, the exact stop point is known |
 | Plot only selected objects or layers | PART | P1 | layers via enable; add "plot selection" |
 | Repeat job N times with a paper-change hold between | TODO | P2 | cards, batches |
 | Live speed override during a run | TODO | P3 | applies from the next chunk |
@@ -314,7 +313,7 @@ niche.
 | Pen up / pen down buttons | PART | P1 | only inside the pen-height test |
 | Short "pen touch" at layer pressure | TODO | P3 | time-limited |
 | Motors off (release to park by hand) | PART | P1 | done at the end of each job; add a button |
-| Set start here / re-zero here | TODO | P1 | after a jog, or after parking by hand; homing makes it mostly unneeded |
+| Set start here / re-zero here | TODO | P1 | after a jog, or after parking by hand |
 | Saved positions (pen-swap spot, parking, paper corner) | TODO | P3 | |
 | Start-from options: S, current position, saved origin, with 9-point job anchor | TODO | P2 | |
 | Live position shown on the bed during jogs | PART | P1 | the carriage dot exists for jobs |
@@ -325,9 +324,9 @@ niche.
 | Live writing: pause and return | TODO | P3 | |
 | Replot a saved live session | TODO | P3 | |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
-| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | PART | P0 | `tools/home.py` (sim-tested, not yet run on hardware). Works on 2.0.1 (plain `SM`). Solid stops on all ends; keep it slow (about 5-10 mm/s). Measure repeatability first: ten homes from random spots, dot at a fixed point, spread of the dots. Expect about +/-0.5 mm (one full step is about 0.45 mm) |
-| Home button and "position unknown -> home" prompt | PART | P0 | Status panel button and Tools entry (axes, speed, repeatability dot); position becomes `at_start`. The stop corner is machine (0, 0), so `paper.x0/y0` must be measured from the stops; the first homed dot shows whether they are |
-| Home one axis at a time | HAVE | | `--axis x` or `--axis y`, Tools entry; leaves the position unknown |
+| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | SKIP | | dropped 2026-11-18 after a supervised run on the machine (X, Y, then a full home with a dot): the user judged it a bad idea. Code was in d80fe69, reverted |
+| Home button and "position unknown -> home" prompt | SKIP | | goes with crash homing |
+| Home one axis at a time | SKIP | | goes with crash homing |
 | Keep motors powered after a job (option) | TODO | P2 | tracked position stays valid; cost is warm motors |
 | Switch homing (two microswitches on spare EBB inputs) | TODO | P3 | no grinding; check `PI` on 2.0.1; RB2 is taken by the pen-depth pot patch |
 | Limit switches during plots, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |

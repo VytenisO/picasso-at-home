@@ -390,32 +390,6 @@ class TestApi(SimServer):
         st = self.wait_state(("complete", "stopped"))
         self.assertEqual(st["job"]["kind"], "pentest")
 
-    def test_10b_home(self):
-        code, r = self.call("POST", "/api/tools/run", {"tool": "home", "params": {"axis": "both"}})
-        self.assertEqual(code, 400)
-        code, r = self.call("POST", "/api/tools/run", {"tool": "home", "params": {"axis": "both", "speed": 15},
-                                                       "confirm": {"ok": True}})
-        self.assertEqual(code, 200, r)
-        st = self.wait_state(("complete", "stopped", "error"), timeout=90)
-        self.assertEqual(st["job"]["kind"], "home")
-        self.assertEqual(st["job"]["state"], "complete", st["job"]["message"])
-        self.assertEqual(st["position"]["state"], "at_start")
-        # one axis only: done, but the position is unknown again
-        code, r = self.call("POST", "/api/tools/run", {"tool": "home", "params": {"axis": "x", "speed": 15},
-                                                       "confirm": {"ok": True}})
-        self.assertEqual(code, 200, r)
-        st = self.wait_state(("complete", "stopped", "error"), timeout=90)
-        self.assertEqual(st["position"]["state"], "unknown")
-        # stopped mid-way: position unknown, job stopped
-        code, r = self.call("POST", "/api/tools/run", {"tool": "home", "params": {"axis": "both", "speed": 2},
-                                                       "confirm": {"ok": True}})
-        self.wait_state(("running",))
-        time.sleep(0.5)
-        self.call("POST", "/api/job/stop", {"job": r["job"]})
-        st = self.wait_state(("stopped", "error", "complete"), timeout=60)
-        self.assertEqual(st["job"]["state"], "stopped", st["job"]["message"])
-        self.assertEqual(st["position"]["state"], "unknown")
-
     def test_12_trace_refuses_pause_and_return(self):
         fid = self.upload("many_strokes.svg")
         d = self.preview(fid)

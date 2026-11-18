@@ -317,44 +317,6 @@ class JobRunner:
         self._emit_state()
         return True, ""
 
-    def _finish_home(self, j, res, rc):
-        """Job state and carriage position after home.py. Called with the lock held."""
-        if not res:
-            if j["moved"] or j["stop_requested"] or rc:
-                j.update(state="stopped" if j["stop_requested"] else "error",
-                         message="Homing ended without a final report. Position unknown.")
-                self.position = {"state": "unknown", "at": None, "note": "Unknown after homing ended early."}
-            return
-        status, homed, end = res.get("status", ""), res.get("homed") or [], res.get("end_mm")
-        if "FAILED" in status:
-            j.update(state="error", message="Cleanup failed: the pen may be down or the motors on. Switch the "
-                                            "plotter off, then check it.")
-            self.position = {"state": "unknown", "at": None, "note": "Unknown after a failed cleanup."}
-            return
-        if status == "complete":
-            if res.get("at_start"):
-                j.update(state="complete", message="Homed against the end stops and moved to S.")
-                self.position = {"state": "at_start", "at": end,
-                                 "note": "Homed against the end stops, then moved to S (commanded position; the "
-                                         "repeatability of homing is not measured yet)."}
-            elif res.get("corner"):
-                j.update(state="complete", message="Homed. The carriage is in the stop corner.")
-                self.position = {"state": "moved", "at": end, "note": "Homed; in the stop corner, not at S."}
-            else:
-                axes = ", ".join(a.upper() for a in homed) or "no axis"
-                j.update(state="complete", message=f"Homed {axes} only. The carriage stays at that stop.")
-                self.position = {"state": "unknown", "at": None,
-                                 "note": f"Only {axes} homed. Home both axes, or park by hand at S."}
-            return
-        stopped = j["stop_requested"] or status.startswith("interrupted")
-        j.update(state="stopped" if stopped else "error",
-                 message=("Homing stopped." if stopped else f"Homing failed: {status}.") + " Pen up, motors released.")
-        if end is not None:
-            self.position = {"state": "moved", "at": end,
-                             "note": "Homed, but stopped on the way to S. Home again or slide it to S by hand."}
-        else:
-            self.position = {"state": "unknown", "at": None, "note": "Stopped before homing finished."}
-
     # ------------------------------------------------------------- output
     def _reader(self, job_id, proc):
         buf = b""
@@ -610,8 +572,6 @@ class JobRunner:
                     j.update(state="complete" if ok else ("stopped" if j["stop_requested"] else "error"),
                              message="Pen test finished, pen raised." if ok else
                              f"Pen test ended: {j.get('last_error') or j.get('last_line') or 'exit code %s' % rc}")
-            elif j["kind"] == "home":
-                self._finish_home(j, res, rc)
             elif res:
                 status = res.get("status", "")
                 if "FAILED" in status:
