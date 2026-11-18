@@ -11,7 +11,7 @@ paper library, focus test -> pen-height test, interval -> hatch spacing, passes 
 
 **Status:** `HAVE` works today · `PART` partly there (the note says what is missing) · `TODO` to build ·
 `SKIP` not needed (reason given).
-**Priority** (for `PART`/`TODO`): `P1` core, the UI feels incomplete without it · `P2` strong QoL · `P3` later or
+**Priority** (for `PART`/`TODO`): `P0` first, before everything else · `P1` core, the UI feels incomplete without it · `P2` strong QoL · `P3` later or
 niche.
 
 ## Machine facts that shape the list
@@ -26,6 +26,13 @@ niche.
 
 ## Build order (proposed)
 
+0. **Homing and firmware.** Crash homing first: pen up, drive slowly past full travel into the upper-left end stops
+   (solid stops on every end, confirmed by the user 2026-11-18), then travel to S. This turns "position unknown"
+   into "known" without a hand park, and makes jog, go-to, resume and return-to-S safe after a crash or stop. Then
+   upgrade the EBB from 2.0.1 to stock 3.x (prebuilt image, no compiler needed) for `ES` (instant stop), `QS` (step
+   counter readback), `QM` (motion idle) and `HM` (absolute move). The driver detects them from `V` and falls back
+   to timed waits on 2.0.1, so the UI does not wait on the upgrade. The pen-depth pot patch (`firmware/`) comes
+   after the stock upgrade is proven.
 1. **Document model.** Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
    mirror). Add selection, undo/redo, a numeric transform panel with a 9-point anchor, duplicate/delete/copy/paste,
    align and move to page anchors, and saving the project.
@@ -278,10 +285,10 @@ niche.
 | Start plot with three-item checklist | HAVE | | |
 | Editable checklist items | TODO | P3 | |
 | Pause at stroke end, continue, return to start, stop | HAVE | | |
-| Honest stop and kill escalation | HAVE | | `runner.py` |
+| Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
 | Stale-connection warning | HAVE | | |
-| Start from stroke N (resume an interrupted or stopped job) | TODO | P1 | record the last finished stroke; re-park, re-preview, resume |
+| Start from stroke N (resume an interrupted or stopped job) | TODO | P1 | record the last finished stroke; home or re-park, re-preview, resume. With `QS`, the exact stop point is known |
 | Plot only selected objects or layers | PART | P1 | layers via enable; add "plot selection" |
 | Repeat job N times with a paper-change hold between | TODO | P2 | cards, batches |
 | Live speed override during a run | TODO | P3 | applies from the next chunk |
@@ -307,7 +314,7 @@ niche.
 | Pen up / pen down buttons | PART | P1 | only inside the pen-height test |
 | Short "pen touch" at layer pressure | TODO | P3 | time-limited |
 | Motors off (release to park by hand) | PART | P1 | done at the end of each job; add a button |
-| Set start here / re-zero here | TODO | P1 | after a jog, or after parking by hand |
+| Set start here / re-zero here | TODO | P1 | after a jog, or after parking by hand; homing makes it mostly unneeded |
 | Saved positions (pen-swap spot, parking, paper corner) | TODO | P3 | |
 | Start-from options: S, current position, saved origin, with 9-point job anchor | TODO | P2 | |
 | Live position shown on the bed during jogs | PART | P1 | the carriage dot exists for jobs |
@@ -318,7 +325,12 @@ niche.
 | Live writing: pause and return | TODO | P3 | |
 | Replot a saved live session | TODO | P3 | |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
-| Homing, limit switches, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |
+| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | TODO | P0 | works on 2.0.1 (plain `SM`). Solid stops on all ends; keep it slow (about 5-10 mm/s). Measure repeatability first: ten homes from random spots, dot at a fixed point, spread of the dots. Expect about +/-0.5 mm (one full step is about 0.45 mm) |
+| Home button and "position unknown -> home" prompt | TODO | P0 | home offset (machine corner -> S) in `machine.json` |
+| Home one axis at a time | TODO | P1 | for testing and recovery |
+| Keep motors powered after a job (option) | TODO | P2 | tracked position stays valid; cost is warm motors |
+| Switch homing (two microswitches on spare EBB inputs) | TODO | P3 | no grinding; check `PI` on 2.0.1; RB2 is taken by the pen-depth pot patch |
+| Limit switches during plots, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |
 
 ## 13. Machine settings and calibration
 
@@ -334,7 +346,10 @@ niche.
 | Simulator time scale and estimate tuning | PART | P3 | `--sim-speed` flag only |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | TODO | P2 | |
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
-| Firmware version shown | PART | P2 | read by the check; not displayed |
+| Firmware version shown | PART | P1 | read by the check; not displayed. Needed once 3.x features are used |
+| EBB firmware upgrade 2.0.1 -> stock 3.x | TODO | P0 | prebuilt image from Evil Mad Scientist; confirm the bootloader update path for this v2.3 board first (a bad flash can need bootloader recovery); note the `V` output; re-check servo values, timing and calibration after |
+| Driver uses `ES`, `QS`, `QM`, `HM` when `V` reports them, timed waits otherwise | TODO | P0 | `wcb_setup.py` already detects missing commands |
+| Pen-depth pot firmware patch | PART | P3 | written in `firmware/`, not compiled or flashed; needs MPLAB X + C18; after the stock upgrade |
 | Several machine profiles | SKIP | | one machine |
 
 ## 14. Pens, paper and tests
