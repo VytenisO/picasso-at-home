@@ -145,3 +145,15 @@ Correction to the table above: the Cursive Transformer does have released code.
 | [awei669/DiffInk](https://github.com/awei669/DiffInk) (ICLR 2026) | Latent diffusion over whole lines, style from a short reference | Trained on Chinese CASIA data | Not a fit for Latin or Norwegian text. |
 
 Privacy: training in a cloud notebook uploads the handwriting. Train on a machine you control (a local GPU), or accept the upload knowingly. The model and samples stay under `handwriting/writers/<name>/` and out of git.
+
+
+### sjvasquez/handwriting-synthesis, read in detail (2026-11-18)
+
+The repo behind the "Stuff Made Here" handwriting-robot video ([repo](https://github.com/sjvasquez/handwriting-synthesis)). Graves 2013, LSTM with attention and a 20-component mixture output, pretrained on IAM On-Line (English).
+
+- **Requirements:** `tensorflow==1.6.0` pinned, so a Python 3.6 era environment. The TF2 port [otuva/handwriting-synthesis](https://github.com/otuva/handwriting-synthesis) is archived (April 2025). No licence in either repo. Last push to the original January 2024.
+- **Character set:** 73 symbols only (`drawing.py`): a-z, A-Z without Q, X and Z, digits, space and `! " # ' ( ) , - . : ; ?`. No æ, ø, å, no `/ @ % &`. Lines are at most 75 characters. The set is fixed by the trained weights (the attention reads a one-hot of these characters), so Norwegian needs a model trained with a larger alphabet; IAM has no such letters either.
+- **Style:** the "priming" feeds a recorded stroke sequence (`styles/style-N-strokes.npy`, offsets x, y, end-of-stroke, up to 1200 points) plus its text in front of the new line, and the model continues in that style. 13 styles ship (IAM writers). Own handwriting would mean writing our own `.npy` pair in the same normalised format; the code does not offer that, and how faithfully a single priming sample carries over is untested.
+- **Neatness:** a bias per line (higher = neater).
+- **Training:** needs the IAM On-Line database (registration, non-commercial), `prepare_data.py`, then `rnn.py`: "a couple of days on a single Tesla K80". The Hand class has a warm start from the shipped checkpoint, so fine-tuning on own samples is plausible but untested.
+- **Output:** pen offsets, drawn to SVG by `demo.py` (denoise, align). Our engines want strokes in mm, so a thin adapter would replace the SVG step.
