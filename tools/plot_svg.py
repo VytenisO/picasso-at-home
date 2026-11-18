@@ -46,6 +46,7 @@ import time
 import xml.etree.ElementTree as ET
 
 import fill as fillmod
+import pathplan
 
 try:
     import serial
@@ -807,6 +808,12 @@ def main():
     ap.add_argument("--sim-speed", type=float, help="with --sim: also run in real time at this speed factor")
     ap.add_argument("--preview-json", help="dry run: write the plotted strokes (machine mm) and summary here")
     ap.add_argument("--layers", help="JSON file: per ink layer settings (enabled, speed, pressure, pen)")
+    ap.add_argument("--optimize", action="store_true",
+                    help="less pen-up travel: within each pen, draw the nearest stroke next, reversing open strokes "
+                         "and starting closed ones at the nearest point")
+    ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
+    ap.add_argument("--start-at", type=int, default=0, metavar="N",
+                    help="skip the first N strokes of the plot order (resume a stopped plot)")
     ap.add_argument("--absolute", action="store_true",
                     help="the SVG's own millimetres are machine millimetres: no anchoring, --x0/--y0/--width ignored "
                          "(the web UI composes a bed-sized document)")
@@ -907,6 +914,10 @@ def main():
         strokes, metas = strokes + fstrokes, metas + fmetas      # inks keep the order of the outlines; fills are drawn first within an ink
     if not strokes:
         sys.exit("no drawable geometry found")
+    n_dup = 0
+    if a.dedupe:
+        strokes, metas, n_dup = pathplan.dedupe(strokes, metas)
+        log(f"Duplicates     : {n_dup} stroke(s) repeated an earlier one and were dropped")
     groups = color_groups(metas)
     # Per-layer settings (web UI). Placement below uses ALL strokes, so switching a layer off never moves
     # the others; disabled layers are dropped from the plot afterwards.
@@ -976,10 +987,35 @@ def main():
     order = [i for i in order if lset[stroke_group[i]].get("enabled", True)]
     order.sort(key=lambda i: (stroke_group[i] if by_layer else 0, not metas[i].get("fill")))   # stable: fill, then outline
     speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
+    pen_s = a.pen_delay / 1000 + 0.15
+    file_order = None
+    if a.optimize and order:
+        # Measured on the file order first, for the before/after readout. S is (-ox, -oy) in stroke coordinates.
+        _, t_file, _, s_file = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
+                                        a.travel_speed, pen_s, speeds=[speed_of[i] for i in order])
+        blocks, cur = [], (-ox, -oy)
+        for i in order:     # one block per pen and per fill/outline run: those boundaries stay where they are
+            k = (stroke_group[i] if by_layer else 0, bool(metas[i].get("fill")))
+            if not blocks or blocks[-1][0] != k:
+                blocks.append((k, []))
+            blocks[-1][1].append(i)
+        order = []
+        for _, idxs in blocks:
+            o, cur = pathplan.order_block(strokes, idxs, cur)
+            order += o
+        file_order = {"travel_mm": t_file, "est_seconds": s_file}
+    total_in_order = len(order)
+    if a.start_at:
+        if not 0 < a.start_at < len(order):
+            sys.exit(f"--start-at {a.start_at}: the plot has {len(order)} strokes")
+        order = order[a.start_at:]
+        log(f"Resume         : starting at stroke {a.start_at + 1} of {total_in_order}; the first {a.start_at} are skipped")
     per_stroke = []
     dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
-                                   a.travel_speed, (a.pen_delay / 1000 + 0.15),
-                                   speeds=[speed_of[i] for i in order], per_stroke=per_stroke)
+                                   a.travel_speed, pen_s, speeds=[speed_of[i] for i in order], per_stroke=per_stroke)
+    if file_order:
+        log(f"Path planning  : pen-up travel {file_order['travel_mm'] / 1000:.2f} m -> {dt / 1000:.2f} m, "
+            f"time {fmt(file_order['est_seconds'])} -> {fmt(secs)}" + (" (whole plot)" if a.start_at else ""))
     problems = []
     # Only the inset canvas is reachable: stay away from every paper edge, and
     # do not rely on the outer bed margin where the canvas is tighter.
@@ -1046,7 +1082,9 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                           for gi, (k, ix) in enumerate(groups)],
                "swaps": max(0, sum(1 for ls in lset if ls.get("enabled", True)) - 1),
                "drawing_mm": dd, "travel_mm": dt, "lifts": lifts, "doc_mm": [w_mm, h_mm], "scale": scale,
-               "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed}
+               "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed,
+               "optimized": bool(file_order), "file_order": file_order, "duplicates_dropped": n_dup,
+               "start_at": a.start_at, "total_in_order": total_in_order}
     summary["args"] = {k: v for k, v in vars(a).items() if k != "ctl"}
 
     if a.mode == "dry":

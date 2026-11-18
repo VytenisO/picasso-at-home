@@ -38,7 +38,7 @@ niche.
 2. **Document model** (done 2026-11-18). Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
    mirror). Add selection, undo/redo, a numeric transform panel with a 9-point anchor, duplicate/delete/copy/paste,
    align and move to page anchors, and saving the project.
-3. **Path planning.** Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
+3. **Path planning** (done 2026-11-18). Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
    duplicate-line removal, with a before/after time readout. A preview scrubber that shows travel moves and order,
    and start from stroke N.
 4. **Machine panel.** Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
@@ -92,8 +92,8 @@ niche.
 | Automatic alignment hints while dragging (edges/centres line up) | TODO | P2 | |
 | Wireframe vs filled view | TODO | P2 | matters once hatch fills exist |
 | Show pen width (stroke drawn at the pen's real width) | TODO | P2 | pen library has the width; good forecast of dark areas |
-| Show path direction and start points | TODO | P1 | start/end markers, arrows; seams and pen lifts become visible |
-| Show travel (pen-up) moves | PART | P1 | only during runs as plan vs done; add a toggle in preview |
+| Show path direction and start points | PART | P2 | the scrubber shows the order stroke by stroke with the pen position; no arrows |
+| Show travel (pen-up) moves | HAVE | | Travel toggle on the scrubber bar, T |
 | Fast low-detail rendering for huge drawings | TODO | P3 | |
 | Camera image of the bed as background | SKIP | | no camera; see section 15 |
 
@@ -210,7 +210,7 @@ niche.
 | Trim at intersections (click to delete a piece) | TODO | P3 | |
 | Join touching paths | PART | P1 | Prepare clean-up step "Join touching strokes" (tolerance); add a "join selected" action in Plot |
 | Close nearly closed paths within a tolerance | TODO | P3 | |
-| Remove duplicate and overlapping lines | TODO | P1 | double-inking darkens lines and wears paper |
+| Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
 | Simplify paths (tolerance, before/after node count) | PART | P2 | Prepare clean-up step "Simplify" with the point count in Result; the planner's own `--simplify 0.05` stays fixed |
 | Smooth / fit arcs | TODO | P3 | |
 | Break apart into separate paths | TODO | P2 | |
@@ -267,17 +267,17 @@ niche.
 | Stats: size, time, strokes, metres, pens, swaps, speeds | HAVE | | |
 | Plan binding: start only the previewed plan | HAVE | | |
 | Order by layer (pen) | HAVE | | |
-| Reduce travel (nearest neighbour or better) | TODO | P1 | biggest time win; file order only today |
-| Allow path reversal | TODO | P1 | |
-| Best start point on closed paths (prefer corners) | TODO | P1 | |
+| Reduce travel (nearest neighbour or better) | HAVE | | `pathplan.py`, greedy nearest next with a cell grid; on by default (Job, Path planning). No 2-opt yet |
+| Allow path reversal | HAVE | | open strokes are reversed when their far end is nearer |
+| Best start point on closed paths (prefer corners) | PART | P3 | closed paths start at the vertex nearest the pen; no preference for corners |
 | Order by group (finish one object before the next) | TODO | P2 | |
 | Order by priority, pin some objects first | TODO | P2 | |
 | Inner shapes first | TODO | P3 | |
 | Sweep direction (e.g. top to bottom so the hand never touches wet ink) | TODO | P2 | |
 | Same approach direction (hide backlash) | TODO | P3 | |
-| Ordering panel with before/after travel and time | TODO | P1 | |
-| Scrub through the plot with a slider; play at 0.1x to 40x | TODO | P1 | simulate runs exist; this is an instant client-side scrubber |
-| Travel moves shown in preview | TODO | P1 | |
+| Ordering panel with before/after travel and time | HAVE | | Run shows pen-up metres and time against the file order |
+| Scrub through the plot with a slider; play at 0.1x to 40x | PART | P3 | slider over the plan order with Play (about 12 s for the whole plan); no speed choice |
+| Travel moves shown in preview | HAVE | | Travel toggle (T) and while scrubbing, dashed |
 | Pressure shown as line shade | TODO | P3 | |
 | Legend by pen | TODO | P2 | |
 | Estimates calibrated against real runs (time scale factor) | TODO | P2 | |
@@ -296,7 +296,7 @@ niche.
 | Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
 | Stale-connection warning | HAVE | | |
-| Start from stroke N (resume an interrupted or stopped job) | TODO | P1 | record the last finished stroke; re-park, re-preview, resume. With `QS`, the exact stop point is known |
+| Start from stroke N (resume an interrupted or stopped job) | HAVE | | Start here on the scrubber; after a stopped plot of the same bed, Run offers Resume there (the stroke cut short is drawn whole) |
 | Plot only selected objects or layers | PART | P1 | layers via enable; add "plot selection" |
 | Repeat job N times with a paper-change hold between | TODO | P2 | cards, batches |
 | Live speed override during a run | TODO | P3 | applies from the next chunk |

@@ -497,6 +497,33 @@ class TestDocument(SimServer):
         st = self.wait_state(("complete",), timeout=120)
         self.assertEqual(st["job"]["meta"]["name"], "many_strokes.svg x2")
 
+    def test_04b_planning_and_resume_point(self):
+        fid = self.upload("many_strokes.svg")
+        objs = [self.obj(fid, 80, 30, 60, 60)]
+        d = self.doc_preview(objs)
+        s = d["summary"]
+        self.assertTrue(s["optimized"])                          # on unless switched off
+        self.assertLessEqual(s["travel_mm"], s["file_order"]["travel_mm"])
+        off = self.doc_preview(objs, {"optimize": False})
+        self.assertFalse(off["summary"]["optimized"])
+        self.assertNotEqual(off["plan_id"], d["plan_id"])
+        self.assertNotEqual(off["bed_key"], d["bed_key"])
+        later = self.doc_preview(objs, {"start_at": 5})
+        self.assertEqual(len(later["order"]), len(d["order"]) - 5)
+        self.assertEqual(later["bed_key"], d["bed_key"])        # same bed, other resume point
+        code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"start_at": 10 ** 6}}})
+        self.assertEqual(code, 200)
+        self.assertFalse(r["ok"])
+        code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"start_at": "5"}}})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/job/start", {"doc": {"objects": objs, "settings": {"start_at": 5}},
+                                                      "plan_id": later["plan_id"], "mode": "simulate"})
+        self.assertEqual(code, 200, r)
+        st = self.wait_state(("complete",), timeout=120)
+        self.assertEqual(st["job"]["meta"]["bed_key"], d["bed_key"])
+        self.assertEqual(st["job"]["meta"]["start_at"], 5)
+        self.assertEqual(st["job"]["progress"]["strokes"], len(d["order"]) - 5)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

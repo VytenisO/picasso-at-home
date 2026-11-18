@@ -33,6 +33,8 @@ export function edit(fn, { coalesce = null, sel = null } = {}) {
   const d = structuredClone(state.doc);
   if (fn(d) === false) return false;
   if (JSON.stringify({ name: d.name, objects: d.objects, settings: d.settings }) === before) return false;
+  // A resume point belongs to one plot order: any change to the bed or its planning drops it.
+  if (state.startAt) set({ startAt: 0 });
   const now = Date.now();
   if (!(coalesce && lastCoalesce && lastCoalesce.key === coalesce && now - lastCoalesce.t < 1500)) {
     undoStack.push(before);
@@ -114,12 +116,18 @@ export function onDocEvent(ev) {
   }).catch(() => {});
 }
 
+// Plot from stroke n of the order (0 = the start). Not an undo step and not saved with the bed.
+export function setStartAt(n) {
+  set({ startAt: Math.max(0, n | 0), scrub: null, previewStale: true });
+  schedule(true);
+}
+
 export async function runPreview() {
   clearTimeout(timer);
   const d = state.doc;
   if (!d) return null;
   const my = ++seq;
-  const body = { name: d.name, objects: d.objects, settings: d.settings };
+  const body = { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: state.startAt || 0 } };
   if (!d.objects.length || jobActive()) {
     // nothing to check (or the bed is locked): keep the server's copy up to date anyway
     post('/api/doc', { ...body, client: CLIENT }).catch(() => {});

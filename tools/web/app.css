@@ -339,3 +339,10 @@ button.danger-text { color: var(--err); }
 .proj-form input { flex: 1; min-width: 0; }
 .projs li { grid-template-columns: 1fr auto; }
 .projs li > .row { grid-column: auto; }
+
+/* Plan scrubber under the bed toolbar */
+.scrub { display: flex; gap: 6px; align-items: center; padding: 4px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.scrub input[type=range] { flex: 1; min-width: 60px; padding: 0; min-height: 0; border: none; background: none; accent-color: var(--accent); }
+.scrub .muted { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.scrub button.icon { min-height: 26px; padding: 2px 8px; font-size: 12px; }
+.scrub button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }

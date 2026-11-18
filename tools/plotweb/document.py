@@ -13,6 +13,7 @@ The working document lives on the server (results/web/document.json) so a reload
 bed. Saved projects are named copies under results/web/projects/.
 """
 import copy
+import hashlib
 import json
 import math
 import re
@@ -151,6 +152,15 @@ def compose(objects, files, bed):
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def bed_key(objects, settings):
+    """Hash of what decides the plot order, without the resume point: a stopped plot can resume only on the same
+    bed. Objects as validated by clean_objects."""
+    st = {k: v for k, v in (settings or {}).items() if k != "start_at"}
+    raw = json.dumps({"o": [{k: o[k] for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy")} for o in objects],
+                      "s": st}, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 def project_name(name):
     name = re.sub(r"\s+", " ", str(name or "")).strip()[:80]
     if not name:
@@ -201,7 +211,8 @@ class DocStore:
         known = {e["id"] for e in self.lib.list()}
         objs = clean_objects(objects, known)
         st = settings if isinstance(settings, dict) else {}
-        keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers")}
+        keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
+                                       "dedupe")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

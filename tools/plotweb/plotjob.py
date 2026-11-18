@@ -51,6 +51,13 @@ def validate(raw, bed, pens, layer_keys):
     fill = raw.get("fill")
     out["fill"] = 0.0 if fill in (None, "", 0, "0") else _num(raw, "fill", 0.2, 50, label="Fill spacing")
     out["fill_angle"] = _num(raw, "fill_angle", 0, 180, 45.0, False, "Fill angle")
+    # Path planning: shorter travel is on unless switched off; duplicates are kept unless asked.
+    out["optimize"] = raw.get("optimize", True) is not False
+    out["dedupe"] = raw.get("dedupe") is True
+    sa = raw.get("start_at") or 0
+    if not isinstance(sa, int) or isinstance(sa, bool) or not 0 <= sa <= 1_000_000:
+        raise SettingsError("start_at must be a whole number of strokes, 0 or more")
+    out["start_at"] = sa
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -131,6 +138,12 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--x0", f"{v['x'] - c[0]:.3f}", "--y0", f"{v['y'] - c[1]:.3f}"]
     if v.get("w") and geom and geom.get("raw_w", 0) > 1e-6 and not v.get("absolute"):
         argv += ["--width", f"{v['w'] * geom['doc_w'] / geom['raw_w']:.4f}"]
+    if v.get("optimize"):
+        argv.append("--optimize")
+    if v.get("dedupe"):
+        argv.append("--dedupe")
+    if v.get("start_at"):
+        argv += ["--start-at", str(int(v["start_at"]))]
     if v.get("fill"):
         argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]
     if layers_json:

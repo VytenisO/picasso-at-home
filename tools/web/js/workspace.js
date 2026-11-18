@@ -169,6 +169,8 @@ function fillJobForm() {
   const set_ = (name, v) => { if (document.activeElement !== f[name]) f[name].value = v ?? ''; };
   set_('speed', st.speed); set_('travel_speed', st.travel_speed);
   set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
+  f.optimize.checked = st.optimize !== false;
+  f.dedupe.checked = !!st.dedupe;
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -178,7 +180,8 @@ function fillJobForm() {
 function fromJobForm(e) {
   const f = $('placeForm');
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
-  const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45 };
+  const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
+    optimize: f.optimize.checked, dedupe: f.dedupe.checked };
   const st = state.doc.settings;
   if (patch.fill && (patch.fill < 0.2 || patch.fill > 50)) {
     toast('Fill spacing must be 0 (off) or between 0.2 and 50 mm.', true);

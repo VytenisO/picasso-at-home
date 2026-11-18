@@ -68,6 +68,11 @@ takes the new proportions instead of stretching it.
 - **Undo** is client-side (200 steps). The working document is saved on the server with every preview (and with
   `POST /api/doc` when there is nothing to preview), so reloads and other devices see the same bed; a `doc` event
   tells the other pages, which take the change as an undoable step.
+- **Path planning** is part of the job settings (`optimize`, `dedupe`) and so of the plan id. The resume point
+  (`start_at`) is sent with each preview and start but never saved with the bed, and any change to the bed drops it.
+  A preview returns a `bed_key` (hash of the objects and settings without the resume point) and a plot job keeps it
+  with its `start_at`: after a stopped plot, Run offers to resume only on the same bed. The scrubber under the bed
+  toolbar walks through the plan order (Play, Travel, Start here).
 - **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
   (undoable); drawings no longer in the library are left out with a note.
 - **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
@@ -135,6 +140,9 @@ stay in the top bar on every tab. Prepare on a phone stacks the preview, the rec
 | `--control` | Line protocol on stdin: `CONTINUE`, `PAUSE` (at the next stroke end; pen up, motors on), `STOP` (same cleanup as Ctrl-C, checked before every SM and SP), `RETURN` (at the stroke end: travel back to S). End of input = `STOP`. The confirmation word is read through the same reader. In `--sim` the swap pause waits too. |
 | `--sim-speed F` | The virtual clock also sleeps `dt / F` real seconds, so a simulated run can be watched and paused. |
 | `--preview-json FILE` | Dry run writes the plotted strokes (machine mm, layer, pressure), the plot order and the summary. |
+| `--optimize` | Less pen-up travel (`pathplan.py`): within each pen and each fill/outline run, the nearest stroke next; open strokes may be reversed, closed ones start at the nearest vertex. Pen changes stay where they are. The summary keeps the file-order travel and time for the readout. On by default in the UI. |
+| `--dedupe` | Skip strokes that exactly repeat an earlier one of the same ink and pressure (any direction, any start on a closed path). |
+| `--start-at N` | Skip the first N strokes of the final plot order: resume a stopped plot. The summary says where it starts and the whole count. |
 | `--absolute` | The SVG's own millimetres are machine millimetres: no anchoring to the canvas, `--x0/--y0/--width` ignored. The bed document is planned this way. |
 | `--layers FILE` | Per ink layer `{key, enabled, speed, pressure, pen}`, in layer order; `key` must match. Same ceilings. Layer pressure is the default for strokes without their own `data-pressure`. Disabled layers are dropped after placement, so the others do not move. |
 | markers under `--track` | `__PROGRESS__`, `__LAYER__`, `__PAUSE__` (`kind: swap|operator`), `__RESUMED__`, `__RESULT__`. |

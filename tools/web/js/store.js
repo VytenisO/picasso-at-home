@@ -13,6 +13,8 @@ export const state = {
   naturals: {},        // file id -> the drawing at natural size: {geom, layers, strokes}
   projects: [],        // saved projects: [{slug, name, objects, saved}]
   history: 0,          // undo depth, for the buttons
+  startAt: 0,          // plot from this stroke of the plan's order (resume); never saved with the bed
+  scrub: null,         // preview scrubber position (strokes shown), null = all
   preview: null,       // last /api/preview result for the bed
   previewStale: true,  // settings changed since the preview
   previewing: false,

@@ -3,7 +3,7 @@
 //
 // While the bed is being edited each object is drawn from its drawing's own strokes through its transform, so a
 // drag is instant. Once a preview is fresh the planner's exact strokes are drawn instead (fills, simplification).
-import { state, on, jobActive } from './store.js';
+import { state, set, on, jobActive, prefs } from './store.js';
 import { $ } from './ui.js';
 import { drawInk, inkMode, setInkMode } from './ink.js';
 import * as G from './geom.js';
@@ -20,6 +20,8 @@ let colors = {};
 let raf = 0;
 let hover = null;
 const HANDLE = 9, ROT_PX = 26;
+let playing = 0;
+let sub = { pv: null, k: -1, obj: null };    // the first k strokes of the plan, for the scrubber
 
 export function initBed() {
   cv = $('bed');
@@ -39,7 +41,8 @@ export function initBed() {
   const showInk = () => { inkBtn.setAttribute('aria-pressed', String(inkMode())); inkBtn.textContent = inkMode() ? 'Ink' : 'Lines'; };
   inkBtn.onclick = () => { setInkMode(!inkMode()); showInk(); redraw(); };
   showInk();
-  on(['me', 'doc', 'sel', 'naturals', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'liveStrokes'], redraw);
+  on(['me', 'doc', 'sel', 'naturals', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'liveStrokes', 'scrub'], redraw);
+  initScrub();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { colors = {}; redraw(); });
 }
 
@@ -141,7 +144,14 @@ function render() {
   } else if (!liveOn && state.doc) {
     const pv = state.preview;
     if (pv && pv.strokes && pv.doc && !state.previewStale && !draft) {
-      drawInk(ctx, pv, { px, layers, pens, css });
+      const order = pv.order || [];
+      const k = state.scrub === null ? order.length : state.scrub;
+      if (state.scrub !== null || (pv.summary && pv.summary.start_at > 0)) {
+        // the plan so far, over a faint whole (skipped strokes of a resume stay faint)
+        drawInk(ctx, pv, { px, layers, pens, css, alpha: 0.16 });
+        drawInk(ctx, subset(pv, k), { px, layers, pens, css });
+      } else drawInk(ctx, pv, { px, layers, pens, css });
+      if (travelOn() || state.scrub !== null) drawTravel(pv, k, px);
     } else {
       for (const o of objects()) drawObject(o, { px, layers, pens });
     }
@@ -173,6 +183,95 @@ function render() {
     ctx.beginPath(); ctx.moveTo(pos.x - 2 * r, pos.y); ctx.lineTo(pos.x + 2 * r, pos.y);
     ctx.moveTo(pos.x, pos.y - 2 * r); ctx.lineTo(pos.x, pos.y + 2 * r); ctx.lineWidth = px; ctx.stroke();
   }
+}
+
+// ------------------------------------------------------------------ plan scrubber and travel moves
+const travelOn = () => prefs('travel') === true;
+
+export function toggleTravel() {
+  prefs('travel', !travelOn());
+  $('travelBtn').setAttribute('aria-pressed', String(travelOn()));
+  redraw();
+}
+
+function subset(pv, k) {
+  if (sub.pv !== pv || sub.k !== k) {
+    sub = { pv, k, obj: { strokes: pv.order.slice(0, k).map((i) => pv.strokes[i]).filter(Boolean), summary: pv.summary } };
+  }
+  return sub.obj;
+}
+
+// Pen-up moves of the first k strokes: from S, between strokes, and back to S once the plan is complete.
+function drawTravel(pv, k, px) {
+  const order = pv.order || [], start = (pv.summary && pv.summary.start_mm) || state.me.machine.start;
+  let cur = start;
+  ctx.beginPath();
+  for (let n = 0; n < k; n++) {
+    const s = pv.strokes[order[n]];
+    if (!s) continue;
+    ctx.moveTo(cur[0], cur[1]); ctx.lineTo(s.pts[0][0], s.pts[0][1]);
+    cur = s.pts[s.pts.length - 1];
+  }
+  if (k >= order.length) { ctx.moveTo(cur[0], cur[1]); ctx.lineTo(start[0], start[1]); }
+  ctx.save();
+  ctx.strokeStyle = css('--warn'); ctx.lineWidth = Math.max(0.15, px); ctx.globalAlpha = 0.8;
+  ctx.setLineDash([3 * px, 2.5 * px]);
+  ctx.stroke();
+  ctx.restore();
+  if (state.scrub !== null && k > 0) {        // where the pen is after stroke k
+    ctx.beginPath(); ctx.arc(cur[0], cur[1], 4 * px, 0, Math.PI * 2);
+    ctx.fillStyle = css('--accent'); ctx.fill();
+  }
+}
+
+function initScrub() {
+  const range = $('scrubRange');
+  $('travelBtn').onclick = toggleTravel;
+  $('travelBtn').setAttribute('aria-pressed', String(travelOn()));
+  range.oninput = () => { stopPlay(); const k = Number(range.value); set({ scrub: k >= Number(range.max) ? null : k }); };
+  $('playBtn').onclick = () => (playing ? stopPlay() : play());
+  $('scrubStart').onclick = () => {
+    if (state.scrub) { const k = (state.startAt || 0) + state.scrub; stopPlay(); D.setStartAt(k); }
+  };
+  on('preview', () => { stopPlay(); if (state.scrub !== null) set({ scrub: null }); });
+  on(['preview', 'previewStale', 'job', 'doc', 'scrub', 'startAt'], renderScrub);
+}
+
+function renderScrub() {
+  const pv = state.preview;
+  const ok = !!(pv && pv.order && pv.doc && !state.previewStale && !jobActive() && state.doc && state.doc.objects.length);
+  $('scrubBar').hidden = !ok;
+  if (!ok) return;
+  const n = pv.order.length, k = state.scrub === null ? n : state.scrub;
+  const range = $('scrubRange');
+  range.max = String(n);
+  range.value = String(k);
+  const s0 = state.startAt || 0;
+  $('scrubLabel').textContent = s0 ? `${s0 + k} of ${s0 + n} (from ${s0 + 1})` : `${k} of ${n} strokes`;
+  $('scrubStart').disabled = !k || k >= n;
+}
+
+function play() {
+  const pv = state.preview;
+  if (!pv || !pv.order) return;
+  const n = pv.order.length;
+  let acc = state.scrub === null || state.scrub >= n ? 0 : state.scrub;
+  const step = Math.max(n / (12 * 60), 0.25);           // the whole plan in about 12 s, at least 15 strokes/s
+  $('playBtn').textContent = 'Pause';
+  const tick = () => {
+    acc += step;
+    const k = Math.min(n, Math.floor(acc));
+    set({ scrub: k >= n ? null : k });
+    if (k >= n) { stopPlay(); return; }
+    playing = requestAnimationFrame(tick);
+  };
+  playing = requestAnimationFrame(tick);
+}
+
+function stopPlay() {
+  if (playing) cancelAnimationFrame(playing);
+  playing = 0;
+  $('playBtn').textContent = 'Play';
 }
 
 function drawObject(o, { px, layers, pens }) {

@@ -3,7 +3,7 @@ import { post, ApiError } from './api.js';
 import { state, set, on, jobActive } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
-import { fileName } from './doc.js';
+import { fileName, setStartAt } from './doc.js';
 
 const TITLES = {
   idle: 'Idle', starting: 'Starting', running: 'Plotting', pausing: 'Pausing', paused: 'Paused',
@@ -33,7 +33,11 @@ export function initRun() {
   document.querySelectorAll('.dlg-stop').forEach((b) => { b.onclick = stop; });
   on('job', () => document.querySelectorAll('.dlg-stop').forEach((b) => { b.hidden = !jobActive(); }));
   on(['job', 'position', 'link', 'me', 'lastEventAt'], renderStatus);
-  on(['job', 'preview', 'previewStale', 'previewing', 'doc', 'me'], renderRun);
+  on(['job', 'preview', 'previewStale', 'previewing', 'doc', 'me', 'startAt'], renderRun);
+  $('startAtReset').onclick = () => setStartAt(0);
+  $('resumeBtn').onclick = () => { const r = resumePoint(); if (r) setStartAt(r); };
+  // a finished resumed plot: the next one starts from the beginning again
+  on('job', () => { if (state.job && state.job.state === 'complete' && state.startAt) setStartAt(0); });
   setInterval(renderStale, 2000);
 }
 
@@ -156,6 +160,15 @@ function renderRun() {
   list.hidden = true;
   kv.replaceChildren();
   ps.hidden = kv.hidden = active;
+  const rp = active ? 0 : resumePoint();
+  $('resumeBox').hidden = !rp || state.startAt === rp;
+  if (rp) $('resumeText').textContent = `The last plot stopped after stroke ${rp} of this bed. Re-park the carriage at S, ` +
+    `then resume at stroke ${rp + 1} (a stroke cut short by the stop is drawn whole).`;
+  $('startAtBox').hidden = active || !state.startAt;
+  if (state.startAt) {
+    const tot = pv && pv.summary && pv.summary.total_in_order;
+    $('startAtText').textContent = `Starts at stroke ${state.startAt + 1}${tot ? ` of ${tot}` : ''}: the first ${state.startAt} are skipped. `;
+  }
   if (active) return;
   if (!hasBed()) { ps.className = 'note'; ps.textContent = 'Add a drawing to the bed, then preview it.'; return; }
   if (state.previewing) { ps.className = 'note'; ps.textContent = 'Checking the plan...'; }
@@ -168,15 +181,27 @@ function renderRun() {
   if (pv && pv.summary) {
     const s = pv.summary, b = s.bbox_machine_mm;
     const enabled = s.layers.filter((l) => l.enabled !== false);
+    const fo = s.optimized && !s.start_at ? s.file_order : null;
     const rows = [
       ['Size', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])})`],
-      ['Time', `about ${fmtTime(s.est_seconds)}`],
-      ['Strokes', `${s.strokes}, ${mm(s.drawing_mm / 1000, 2)} m of line`],
+      ['Time', `about ${fmtTime(s.est_seconds)}` + (fo && fo.est_seconds - s.est_seconds > 1 ? ` (${fmtTime(fo.est_seconds)} in file order)` : '')],
+      ['Pen up', `${mm(s.travel_mm / 1000, 2)} m` + (fo ? ` (${mm(fo.travel_mm / 1000, 2)} m in file order)` : '') + `, ${s.lifts} lifts`],
+      ['Strokes', `${s.start_at ? `${s.total_in_order - s.start_at} of ${s.total_in_order}` : s.strokes}, ${mm(s.drawing_mm / 1000, 2)} m of line` +
+        (s.duplicates_dropped ? `; ${s.duplicates_dropped} repeated stroke${s.duplicates_dropped > 1 ? 's' : ''} skipped` : '')],
       ['Layers', enabled.map((l) => l.name + (l.pen ? ` (${l.pen})` : '')).join(', ') + (s.swaps ? `; ${s.swaps} pen change${s.swaps > 1 ? 's' : ''}` : '')],
       ['Speeds', `${s.speed} mm/s drawing, ${s.travel_speed} mm/s pen up`],
     ];
     kv.replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
   }
+}
+
+// Where a stopped plot of this same bed got to: the absolute stroke to resume at, or 0.
+function resumePoint() {
+  const j = state.job, pv = state.preview;
+  if (!j || j.kind !== 'plot' || j.mode !== 'plot' || !['stopped', 'interrupted', 'error'].includes(j.state)) return 0;
+  const done = j.progress ? j.progress.done : 0;
+  if (!done || !pv || !pv.bed_key || !j.meta || j.meta.bed_key !== pv.bed_key) return 0;
+  return (j.meta.start_at || 0) + done;
 }
 
 async function previewNow() {
@@ -203,7 +228,7 @@ async function start(mode) {
   }
   try {
     const d = state.doc;
-    const r = await post('/api/job/start', { doc: { name: d.name, objects: d.objects, settings: d.settings },
+    const r = await post('/api/job/start', { doc: { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: state.startAt || 0 } },
       plan_id: pv.plan_id, mode, confirm: mode === 'simulate' ? undefined : { parked: true } });
     toast(mode === 'simulate' ? 'Simulation started: nothing moves.' : 'Started.');
     return r;

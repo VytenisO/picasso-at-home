@@ -270,6 +270,7 @@ class App:
             if ln.strip() and not ln.startswith("__"):
                 self.ev.log("debug", ln, "plot")
         res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "doc": True, "file": None,
+               "bed_key": document.bed_key(objs, raw.get("settings")),
                "file_layers": layers, "objects": objs}
         if pv:
             res.update(summary=_public_summary(pv["summary"]), placement=pv["placement"], order=pv["order"],
@@ -336,7 +337,14 @@ class App:
                 else f"{len(objs)} objects: {', '.join(names)}"[:120])
             e = {"id": None, "name": name}
             resolve = lambda: self._resolve_doc(body["doc"])  # noqa: E731
-            meta = {"doc": True, "file": None, "name": name, "plan_id": pid}
+            try:
+                bk = document.bed_key(document.clean_objects(body["doc"].get("objects") or [], set(known)),
+                                      body["doc"].get("settings"))
+            except document.DocError:
+                bk = None
+            st = body["doc"].get("settings") if isinstance(body["doc"].get("settings"), dict) else {}
+            meta = {"doc": True, "file": None, "name": name, "plan_id": pid, "bed_key": bk,
+                    "start_at": st.get("start_at") if isinstance(st.get("start_at"), int) else 0}
         else:
             e, svg_path = self._entry(body.get("id"))
             resolve = lambda: self._resolve(e, svg_path, body.get("settings"))  # noqa: E731
@@ -665,6 +673,7 @@ def _thin(strokes):
 
 def _public_summary(sm):
     keep = ("strokes", "points", "est_seconds", "bbox_machine_mm", "paper_mm", "canvas_mm", "layers", "swaps",
+            "optimized", "file_order", "duplicates_dropped", "start_at", "total_in_order",
             "drawing_mm", "travel_mm", "lifts", "doc_mm", "scale", "start_mm", "speed", "travel_speed", "problems")
     return {k: sm.get(k) for k in keep}
 
