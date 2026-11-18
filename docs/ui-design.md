@@ -3,6 +3,28 @@
 One workspace in the spirit of LightBurn: the bed is the centre of attention, everything else is a panel around
 it. Stdlib Python server, plain ES modules, no build step, no CDN. Research behind the rules: `ui-research.md`.
 
+## Workspaces: Prepare and Plot (decided 2026-11-18, not built yet)
+
+Two top-level tabs, the way a slicer splits preparing a model from printing it. The layout below becomes the Plot
+workspace.
+
+- **Prepare** turns an input (photo, drawing, mesh, text, an SVG that needs work) into a plot-ready SVG.
+  Each conversion method is a plugin: a Python module that declares its parameters as a schema (like
+  `tools.py`), so the form builds itself and adding a method needs no frontend code. A recipe is a chain of
+  steps (adjust -> convert -> fill -> simplify -> assign pens). The preview shows the source and the result
+  side by side or overlaid, rendered as ink: pen colour and width, hatch fills visible, size in mm, stroke
+  count, pen-down length and a time estimate. The result goes to the library with its recipe, so it can be
+  reopened and re-tuned instead of redone.
+- **Plot** places one or more prepared items on the bed (the document model), sets the per-layer pen, speed
+  and pressure, previews, and runs. It is the only workspace that drives the machine.
+- **Prepare is optional.** A finished SVG goes straight to Plot. Plot still shows the same ink preview (fills
+  as they will be hatched, colours, the pen per layer, the real size), so nothing has to pass through Prepare
+  just to be seen correctly.
+- **One renderer for both.** Prepare and Plot draw the ink preview with the same code from the same plan data,
+  so what Prepare shows is what Plot plots.
+- **Stop and the state pill stay in the top bar in both workspaces.** A running job keeps running while you
+  work in Prepare.
+
 ## Layout
 
 ```

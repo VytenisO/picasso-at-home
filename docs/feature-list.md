@@ -9,9 +9,9 @@ complete UI should cover. Every description here is our own, and the design foll
 Laser ideas are translated to pen terms (power -> pressure, frame -> pen-up trace, material library -> pen and
 paper library, focus test -> pen-height test, interval -> hatch spacing, passes -> repeat strokes).
 
-**Status:** `HAVE` works today · `PART` partly there (the note says what is missing) · `TODO` to build ·
+**Status:** `HAVE` works today Â· `PART` partly there (the note says what is missing) Â· `TODO` to build Â·
 `SKIP` not needed (reason given).
-**Priority** (for `PART`/`TODO`): `P0` first, before everything else · `P1` core, the UI feels incomplete without it · `P2` strong QoL · `P3` later or
+**Priority** (for `PART`/`TODO`): `P0` first, before everything else Â· `P1` core, the UI feels incomplete without it Â· `P2` strong QoL Â· `P3` later or
 niche.
 
 ## Machine facts that shape the list
@@ -32,19 +32,22 @@ niche.
    counter readback), `QM` (motion idle) and `HM` (absolute move). The driver detects them from `V` and falls back
    to timed waits on 2.0.1, so the UI does not wait on the upgrade. The pen-depth pot patch (`firmware/`) comes
    after the stock upgrade is proven.
-1. **Document model.** Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
+1. **Workspace split.** Prepare and Plot as top-level tabs. Move image conversion out of the Library panel into
+   Prepare, with the plugin interface and the shared ink preview. The Plot workspace keeps the current bed, layers,
+   tools and run panels. Everything below is placed in one of the two.
+2. **Document model.** Several objects on the bed, each with its own transform (move, non-uniform scale, rotate,
    mirror). Add selection, undo/redo, a numeric transform panel with a 9-point anchor, duplicate/delete/copy/paste,
    align and move to page anchors, and saving the project.
-2. **Path planning.** Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
+3. **Path planning.** Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
    duplicate-line removal, with a before/after time readout. A preview scrubber that shows travel moves and order,
    and start from stroke N.
-3. **Machine panel.** Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
+4. **Machine panel.** Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
    a calibration wizard. Then a pen and paper library editor.
-4. **Layer modes.** Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
+5. **Layer modes.** Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
-5. **Canvas QoL.** Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
+6. **Canvas QoL.** Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
    selection bounds.
-6. **Image and text.** Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
+7. **Image and text (in Prepare).** Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
    single-line fonts. Then a click-to-place text tool, booleans, offset and arrays.
 
 ---
@@ -53,6 +56,10 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
+| Two workspaces, Prepare and Plot, as top-level tabs (see `ui-design.md`) | TODO | P0 | user decision 2026-11-18. Prepare is optional: a finished SVG goes straight to Plot |
+| Prepare: conversion methods as plugins with a parameter schema; forms built from it | TODO | P1 | today the styles are fixed in `image_to_svg.py` and the Library form |
+| Prepare: recipe of chained steps (adjust, convert, fill, simplify, assign pens), saved with the result | TODO | P1 | reopen and re-tune instead of redoing |
+| Ink preview: pen colour and width, hatch fills, real size, stroke count, pen-down length, time | PART | P1 | Plot shows strokes. Make one renderer shared by both workspaces |
 | Bed view drawn to machine size with paper, inset canvas and start point S | HAVE | | `bed.js` |
 | Three-panel layout with console row | HAVE | | `index.html`, `app.css` |
 | Phone layout with bottom tab bar | HAVE | | below 900 px. `ui-design.md` still says 800 px and five tabs; fix the doc |
@@ -324,7 +331,7 @@ niche.
 | Live writing: pause and return | TODO | P3 | |
 | Replot a saved live session | TODO | P3 | |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
-| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | SKIP | | dropped 2026-11-18 after a supervised run on the machine (X, Y, then a full home with a dot): the user judged it a bad idea. Code was in d80fe69, reverted |
+| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | SKIP | | dropped 2026-11-18 after a supervised run on the machine (X, Y, then a full home with a dot): driving into the stops with the motor skipping for up to 30 s puts undue stress on the motors and the assembly. Code was in d80fe69, reverted |
 | Home button and "position unknown -> home" prompt | SKIP | | goes with crash homing |
 | Home one axis at a time | SKIP | | goes with crash homing |
 | Keep motors powered after a job (option) | TODO | P2 | tracked position stays valid; cost is warm motors |
