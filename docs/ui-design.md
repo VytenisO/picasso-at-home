@@ -77,6 +77,11 @@ takes the new proportions instead of stretching it.
   order. **Filled shapes** lists each fill colour with its mode (job default, hatch with spacing, angle,
   cross-hatch and back-and-forth, contour rings, or outline only); `fills` is part of the job settings. A layer
   seen for the first time takes the pen its colour had last time (`results/web/pen_map.json`).
+- **Canvas:** rulers on the top and left; guides dragged out of them (never plotted, saved with the bed as
+  `settings.guides`, not part of the plan or the resume key); a moved selection snaps its edges and centre to the
+  canvas, the paper, guides and other objects, with a line showing the match (Alt: no snapping); right-click opens
+  a menu (right-drag still pans); the status line shows the pointer, the selection's bounds and the zoom; `Z`
+  zooms to the selection.
 - **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
   (undoable); drawings no longer in the library are left out with a note.
 - **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
@@ -276,7 +281,7 @@ projects), `machine.js` (the Machine tab: control, calibration, paper, pens), `r
 
 Keyboard: `?` help, `1`/`2` Prepare/Plot, `Ctrl+Enter` send to Plot (Prepare), `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge
 the selection 1 mm (Shift 10 mm, Alt 0.1 mm) with the bed focused, `Ctrl+Z`/`Ctrl+Shift+Z`/`Ctrl+Y` undo/redo,
-`Ctrl+A/C/X/V/D` select all, copy, cut, paste, duplicate, `Delete` removes from the bed, `+`/`-`/`0` zoom/fit, `Esc` closes dialogs (never stops).
+`Ctrl+A/C/X/V/D` select all, copy, cut, paste, duplicate, `Delete` removes from the bed, `T` travel moves, `Z` zoom to selection, `+`/`-`/`0` zoom/fit, `Esc` closes dialogs (never stops).
 
 ## Tests
 

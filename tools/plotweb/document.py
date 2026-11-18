@@ -155,7 +155,7 @@ def compose(objects, files, bed):
 def bed_key(objects, settings):
     """Hash of what decides the plot order, without the resume point: a stopped plot can resume only on the same
     bed. Objects as validated by clean_objects."""
-    st = {k: v for k, v in (settings or {}).items() if k != "start_at"}
+    st = {k: v for k, v in (settings or {}).items() if k not in ("start_at", "guides")}    # guides are never plotted
     raw = json.dumps({"o": [{k: o[k] for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy")} for o in objects],
                       "s": st}, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -211,8 +211,13 @@ class DocStore:
         known = {e["id"] for e in self.lib.list()}
         objs = clean_objects(objects, known)
         st = settings if isinstance(settings, dict) else {}
+        g = st.get("guides")
+        if g is not None and (not isinstance(g, list) or len(g) > 100 or not all(
+                isinstance(x, dict) and x.get("axis") in ("x", "y") and isinstance(x.get("at"), (int, float))
+                and math.isfinite(x["at"]) for x in g)):
+            raise DocError("guides must be a list of {axis: x|y, at: mm}")
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
-                                       "dedupe", "fills")}
+                                       "dedupe", "fills", "guides")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

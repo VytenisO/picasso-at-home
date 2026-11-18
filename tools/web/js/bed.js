@@ -4,7 +4,7 @@
 // While the bed is being edited each object is drawn from its drawing's own strokes through its transform, so a
 // drag is instant. Once a preview is fresh the planner's exact strokes are drawn instead (fills, simplification).
 import { state, set, on, jobActive, prefs } from './store.js';
-import { $ } from './ui.js';
+import { $, el } from './ui.js';
 import { drawInk, inkMode, setInkMode } from './ink.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
@@ -38,6 +38,11 @@ export function initBed() {
   cv.addEventListener('wheel', wheel, { passive: false });
   cv.addEventListener('keydown', key);
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
+  cv.addEventListener('pointerleave', () => { pointerMm = null; status(); redraw(); });
+  document.addEventListener('pointerdown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
+  document.addEventListener('keydown', (e) => { if (menu && e.key === 'Escape') { closeMenu(); e.stopPropagation(); } }, true);
+  window.addEventListener('blur', closeMenu);
+  on(['sel', 'doc'], status);
   $('zoomIn').onclick = () => zoomBy(1.25);
   $('zoomOut').onclick = () => zoomBy(0.8);
   $('zoomFit').onclick = fit;
@@ -69,9 +74,9 @@ export function fit() {
   const m = state.me && state.me.machine;
   if (!m || !W) return;
   const pad = 24;
-  view.s = Math.min((W - 2 * pad) / m.bed[0], (H - 2 * pad) / m.bed[1]);
-  view.ox = (W - m.bed[0] * view.s) / 2;
-  view.oy = (H - m.bed[1] * view.s) / 2;
+  view.s = Math.min((W - RULER - 2 * pad) / m.bed[0], (H - RULER - 2 * pad) / m.bed[1]);
+  view.ox = RULER + (W - RULER - m.bed[0] * view.s) / 2;
+  view.oy = RULER + (H - RULER - m.bed[1] * view.s) / 2;
   view.fitted = true;
   view.user = false;
   redraw();
@@ -161,6 +166,7 @@ function render() {
     }
     if (editable()) overlays(px);
   }
+  if (state.doc) drawGuides(px);
 
   // start point S
   const [sx, sy] = m.start;
@@ -187,6 +193,7 @@ function render() {
     ctx.beginPath(); ctx.moveTo(pos.x - 2 * r, pos.y); ctx.lineTo(pos.x + 2 * r, pos.y);
     ctx.moveTo(pos.x, pos.y - 2 * r); ctx.lineTo(pos.x, pos.y + 2 * r); ctx.lineWidth = px; ctx.stroke();
   }
+  drawRulers();
 }
 
 // ------------------------------------------------------------------ plan scrubber and travel moves
@@ -276,6 +283,193 @@ function stopPlay() {
   if (playing) cancelAnimationFrame(playing);
   playing = 0;
   $('playBtn').textContent = 'Play';
+}
+
+// ------------------------------------------------------------------ rulers, guides, snapping, menu, status
+const RULER = 18;                  // px, top and left
+let snapLines = [];                // alignment hints while dragging: [{axis, at}]
+let pointerMm = null;
+
+const guides = () => (state.doc && state.doc.settings.guides) || [];
+
+function rulerSteps() {
+  const s = view.s;
+  const label = [5, 10, 20, 50, 100, 200].find((v) => v * s >= 42) || 200;
+  const minor = [1, 2, 5, 10, 20, 50].find((v) => v * s >= 5 && label % v === 0) || label;
+  return { minor, label };
+}
+
+function drawRulers() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { minor, label } = rulerSteps();
+  ctx.fillStyle = css('--panel');
+  ctx.fillRect(0, 0, W, RULER); ctx.fillRect(0, 0, RULER, H);
+  const sel = state.doc ? G.bounds(objects().filter((o) => state.sel.includes(o.id))) : null;
+  if (sel) {                         // the selection's extent on both rulers
+    ctx.fillStyle = css('--info-bg');
+    const [ax, ay] = toPx(sel.x0, sel.y0), [bx, by] = toPx(sel.x1, sel.y1);
+    ctx.fillRect(Math.max(RULER, ax), 0, bx - Math.max(RULER, ax), RULER);
+    ctx.fillRect(0, Math.max(RULER, ay), RULER, by - Math.max(RULER, ay));
+  }
+  ctx.strokeStyle = css('--muted'); ctx.fillStyle = css('--muted'); ctx.lineWidth = 1;
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.beginPath();
+  const [mx0] = toMm(RULER, 0), [mx1] = toMm(W, 0);
+  for (let v = Math.ceil(mx0 / minor) * minor; v <= mx1; v += minor) {
+    const x = Math.round(toPx(v, 0)[0]) + 0.5;
+    const big = v % label === 0;
+    ctx.moveTo(x, RULER); ctx.lineTo(x, RULER - (big ? 9 : 4));
+    if (big) ctx.fillText(String(v), x + 2, 9);
+  }
+  const [, my0] = toMm(0, RULER), [, my1] = toMm(0, H);
+  ctx.save();
+  for (let v = Math.ceil(my0 / minor) * minor; v <= my1; v += minor) {
+    const y = Math.round(toPx(0, v)[1]) + 0.5;
+    const big = v % label === 0;
+    ctx.moveTo(RULER, y); ctx.lineTo(RULER - (big ? 9 : 4), y);
+    if (big) {
+      ctx.save(); ctx.translate(9, y + 2); ctx.rotate(-Math.PI / 2); ctx.fillText(String(v), 0, 0); ctx.restore();
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+  if (pointerMm) {                   // where the pointer is
+    ctx.strokeStyle = css('--accent'); ctx.beginPath();
+    const [px, py] = toPx(...pointerMm);
+    ctx.moveTo(px + 0.5, 0); ctx.lineTo(px + 0.5, RULER); ctx.moveTo(0, py + 0.5); ctx.lineTo(RULER, py + 0.5); ctx.stroke();
+  }
+  ctx.fillStyle = css('--panel'); ctx.fillRect(0, 0, RULER, RULER);
+  ctx.strokeStyle = css('--line'); ctx.beginPath();
+  ctx.moveTo(0, RULER + 0.5); ctx.lineTo(W, RULER + 0.5); ctx.moveTo(RULER + 0.5, 0); ctx.lineTo(RULER + 0.5, H); ctx.stroke();
+}
+
+// Guides (never plotted) and the alignment hints of the drag in progress, in mm.
+function drawGuides(px) {
+  const m = state.me.machine;
+  ctx.save();
+  ctx.lineWidth = px;
+  ctx.strokeStyle = css('--guide'); ctx.setLineDash([6 * px, 4 * px]);
+  ctx.beginPath();
+  const gl = drag && (drag.mode === 'guide' || drag.mode === 'guide-new') && drag.at !== null
+    ? guides().map((g, i) => (i === drag.index ? { ...g, at: drag.at } : g)).concat(drag.mode === 'guide-new' ? [{ axis: drag.axis, at: drag.at }] : [])
+    : guides();
+  for (const g of gl) {
+    if (g.axis === 'x') { ctx.moveTo(g.at, -1000); ctx.lineTo(g.at, m.bed[1] + 1000); }
+    else { ctx.moveTo(-1000, g.at); ctx.lineTo(m.bed[0] + 1000, g.at); }
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = css('--snap');
+  ctx.beginPath();
+  for (const s of snapLines) {
+    if (s.axis === 'x') { ctx.moveTo(s.at, -1000); ctx.lineTo(s.at, m.bed[1] + 1000); }
+    else { ctx.moveTo(-1000, s.at); ctx.lineTo(m.bed[0] + 1000, s.at); }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Lines a dragged selection snaps to: canvas and paper edges and centres, guides, and the other objects' edges
+// and centres.
+function snapTargets(exclude) {
+  const { paper, canvas: c } = G.canvasRect();
+  const xs = [c[0], (c[0] + c[2]) / 2, c[2], paper[0], paper[0] + paper[2]];
+  const ys = [c[1], (c[1] + c[3]) / 2, c[3], paper[1], paper[1] + paper[3]];
+  for (const g of guides()) (g.axis === 'x' ? xs : ys).push(g.at);
+  for (const o of state.doc.objects) {
+    if (exclude.includes(o.id)) continue;
+    const b = G.bounds([o]);
+    xs.push(b.x0, (b.x0 + b.x1) / 2, b.x1);
+    ys.push(b.y0, (b.y0 + b.y1) / 2, b.y1);
+  }
+  return { xs, ys };
+}
+
+// The best snap of any of the candidate positions to any target within tol: -> [shift, target] or null.
+function bestSnap(cands, targets, tol) {
+  let best = null;
+  for (const c of cands) for (const t of targets) {
+    const d = t - c;
+    if (Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best[0]))) best = [d, t];
+  }
+  return best;
+}
+
+function hitGuide(px, py) {
+  if (px < RULER || py < RULER) return -1;
+  const gl = guides();
+  for (let i = gl.length - 1; i >= 0; i--) {
+    const g = gl[i], [gx, gy] = toPx(g.at, g.at);
+    if (g.axis === 'x' ? Math.abs(gx - px) <= 4 : Math.abs(gy - py) <= 4) return i;
+  }
+  return -1;
+}
+
+function setGuides(list) {
+  D.edit((d) => { d.settings.guides = list.map((g) => ({ axis: g.axis, at: G.r2(g.at) })); });
+}
+
+export function zoomTo(b, pad = 40) {
+  if (!b || !W) return;
+  const w = Math.max(b.x1 - b.x0, 5), h = Math.max(b.y1 - b.y0, 5);
+  view.s = Math.max(0.3, Math.min(80, Math.min((W - RULER - 2 * pad) / w, (H - RULER - 2 * pad) / h)));
+  view.ox = RULER + (W - RULER) / 2 - (b.x0 + w / 2) * view.s;
+  view.oy = RULER + (H - RULER) / 2 - (b.y0 + h / 2) * view.s;
+  view.user = true;
+  redraw();
+}
+
+export function zoomSelection() {
+  const sel = state.doc ? state.doc.objects.filter((o) => state.sel.includes(o.id)) : [];
+  if (sel.length) zoomTo(G.bounds(sel));
+}
+
+function status() {
+  const sel = state.doc ? state.doc.objects.filter((o) => state.sel.includes(o.id)) : [];
+  const parts = [];
+  if (pointerMm) parts.push(`${pointerMm[0].toFixed(1)}, ${pointerMm[1].toFixed(1)} mm`);
+  if (sel.length) {
+    const b = G.bounds(sel);
+    parts.push(`${sel.length > 1 ? sel.length + ' selected: ' : ''}${G.r2(b.x0)}, ${G.r2(b.y0)}  ${G.r2(b.w)} x ${G.r2(b.h)} mm`);
+  }
+  parts.push(`${Math.round(view.s / ((state.me && state.me.machine) ? 96 / 25.4 : 1) * 100)}%`);
+  $('bedCoords').textContent = parts.join('   ');
+}
+
+// ---- context menu
+let menu = null;
+
+function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+
+function openMenu(clientX, clientY, mm) {
+  closeMenu();
+  const sel = state.sel.length > 0;
+  const gi = hitGuide(...toPx(...mm));
+  const item = (text, fn, ok = true, key = '') => el('button', { type: 'button', role: 'menuitem', disabled: !ok,
+    onclick: () => { closeMenu(); fn(); } }, el('span', { text }), key ? el('kbd', { text: key }) : null);
+  const sep = () => el('hr');
+  const items = sel ? [
+    item('Duplicate', () => D.duplicateSel(), true, 'Ctrl+D'), item('Copy', () => D.copySel(), true, 'Ctrl+C'),
+    item('Cut', () => D.cutSel(), true, 'Ctrl+X'), item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'),
+    item('Remove from the bed', () => D.removeSel(), true, 'Del'), sep(),
+    item('Turn left', () => D.rotateSel(-90)), item('Turn right', () => D.rotateSel(90)),
+    item('Mirror H', () => D.mirrorSel('x')), item('Mirror V', () => D.mirrorSel('y')), sep(),
+    item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
+    item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
+  ] : [
+    item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'), item('Select all', () => D.selectAll(), true, 'Ctrl+A'), sep(),
+    item('Vertical guide here', () => setGuides([...guides(), { axis: 'x', at: mm[0] }])),
+    item('Horizontal guide here', () => setGuides([...guides(), { axis: 'y', at: mm[1] }])),
+    gi >= 0 ? item('Remove this guide', () => setGuides(guides().filter((_, i) => i !== gi))) : null,
+    item('Remove all guides', () => setGuides([]), guides().length > 0), sep(),
+    item('Fit the bed', fit, true, '0'),
+  ];
+  menu = el('div', { class: 'ctx-menu', role: 'menu' }, ...items.filter(Boolean));
+  document.body.append(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(clientX, innerWidth - r.width - 4)}px`;
+  menu.style.top = `${Math.min(clientY, innerHeight - r.height - 4)}px`;
+  menu.querySelector('button:not(:disabled)')?.focus();
 }
 
 function drawObject(o, { px, layers, pens }) {
@@ -404,9 +598,20 @@ function down(e) {
     return;
   }
   const [mx, my] = toMm(px, py);
+  closeMenu();
   if (e.button === 0 && bedClick(mx, my)) return;
-  const pan = { mode: 'pan', start: [px, py], o: [view.ox, view.oy] };
+  const pan = { mode: 'pan', start: [px, py], o: [view.ox, view.oy], menu: e.button === 2 };
   if (e.button === 1 || e.button === 2 || !editable()) { drag = pan; cv.classList.add('dragging'); return; }
+  // rulers: drag out a guide; an existing guide: move it (drop it on a ruler to remove it)
+  if ((px < RULER || py < RULER) && !(px < RULER && py < RULER)) {
+    drag = { mode: 'guide-new', axis: py < RULER ? 'y' : 'x', at: null, start: [mx, my] };
+    return;
+  }
+  const gi = hitGuide(px, py);
+  if (gi >= 0 && !hitHandle(px, py) && !hitObject(px, py)) {
+    drag = { mode: 'guide', index: gi, axis: guides()[gi].axis, at: guides()[gi].at, start: [mx, my] };
+    return;
+  }
   const h = hitHandle(px, py);
   if (h) {
     const sel = state.doc.objects.filter((o) => state.sel.includes(o.id));
@@ -433,7 +638,8 @@ function down(e) {
 function move(e) {
   const [px, py] = local(e);
   const [mx, my] = toMm(px, py);
-  $('bedCoords').textContent = `${mx.toFixed(1)}, ${my.toFixed(1)} mm`;
+  pointerMm = [mx, my];
+  status();
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [px, py]);
   if (pinch && pointers.size === 2) {
     const [a, b] = [...pointers.values()];
@@ -443,9 +649,12 @@ function move(e) {
     return;
   }
   if (!drag) {
+    redraw();                       // the pointer marks on the rulers
     if (!editable()) return;
     const h = hitHandle(px, py), o = h ? null : hitObject(px, py);
-    cv.style.cursor = h ? cursorFor(h) : o ? 'move' : '';
+    const g = !h && !o ? hitGuide(px, py) : -1;
+    cv.style.cursor = h ? cursorFor(h) : o ? 'move' : g >= 0 ? (guides()[g].axis === 'x' ? 'col-resize' : 'row-resize')
+      : px < RULER || py < RULER ? 'copy' : '';
     const hv = o ? o.id : null;
     if (hv !== hover) { hover = hv; redraw(); }
     return;
@@ -455,6 +664,11 @@ function move(e) {
     view.ox = drag.o[0] + px - drag.start[0];
     view.oy = drag.o[1] + py - drag.start[1];
     view.user = true;
+  } else if (drag.mode === 'guide' || drag.mode === 'guide-new') {
+    let at = drag.axis === 'x' ? mx : my;
+    if (!e.altKey) at = snapHalf(at);
+    drag.at = at;
+    drag.off = px < RULER || py < RULER;        // over a ruler: dropping removes it
   } else if (drag.mode === 'marquee') {
     const [x0, y0] = drag.start;
     // left to right: whole objects inside; right to left: anything touched
@@ -474,9 +688,17 @@ const snapHalf = (v) => Math.round(v * 2) / 2;
 
 function dragMove(sel, mx, my, e) {
   let dx = mx - drag.start[0], dy = my - drag.start[1];
-  if (!e.altKey) {           // the selection's corner lands on the 0.5 mm grid
+  snapLines = [];
+  if (!e.altKey) {
+    // Edges and centre snap to the canvas, the paper, guides and other objects; otherwise the corner lands on
+    // the 0.5 mm grid. Alt: no snapping at all.
     const b = G.bounds(drag.orig.filter((o) => drag.sel.includes(o.id)));
-    dx = snapHalf(b.x0 + dx) - b.x0; dy = snapHalf(b.y0 + dy) - b.y0;
+    const t = drag.targets || (drag.targets = snapTargets(drag.sel));
+    const tol = 7 / view.s;
+    const sx = bestSnap([b.x0 + dx, (b.x0 + b.x1) / 2 + dx, b.x1 + dx], t.xs, tol);
+    const sy = bestSnap([b.y0 + dy, (b.y0 + b.y1) / 2 + dy, b.y1 + dy], t.ys, tol);
+    if (sx) { dx += sx[0]; snapLines.push({ axis: 'x', at: sx[1] }); } else dx = snapHalf(b.x0 + dx) - b.x0;
+    if (sy) { dy += sy[0]; snapLines.push({ axis: 'y', at: sy[1] }); } else dy = snapHalf(b.y0 + dy) - b.y0;
   }
   for (const o of sel) { o.x += dx; o.y += dy; }
 }
@@ -520,7 +742,22 @@ function up(e) {
   cv.classList.remove('dragging');
   const d = drag;
   drag = null;
-  if (d && d.mode === 'marquee') {
+  snapLines = [];
+  if (d && d.mode === 'pan' && d.menu && !d.moved) {
+    const [px, py] = local(e);
+    const mm = toMm(px, py);
+    const o = editable() ? hitObject(px, py) : null;
+    if (o && !state.sel.includes(o.id)) D.select(o.id);
+    if (!o && state.sel.length) D.select([]);
+    if (editable()) openMenu(e.clientX, e.clientY, mm);
+  } else if (d && (d.mode === 'guide' || d.mode === 'guide-new')) {
+    if (d.at !== null) {
+      const list = guides().slice();
+      if (d.mode === 'guide') { if (d.off) list.splice(d.index, 1); else list[d.index] = { axis: d.axis, at: d.at }; }
+      else if (!d.off) list.push({ axis: d.axis, at: d.at });
+      setGuides(list);
+    }
+  } else if (d && d.mode === 'marquee') {
     if (d.rect && d.moved) {
       const r = d.rect;
       const hits = state.doc.objects.filter((o) => {

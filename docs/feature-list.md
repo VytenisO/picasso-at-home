@@ -45,7 +45,7 @@ niche.
    a calibration wizard. Then a pen and paper library editor.
 5. **Layer modes** (done 2026-11-18). Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
-6. **Canvas QoL.** Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
+6. **Canvas QoL** (done 2026-11-18). Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
    selection bounds.
 7. **Image and text (in Prepare).** Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
    single-line fonts. Then a click-to-place text tool, booleans, offset and arrays.
@@ -70,7 +70,7 @@ niche.
 | Reset panel layout | TODO | P3 | only once panels can be resized or moved |
 | Resizable panels | TODO | P3 | |
 | Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | TODO | P2 | home for the commands below; the panels stay |
-| Right-click context menu on bed and objects | TODO | P2 | cut/copy/paste, duplicate, delete, arrange, layer |
+| Right-click context menu on bed and objects | HAVE | | objects: edit, turn, mirror, order, fit, zoom; empty bed: paste, select all, guides, fit |
 | Tooltips that show the shortcut | PART | P2 | some titles exist; make it consistent |
 | Context help (`?` on a control opens its help) | TODO | P3 | |
 | Simple / advanced mode (hide advanced options) | TODO | P3 | |
@@ -83,13 +83,13 @@ niche.
 |---|---|---|---|
 | Wheel zoom at cursor, pinch zoom, drag to pan | HAVE | | `bed.js` |
 | Zoom in/out/fit buttons and `+ - 0` keys | HAVE | | |
-| Zoom to selection | TODO | P2 | needs selection |
-| Pan with Space+drag or middle button | TODO | P2 | now only drag on empty space |
+| Zoom to selection | HAVE | | Z, or the context menu |
+| Pan with Space+drag or middle button | PART | P3 | middle or right drag, a finger on empty bed; Space stays pause/continue |
 | Cursor X/Y read-out | HAVE | | |
 | Grid | PART | P2 | fixed 10 mm; make spacing a setting and add a toggle |
-| Rulers on the top and left edges | TODO | P1 | |
-| Draggable guide lines from the rulers (never plotted, lockable, snappable) | TODO | P2 | |
-| Automatic alignment hints while dragging (edges/centres line up) | TODO | P2 | |
+| Rulers on the top and left edges | HAVE | | adaptive ticks, the pointer and the selection's extent marked |
+| Draggable guide lines from the rulers (never plotted, lockable, snappable) | PART | P3 | drag out of a ruler, move, drop back on a ruler to remove, right-click to add or clear; saved with the bed; not lockable |
+| Automatic alignment hints while dragging (edges/centres line up) | HAVE | | a line shows what the dragged edge or centre snapped to |
 | Wireframe vs filled view | TODO | P2 | matters once hatch fills exist |
 | Show pen width (stroke drawn at the pen's real width) | TODO | P2 | pen library has the width; good forecast of dark areas |
 | Show path direction and start points | PART | P2 | the scrubber shows the order stroke by stroke with the pen position; no arrows |
@@ -193,8 +193,8 @@ niche.
 |---|---|---|---|
 | Grid snap while dragging (0.5 mm), Shift disables | HAVE | | |
 | Grid snap spacing and toggle as a setting | TODO | P2 | |
-| Snap to object nodes, midpoints, centres, intersections | TODO | P2 | |
-| Snap to paper/canvas edges and centre | TODO | P1 | |
+| Snap to object nodes, midpoints, centres, intersections | PART | P3 | object edges and centres while moving; no nodes, no snapping while resizing |
+| Snap to paper/canvas edges and centre | HAVE | | moving snaps edges and centre to canvas, paper, guides and other objects within 7 px; Alt: none |
 | Snap distance setting, modifier to disable | TODO | P3 | |
 
 ## 8. Create and edit geometry
@@ -238,7 +238,7 @@ niche.
 | Move objects to another layer (colour palette) | TODO | P1 | |
 | Merge layers that share a pen (one swap fewer) | TODO | P2 | |
 | Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
-| Non-plotting guide layer | TODO | P2 | paper outline, guides, text paths |
+| Non-plotting guide layer | PART | P3 | guide lines; no guide shapes |
 | Passes per layer (repeat strokes) | HAVE | | 1 to 5; each stroke again right away, an open one back over itself |
 | Pressure step per pass | TODO | P3 | brush and felt tips |
 | Layer mode: line | HAVE | | the only mode today |

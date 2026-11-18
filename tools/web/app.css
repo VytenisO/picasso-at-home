@@ -4,7 +4,7 @@
   --accent: #2459a8; --accent-text: #ffffff; --ok: #237a3b; --warn: #a86400; --err: #b3261e;
   --ok-bg: #e5f3e8; --warn-bg: #fdf0dc; --err-bg: #fbe5e3; --info-bg: #e6eefa;
   --bed: #e3e1da; --paper: #ffffff; --grid: rgba(0,0,0,.06); --canvas-line: #8a877e; --done: #2459a8;
-  --focus: #2459a8; --shadow: 0 1px 2px rgba(0,0,0,.08); --ink: #1d1d1b;
+  --focus: #2459a8; --shadow: 0 1px 2px rgba(0,0,0,.08); --ink: #1d1d1b; --guide: #0a8ea0; --snap: #c0329e;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   color-scheme: light;
 }
@@ -14,7 +14,7 @@
     --accent: #7aa7e8; --accent-text: #0e1420; --ok: #6cc785; --warn: #e6a547; --err: #f08a80;
     --ok-bg: #1c3123; --warn-bg: #3a2c14; --err-bg: #3d1f1c; --info-bg: #1d2a3d;
     --bed: #2b2d2a; --paper: #3a3c38; --grid: rgba(255,255,255,.05); --canvas-line: #8e8b82; --done: #7aa7e8;
-    --focus: #7aa7e8; --shadow: none; --ink: #ecebe6; color-scheme: dark;
+    --focus: #7aa7e8; --shadow: none; --ink: #ecebe6; --guide: #3cc4d6; --snap: #ec6ad0; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
@@ -22,7 +22,7 @@
   --accent: #7aa7e8; --accent-text: #0e1420; --ok: #6cc785; --warn: #e6a547; --err: #f08a80;
   --ok-bg: #1c3123; --warn-bg: #3a2c14; --err-bg: #3d1f1c; --info-bg: #1d2a3d;
   --bed: #2b2d2a; --paper: #3a3c38; --grid: rgba(255,255,255,.05); --canvas-line: #8e8b82; --done: #7aa7e8;
-  --focus: #7aa7e8; --shadow: none; --ink: #ecebe6; color-scheme: dark;
+  --focus: #7aa7e8; --shadow: none; --ink: #ecebe6; --guide: #3cc4d6; --snap: #ec6ad0; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -372,3 +372,12 @@ button.danger-text { color: var(--err); }
 .layer-foot select { width: auto; min-height: 26px; padding: 2px 6px; }
 .fill-ink { display: flex; flex-direction: column; gap: 6px; }
 .fill-ink .layer-head .spacer { flex: 1; }
+
+/* Bed context menu */
+.ctx-menu { position: fixed; z-index: 50; min-width: 200px; padding: 4px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.ctx-menu button { display: flex; justify-content: space-between; gap: 16px; border: none; background: none; text-align: left;
+  min-height: 28px; padding: 4px 10px; border-radius: 5px; }
+.ctx-menu button:hover:not(:disabled), .ctx-menu button:focus-visible { background: var(--info-bg); }
+.ctx-menu kbd { font: 11px var(--mono); color: var(--muted); }
+.ctx-menu hr { border: none; border-top: 1px solid var(--line); margin: 4px 2px; }
