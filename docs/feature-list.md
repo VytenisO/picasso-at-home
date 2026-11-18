@@ -47,7 +47,7 @@ niche.
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
 6. **Canvas QoL** (done 2026-11-18). Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
    selection bounds.
-7. **Image and text (in Prepare).** Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
+7. **Image and text** (done 2026-11-18, except booleans and offset). Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
    single-line fonts. Then a click-to-place text tool, booleans, offset and arrays.
 
 ---
@@ -180,7 +180,7 @@ niche.
 | Distribute by edges or centres | PART | P3 | Spread H/V gives equal gaps between edges; not by centres |
 | Move together (abut) and dock to edge | TODO | P3 | |
 | Draw order: forward/back/front/back, per-object priority | PART | P2 | objects list order (earlier/later) is the plot order within each pen; path planning (step 3) may reorder strokes |
-| Grid array (rows, columns, spacing, stagger, alternate mirror) | TODO | P2 | sheets of cards or labels |
+| Grid array (rows, columns, spacing, stagger, alternate mirror) | PART | P3 | Arrange, Array: columns, rows, gaps; no stagger or alternate mirror |
 | Circular array | TODO | P3 | |
 | Copy along path | TODO | P3 | |
 | Quick pack small items on a sheet | TODO | P3 | bounding-box packing only |
@@ -216,8 +216,8 @@ niche.
 | Break apart into separate paths | TODO | P2 | |
 | Reverse path direction | TODO | P2 | |
 | Set start point of a closed path | TODO | P2 | seam placement |
-| Offset (in, out, both; round/miter/bevel corners) | TODO | P2 | double-line effect, pen-width compensation |
-| Booleans: union/weld, subtract, intersect | TODO | P2 | union removes hidden overlap lines |
+| Offset (in, out, both; round/miter/bevel corners) | TODO | P2 | needs polygon clipping; the plotter host has no shapely and nothing is installed there, so it waits for a vendored clipper |
+| Booleans: union/weld, subtract, intersect | TODO | P2 | same: polygon clipping first |
 | Cut shapes with a closed shape | TODO | P3 | |
 | Fillet corners | TODO | P3 | |
 | Convex outline around a selection | TODO | P3 | |
@@ -418,9 +418,9 @@ niche.
 | Text art: arc, wave, rise, circle, twist | HAVE | | |
 | Bundled fonts plus system fonts | HAVE | | |
 | Own handwriting in live writing | HAVE | | captured with the separate handwriting page |
-| Single-line (stroke) fonts | TODO | P1 | outlines double every line; pens want single strokes |
-| Click-to-place text object on the bed, edit in place | TODO | P2 | today text goes through the library |
-| Letter spacing, line spacing, alignment (left/centre/right, top/middle/bottom) | TODO | P2 | |
+| Single-line (stroke) fonts | HAVE | | four Hershey fonts (sans, sans double, script, serif) in `tools/hershey/`; Prepare method Single-line text and the bed's Text tool |
+| Click-to-place text object on the bed, edit in place | PART | P3 | Text on the bed toolbar: click, type, placed there (via the library); no edit in place |
+| Letter spacing, line spacing, alignment (left/centre/right, top/middle/bottom) | PART | P3 | single-line text: line spacing and left/centre/right; no letter spacing |
 | Weld overlapping letters (outline fonts) | TODO | P3 | |
 | Text on a path | TODO | P3 | |
 | Fit text to a width (squeeze) | TODO | P3 | |

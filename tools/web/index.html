@@ -305,6 +305,7 @@
       <span class="title" id="bedTitle">The bed is empty</span>
       <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
       <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
+      <button class="icon" id="textTool" aria-pressed="false" title="Text: click on the bed where it should go">Text</button>
       <span class="spacer"></span>
       <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
       <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
@@ -414,6 +415,7 @@
           <button type="button" data-act="anchor" id="toAnchor" title="Put the reference point on the same point of the canvas">To canvas top-left</button>
           <button type="button" data-act="fit" title="Scale to fill the canvas and centre">Fit canvas</button>
           <button type="button" data-act="dup" title="Duplicate (Ctrl+D)">Duplicate</button>
+          <button type="button" data-act="array" title="Copies in rows and columns">Array</button>
           <button type="button" data-act="del" class="danger-text" title="Remove from the bed (Delete)">Remove</button>
         </div>
       </div>
@@ -559,6 +561,40 @@
     <div class="actions"><button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button id="helpClose" class="primary">Close</button></div>
   </div>
+</dialog>
+
+<dialog id="textDlg" aria-labelledby="textDlgTitle">
+  <form method="dialog" class="dlg" id="textForm">
+    <h2 id="textDlgTitle">Text on the bed</h2>
+    <p class="hint">Single-line letters: each stroke of a letter is drawn once. Placed where you clicked.</p>
+    <label class="field"><span>Text</span><textarea name="text" rows="3" maxlength="4000" required></textarea></label>
+    <div class="field-row">
+      <label class="field"><span>Font</span><select name="font">
+        <option value="Hershey Sans">Sans</option><option value="Hershey Sans Medium">Sans, double stroke</option>
+        <option value="Hershey Script">Script</option><option value="Hershey Serif">Serif</option></select></label>
+      <label class="field"><span>Letter height (mm)</span><input name="xheight" type="number" min="1" max="40" step="0.5" value="5"></label>
+      <label class="field"><span>Align</span><select name="align"><option value="left">Left</option>
+        <option value="center">Centre</option><option value="right">Right</option></select></label>
+    </div>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place text</button></div>
+  </form>
+</dialog>
+
+<dialog id="arrayDlg" aria-labelledby="arrayDlgTitle">
+  <form method="dialog" class="dlg" id="arrayForm">
+    <h2 id="arrayDlgTitle">Grid array</h2>
+    <p class="hint">Copies of the selection in rows and columns, the gaps measured between the copies' edges.</p>
+    <div class="field-row">
+      <label class="field"><span>Columns</span><input name="cols" type="number" min="1" max="20" step="1" value="3"></label>
+      <label class="field"><span>Rows</span><input name="rows" type="number" min="1" max="20" step="1" value="2"></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Gap across (mm)</span><input name="gx" type="number" min="-100" max="200" step="0.5" value="5"></label>
+      <label class="field"><span>Gap down (mm)</span><input name="gy" type="number" min="-100" max="200" step="0.5" value="5"></label>
+    </div>
+    <p class="hint" id="arrayNote"></p>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Make copies</button></div>
+  </form>
 </dialog>
 
 <dialog id="askDlg" aria-labelledby="askTitle">

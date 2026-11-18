@@ -1025,6 +1025,27 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "stats": stats})
         self.send(200, {"ok": True, "svg": svg, "stats": stats})
 
+    def r_text_single(self):
+        """Single-line (Hershey) text as a library drawing, for the bed's text tool."""
+        import hershey
+        d = self.json_body()
+        try:
+            xh = float(d.get("xheight", 4.5))
+            if not 1.0 <= xh <= 40.0:
+                raise ValueError("Letter height must be between 1 and 40 mm.")
+            text = str(d.get("text", ""))[:4000]
+            if not text.strip():
+                raise ValueError("Type some text first.")
+            align = d.get("align") if d.get("align") in ("left", "center", "right") else "left"
+            width = d.get("width")
+            width = float(width) if width else None
+            svg, stats = hershey.svg(text, str(d.get("font") or "Hershey Sans"), xh, width, xh * 3.0, align)
+        except (TypeError, ValueError) as ex:
+            raise ApiError(400, str(ex))
+        first = " ".join(text.split())[:20] or "text"
+        e = self.app.lib.add_svg_text(svg, f"text-{first}.svg", kind="text")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "stats": stats})
+
     # ---- routes: catalogue
     def r_converters(self):
         self.send(200, {"converters": [c.public() for c in converters.REGISTRY.values()]})
@@ -1262,6 +1283,7 @@ ROUTES_POST = {
     "/api/files/delete": (Handler.r_delete, True),
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),
+    "/api/text_single": (Handler.r_text_single, True),
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
     "/api/machine/start": (Handler.r_machine_start, True),

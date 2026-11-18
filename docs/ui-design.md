@@ -82,6 +82,9 @@ takes the new proportions instead of stretching it.
   canvas, the paper, guides and other objects, with a line showing the match (Alt: no snapping); right-click opens
   a menu (right-drag still pans); the status line shows the pointer, the selection's bounds and the zoom; `Z`
   zooms to the selection.
+- **Text and arrays:** the bed's Text tool places single-line (Hershey) text where you click
+  (`POST /api/text_single`, through the library); Arrange, Array copies the selection in rows and columns. Prepare
+  has a Single-line text method with the same fonts (`tools/hershey.py`, data and licence in `tools/hershey/`).
 - **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
   (undoable); drawings no longer in the library are left out with a note.
 - **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
@@ -228,6 +231,7 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | POST `/api/preview` | `{doc: {name, objects, settings}, client}` | `{ok, plan_id, problems, settings, summary, placement, order, strokes, file_layers, objects}`; saves the bed |
 | POST `/api/preview` | `{id, settings}` (one file, the old form; kept for tools and tests) | as above, without `objects`; saves the file's settings |
 | POST `/api/job/start` | `{doc, plan_id, mode: plot|trace|simulate, confirm: {parked}}` (or `{id, settings, ...}`) | `{job}`, or 400/409 with the reason |
+| POST `/api/text_single` | `{text, font, xheight, align, width?}` | `{file}`: single-line text added to the library |
 | GET `/api/files/natural?id=` | | `{geom: {raw_x, raw_y, raw_w, raw_h, svg_hash}, layers, strokes}`: the drawing at natural size in its own mm |
 | GET `/api/doc` | | `{doc: {rev, name, objects, settings}, projects}` |
 | POST `/api/doc` | `{name, objects, settings, client}` | `{doc}`: replaces the working bed |

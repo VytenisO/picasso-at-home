@@ -22,6 +22,9 @@ let hover = null;
 const HANDLE = 9, ROT_PX = 26;
 let playing = 0;
 let bedClick = () => false;        // the Machine tab's "click to go"
+let placeHook = null;              // one click on the bed, for the text tool
+
+export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
 
 export function setBedClick(fn, jog) { bedClick = fn; if (jog) jogHook = jog; }
 let jogHook = () => false;
@@ -599,6 +602,7 @@ function down(e) {
   }
   const [mx, my] = toMm(px, py);
   closeMenu();
+  if (e.button === 0 && placeHook) { const f = placeHook; placeHook = null; cv.style.cursor = ''; f(mx, my); return; }
   if (e.button === 0 && bedClick(mx, my)) return;
   const pan = { mode: 'pan', start: [px, py], o: [view.ox, view.oy], menu: e.button === 2 };
   if (e.button === 1 || e.button === 2 || !editable()) { drag = pan; cv.classList.add('dragging'); return; }
@@ -650,7 +654,7 @@ function move(e) {
   }
   if (!drag) {
     redraw();                       // the pointer marks on the rulers
-    if (!editable()) return;
+    if (!editable() || placeHook) return;
     const h = hitHandle(px, py), o = h ? null : hitObject(px, py);
     const g = !h && !o ? hitGuide(px, py) : -1;
     cv.style.cursor = h ? cursorFor(h) : o ? 'move' : g >= 0 ? (guides()[g].axis === 'x' ? 'col-resize' : 'row-resize')

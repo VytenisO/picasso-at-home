@@ -170,6 +170,20 @@ def _text_page(src, dst, p, ctx):
     return stats
 
 
+def _text_single(src, dst, p, ctx):
+    import hershey
+    if not p["text"].strip():
+        raise PrepareError("Type some text first.")
+    c = ctx["canvas"]
+    width = p["width"] or (c[2] - c[0])
+    try:
+        svg, stats = hershey.svg(p["text"], p["font"], p["xheight"], width, p["xheight"] * p["spacing"], p["align"])
+    except ValueError as ex:
+        raise PrepareError(str(ex))
+    pathlib.Path(dst).write_text(svg, encoding="utf-8")
+    return stats
+
+
 def _text_art(src, dst, p, ctx):
     from svg_vector import text_art_svg
     if not p["text"].strip():
@@ -317,6 +331,21 @@ STEPS = {s.id: s for s in [
         {"key": "bold", "label": "Bold", "type": "bool", "default": False},
         {"key": "italic", "label": "Italic", "type": "bool", "default": False},
     ], _text_page, "Letters are drawn as outlines. Small sizes work best with a fine pen.", "Text"),
+    Step("text_single", "Single-line text", "method", [], [
+        {"key": "text", "label": "Text", "type": "textarea", "default": "", "maxlength": 4000,
+         "placeholder": "Type or paste text. Each letter is drawn once, along its centre line."},
+        {"key": "font", "label": "Font", "type": "select", "default": "Hershey Sans",
+         "options": [["Hershey Sans", "Sans"], ["Hershey Sans Medium", "Sans, double stroke"],
+                     ["Hershey Script", "Script"], ["Hershey Serif", "Serif"]]},
+        {"key": "xheight", "label": "Letter height", "type": "number", "default": 4.5, "min": 1, "max": 40,
+         "step": 0.5, "unit": "mm", "help": "Height of a small x."},
+        {"key": "spacing", "label": "Line spacing", "type": "number", "default": 3, "min": 1.5, "max": 8,
+         "step": 0.25, "unit": "x height"},
+        {"key": "align", "label": "Align", "type": "select", "default": "left",
+         "options": [["left", "Left"], ["center", "Centre"], ["right", "Right"]]},
+        {"key": "width", "label": "Wrap at", "type": "number", "default": 0, "min": 0, "max": 400, "unit": "mm",
+         "help": "0 = the canvas width."},
+    ], _text_single, "A plotter font: one stroke per line of each letter, so text is quick and crisp.", "Text"),
     Step("text_art", "Text art", "method", [], [
         {"key": "text", "label": "Text", "type": "text", "default": "HELLO", "maxlength": 60},
         {"key": "effect", "label": "Effect", "type": "select", "default": "arc",

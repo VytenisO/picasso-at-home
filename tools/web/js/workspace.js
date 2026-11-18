@@ -1,6 +1,7 @@
 // The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
 // settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
-import { api } from './api.js';
+import { api, post } from './api.js';
+import { armPlace } from './bed.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask } from './ui.js';
 import * as G from './geom.js';
@@ -130,6 +131,7 @@ function act(a) {
   else if (a === 'anchor') D.toCanvasAnchor(anchor);
   else if (a === 'fit') D.fitCanvas();
   else if (a === 'dup') D.duplicateSel();
+  else if (a === 'array') openArray();
   else if (a === 'del') D.removeSel();
   else D.align(a);
 }
@@ -151,6 +153,58 @@ function renderObjects() {
       el('span', { class: 'spacer' }),
       mv('down', '▲', 'Plot earlier (within each pen)'), mv('up', '▼', 'Plot later (within each pen)'));
   }));
+}
+
+function openArray() {
+  const d = $('arrayDlg'), f = $('arrayForm');
+  const b = G.bounds(D.selected());
+  const c = G.canvasRect().canvas;
+  const note = () => {
+    const cols = Number(f.cols.value), rows = Number(f.rows.value), gx = Number(f.gx.value), gy = Number(f.gy.value);
+    const w = cols * b.w + (cols - 1) * gx, h = rows * b.h + (rows - 1) * gy;
+    const fits = b.x0 + w <= c[2] + 0.5 && b.y0 + h <= c[3] + 0.5;
+    $('arrayNote').textContent = `${cols * rows} in all, ${G.r2(w)} x ${G.r2(h)} mm` + (fits ? '.' : ': runs past the canvas from here.');
+    $('arrayNote').className = 'hint' + (fits ? '' : ' warn-text');
+  };
+  f.oninput = note;
+  note();
+  d.returnValue = '';
+  d.onclose = () => {
+    if (d.returnValue !== 'ok') return;
+    const n = (k, lo, hi) => Math.max(lo, Math.min(hi, Number(f[k].value) || 0));
+    D.arraySel(Math.round(n('cols', 1, 20)), Math.round(n('rows', 1, 20)), n('gx', -100, 200), n('gy', -100, 200));
+  };
+  d.showModal();
+}
+
+// The bed's text tool: click where the text goes, type it, and it is added to the library and placed there.
+export function initTextTool() {
+  const btn = $('textTool');
+  btn.onclick = () => {
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', String(on));
+    armPlace(on ? placeText : null);
+    if (on) toast('Click on the bed where the text should start.');
+  };
+  on('job', () => { btn.disabled = jobActive(); });
+}
+
+function placeText(x, y) {
+  $('textTool').setAttribute('aria-pressed', 'false');
+  const d = $('textDlg'), f = $('textForm');
+  f.text.value = '';
+  d.returnValue = '';
+  d.onclose = async () => {
+    if (d.returnValue !== 'ok' || !f.text.value.trim()) return;
+    try {
+      const r = await post('/api/text_single', { text: f.text.value, font: f.font.value, xheight: Number(f.xheight.value),
+        align: f.align.value });
+      await refreshFiles();
+      await D.addFile(r.file.id, { at: [x, y] });
+    } catch (e) { toast(e.message, true); }
+  };
+  d.showModal();
+  f.text.focus();
 }
 
 // ------------------------------------------------------------------ job settings

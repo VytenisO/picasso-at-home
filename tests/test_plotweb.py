@@ -548,6 +548,16 @@ class TestDocument(SimServer):
         black = next(ly for ly in d["settings"]["layers"] if ly["key"] == "#000000|")
         self.assertEqual(black["pen"], "bic")
 
+    def test_04d_single_line_text(self):
+        code, r = self.call("POST", "/api/text_single", {"text": "Hello", "font": "Hershey Script", "xheight": 6})
+        self.assertEqual(code, 200, r)
+        d = self.doc_preview([self.obj(r["file"]["id"], 80, 30, 40, 12)])
+        self.assertTrue(d["ok"], d["problems"])
+        code, r = self.call("POST", "/api/text_single", {"text": "  "})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/text_single", {"text": "x", "font": "Comic Sans"})
+        self.assertEqual(code, 400)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

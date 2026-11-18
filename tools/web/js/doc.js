@@ -198,7 +198,7 @@ async function refreshNaturals() {
 
 // ------------------------------------------------------------------ adding and arranging
 // Put a library drawing on the bed at natural size (shrunk to fit the canvas), next to what is there.
-export async function addFile(id, { select: pick = true } = {}) {
+export async function addFile(id, { select: pick = true, at = null } = {}) {
   const entry = state.files.find((f) => f.id === id);
   if (!entry) { toast('That file is no longer in the library.', true); return null; }
   if (jobActive()) { toast('A job is running: add it to the bed when it ends.', true); return null; }
@@ -219,6 +219,7 @@ export async function addFile(id, { select: pick = true } = {}) {
     if (b.x1 + gap + o.w <= c[2]) { o.x = G.r2(b.x1 + gap); o.y = G.r2(Math.max(c[1], b.y0)); }
     else if (b.y1 + gap + o.h <= c[3]) { o.x = c[0]; o.y = G.r2(b.y1 + gap); }
   }
+  if (at) { o.x = G.r2(at[0]); o.y = G.r2(at[1]); }
   edit((d) => {
     d.objects.push(o);
     if (entry.pen) {
@@ -348,6 +349,23 @@ export function fitCanvas() {
     const nb = G.bounds(objs);
     for (const o of objs) { o.x += (c[0] + c[2]) / 2 - (nb.x0 + nb.x1) / 2; o.y += (c[1] + c[3]) / 2 - (nb.y0 + nb.y1) / 2; }
   });
+}
+
+// Copies of the selection in a grid: cols x rows, gx / gy mm between the copies' bounds.
+export function arraySel(cols, rows, gx, gy) {
+  const src = selected();
+  if (!src.length || cols * rows < 2) return;
+  const b = G.bounds(src);
+  const ids = src.map((o) => o.id);
+  const copies = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!r && !c) continue;
+      for (const o of src) copies.push({ ...structuredClone(o), id: newId(), x: G.r2(o.x + c * (b.w + gx)), y: G.r2(o.y + r * (b.h + gy)) });
+    }
+  }
+  if (copies.length + state.doc.objects.length > 64) { toast('At most 64 objects on the bed.', true); return; }
+  edit((d) => { d.objects.push(...copies); }, { sel: [...ids, ...copies.map((o) => o.id)] });
 }
 
 export function rotateSel(deg) {

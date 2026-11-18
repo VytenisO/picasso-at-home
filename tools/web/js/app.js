@@ -5,7 +5,7 @@ import { state, set, on, jobActive, prefs } from './store.js';
 import { $, toast } from './ui.js';
 import { initBed, fit, zoomIn, zoomOut, themeChanged, toggleTravel, zoomSelection } from './bed.js';
 import { initDoc } from './doc.js';
-import { initWorkspace, openFile, refreshFiles, runPreview } from './workspace.js';
+import { initWorkspace, openFile, refreshFiles, runPreview, initTextTool } from './workspace.js';
 import * as D from './doc.js';
 import { initRun, pause, resume, stop } from './run.js';
 import { initLibrary } from './library.js';
@@ -51,6 +51,7 @@ function initOnce() {
   initBed();
   initDoc();
   initWorkspace();
+  initTextTool();
   initRun();
   initLibrary();
   initTools();
