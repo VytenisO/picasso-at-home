@@ -686,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
         if n > 262144:
             raise ApiError(413, "That message is too large.")
         b = self.json_body()
-        self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""), b.get("phase"), b.get("pts"))
+        self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""), b.get("phase"), b.get("pts"), b.get("sid"))
 
     def r_live_strokes(self):
         with self.app.runner.lock:

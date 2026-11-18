@@ -173,6 +173,8 @@ class StopFlag:
 MAX_PENDING = 50      # typed-ahead items waiting; more are dropped with an error (STOP is never queued behind them)
 MAX_PENDING_POINTS = 20000   # mirror points waiting; more are dropped
 MAX_BATCH_POINTS = 2000
+MERGE_POINTS = 400            # moves merged into one go (keeps simplifying short, so Stop is prompt)
+IDLE_END_S = 3.0              # a stroke left open this long with nothing arriving is ended: pen up
 
 
 class Pending:
@@ -243,6 +245,8 @@ def control_lines(q, flag, pending):
                 elif pending.get() + len(pts) > MAX_PENDING_POINTS and phase != "end":
                     print(json.dumps({"event": "error", "message": "too many points waiting; some were dropped"}), flush=True)
                 else:
+                    if phase == "end" and pending.get() + len(pts) > MAX_PENDING_POINTS:
+                        pts = pts[-1:]          # over budget: the end only needs its last point
                     pending.add(len(pts))
                     q.put(("mirror", phase, pts))
     finally:
@@ -373,7 +377,9 @@ def main():
 
         def handle(item):
             nonlocal holding
-            if item[0] == "newpage":
+            if item[0] == "newpage" and a.sport:
+                s.emit("error", message="New page is not available in sport mode: the position cannot be trusted.")
+            elif item[0] == "newpage":
                 s.new_page()
                 holding = True
             elif item[0] == "text":
@@ -390,7 +396,15 @@ def main():
         last_status = [0.0]
 
         def next_item():
-            return peeked.popleft() if peeked else lines_in.get()
+            if peeked:
+                return peeked.popleft()
+            while True:
+                try:
+                    return lines_in.get(timeout=IDLE_END_S if mirror.open else None)
+                except queue.Empty:
+                    flag.check_stop()
+                    mirror.end()            # the pad went quiet with the pen down
+                    s.emit("warning", message="A stroke was left open and was ended.")
 
         def report():
             import time as _t
@@ -409,7 +423,7 @@ def main():
                         nxt = peeked.popleft() if peeked else lines_in.get_nowait()
                     except queue.Empty:
                         break
-                    if nxt[0] == "mirror" and nxt[1] in ("move", "end"):
+                    if nxt[0] == "mirror" and nxt[1] in ("move", "end") and (nxt[1] == "end" or len(pts) + len(nxt[2]) <= MERGE_POINTS):
                         pending.add(-len(nxt[2]))
                         pts = pts + nxt[2]
                         if nxt[1] == "end":
@@ -452,7 +466,8 @@ def main():
                     held.append(item)
                 else:
                     handle(item)
-        p.move_to(0, 0, a.travel_speed)
+        if not a.sport:                 # sport mode may have lost steps: no automatic trip back to S
+            p.move_to(0, 0, a.travel_speed)
         p.idle()
     except KeyboardInterrupt:
         status = "interrupted"

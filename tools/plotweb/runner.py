@@ -59,6 +59,8 @@ class JobRunner:
         self.preview = None           # the immutable preview of the running plot job
         self.live_strokes = []        # strokes written on the current page of a live session (machine mm)
         self.live_points = 0
+        self._wlock = threading.Lock()   # one write to the child's stdin at a time: STOP never lands inside another line
+        self.live_sid = None          # id of the pad stroke that is open
         self.live_wq = None           # commands to a live session, written by a thread of their own
         self.position = {"state": "unknown", "at": None,
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
@@ -134,7 +136,8 @@ class JobRunner:
             if stdin_text:
                 self._write(stdin_text)
             if j["kind"] == "live":
-                self.live_wq = queue.Queue(maxsize=300)
+                self.live_wq = queue.Queue()      # bounded by hand in live_send (a stroke end is always accepted)
+                self.live_sid = None
                 threading.Thread(target=self._live_writer, args=(proc, self.live_wq), daemon=True).start()
         self._log("debug", "command: " + " ".join(argv))
         threading.Thread(target=self._reader, args=(job_id, proc), daemon=True).start()
@@ -144,8 +147,9 @@ class JobRunner:
     def _write_to(self, proc, text):
         try:
             if proc.stdin is not None and proc.poll() is None:
-                proc.stdin.write(text.encode())
-                proc.stdin.flush()
+                with self._wlock:
+                    proc.stdin.write(text.encode())
+                    proc.stdin.flush()
         except (OSError, ValueError):
             pass
 
@@ -161,8 +165,9 @@ class JobRunner:
         if proc is None or proc.stdin is None or proc.poll() is not None:
             return False
         try:
-            proc.stdin.write(text.encode())
-            proc.stdin.flush()
+            with self._wlock:
+                proc.stdin.write(text.encode())
+                proc.stdin.flush()
             return True
         except OSError:
             return False
@@ -415,7 +420,7 @@ class JobRunner:
                     j["last_error"] = text
         self._emit_state()
 
-    def live_send(self, job_id, cmd, text="", phase=None, pts=None):
+    def live_send(self, job_id, cmd, text="", phase=None, pts=None, sid=None):
         """Commands for a running live session: text, newpage, quit. Refused while stopping."""
         with self.lock:
             err = self._check(job_id)
@@ -439,15 +444,24 @@ class JobRunner:
                     return False, "Bad pad message."
                 if (j.get("live") or {}).get("paper_change"):
                     return False, "The paper is being changed: press Continue first."
+                if sid is not None and not (isinstance(sid, str) and 0 < len(sid) <= 40):
+                    return False, "Bad pad message."
+                if phase == "start":
+                    self.live_sid = sid
+                elif phase in ("move", "end") and sid is not None and sid != self.live_sid:
+                    return False, "That stroke is not the open one."
+                if phase in ("end", "stroke"):
+                    self.live_sid = None
                 word = "MIRROR " + phase + " " + json.dumps(clean, separators=(",", ":")) + "\n"
             elif cmd == "quit":
                 word = "QUIT\n"
             else:
                 return False, "Unknown live command."
-            try:
-                self.live_wq.put_nowait(word)
-            except (queue.Full, AttributeError):
+            if self.live_wq is None:
+                return False, "The session is not accepting commands."
+            if not word.startswith("MIRROR end ") and self.live_wq.qsize() >= 300:
                 return False, "Too many messages are waiting for the session. Slow down, or stop it."
+            self.live_wq.put_nowait(word)
         return True, ""
 
     def _marker(self, line, name):

@@ -24,6 +24,14 @@ export async function api(path, { method = 'GET', body, raw, headers = {} } = {}
 
 export const post = (path, body) => api(path, { method: 'POST', body });
 
+// Live-session commands go through one chain, so the session sees them in the order they were given.
+let orderedChain = Promise.resolve();
+export function ordered(fn) {
+  const p = orderedChain.then(fn);
+  orderedChain = p.catch(() => {});
+  return p;
+}
+
 // Server-Sent Events with resume. The server sends {type:"reset"} when it cannot replay (restart, fell behind);
 // the caller then reloads the snapshot. A ping arrives every 15 s, so silence means the link is gone.
 export function connectEvents({ epoch, seq, onEvent, onLink }) {

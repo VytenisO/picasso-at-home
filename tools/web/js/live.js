@@ -1,6 +1,6 @@
 // Live writing: start a session, send lines, new page, finish. The server owns the session (a job like any other,
 // so Stop, the console and the position tracker work as usual); this panel is a view of it.
-import { api, post } from './api.js';
+import { api, post, ordered } from './api.js';
 import { state, set, on, jobActive } from './store.js';
 import { $, el, toast } from './ui.js';
 import { confirmDialog } from './run.js';
@@ -61,7 +61,8 @@ async function send(cmd) {
   const input = $('liveText');
   if (cmd === 'text' && !input.value.trim()) return;
   try {
-    await post('/api/live/send', { job: j.id, cmd, text: input.value });
+    const text = input.value;
+    await ordered(() => post('/api/live/send', { job: j.id, cmd, text }));
     if (cmd === 'text') input.value = '';
   } catch (e) { toast(e.message, true); }
   input.focus();
@@ -84,7 +85,7 @@ function render() {
   $('liveWrite').disabled = j.state !== 'running' || hold;
   $('liveNewPage').disabled = j.state !== 'running' || hold;
   $('liveFinish').disabled = j.state !== 'running';
-  const key = `${j.id}:${l.page}:${l.lines}`;
+  const key = `${j.id}:${l.page}:${l.lines}:${l.strokes || 0}`;
   if (key !== fetched) {
     const v = ++version;
     api('/api/live/strokes').then((r) => {

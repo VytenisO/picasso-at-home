@@ -1,7 +1,7 @@
 // Writing pad: what you draw with a pen, finger or mouse is drawn on the paper by the live session.
 // Point mode streams the points while you write; stroke mode sends each stroke after the pen lifts.
 // The pad shows a window of the paper canvas, anchored at its top-left; a narrower window means a bigger pad scale.
-import { post } from './api.js';
+import { post, ordered } from './api.js';
 import { state, on, jobActive } from './store.js';
 import { $, el, toast } from './ui.js';
 
@@ -13,7 +13,7 @@ const ctx = () => $('padCanvas').getContext('2d');
 let ink = [];                 // strokes written on the pad (pad px), only for display
 let live = null;              // the stroke being written: {pts: [[mmx, mmy, t]], sent: n}
 let t0 = 0;
-let chain = Promise.resolve();
+let inflight = 0;             // requests sent and not yet answered
 let flushTimer = 0;
 let sawPen = false;
 let region = null;            // {x, y, w, h} in machine mm
@@ -21,8 +21,8 @@ let region = null;            // {x, y, w, h} in machine mm
 export function initPad() {
   $('padOpen').onclick = open;
   $('padClose').onclick = () => { $('padDlg').close(); };
-  $('padDlg').addEventListener('close', () => { if (live) { const s = live; live = null; if (s.mode === 'point') send('end', [s.pts[s.pts.length - 1]], s.job); } });
-  $('padClear').onclick = () => { ink = []; draw(); };
+  $('padDlg').addEventListener('close', () => { if (live) { const s = live; live = null; if (s.mode === 'point') send('end', [s.pts[s.pts.length - 1]], s.job, s.sid); } });
+  $('padClear').onclick = () => { finish(); ink = []; draw(); };
   $('padWidth').onchange = layout;
   $('padMode').onchange = () => { try { localStorage.setItem('plotter.padMode', $('padMode').value); } catch (e) { /* private mode */ } };
   const c = $('padCanvas');
@@ -50,6 +50,7 @@ function open() {
 }
 
 function layout() {
+  finish();                  // a stroke being written ends here: the pad is about to change under it
   const cv = state.me.machine.canvas;
   const W = Number($('padWidth').value) || (cv[2] - cv[0]);
   const H = W * (cv[3] - cv[1]) / (cv[2] - cv[0]);
@@ -106,19 +107,22 @@ function draw() {
 }
 
 // ---- sending: one ordered chain, so the server sees the points in the order they were written
-function send(phase, pts, jobId) {
+function send(phase, pts, jobId, sid) {
   const j = state.job;
   // a stroke belongs to the session it started in: never let it reach a newer one
   if (!j || j.kind !== 'live' || j.id !== jobId || !pts.length) return;
-  chain = chain.then(() => post('/api/live/send', { job: jobId, cmd: 'mirror', phase, pts }))
-    .catch((e) => { toast(e.message, true); });
+  inflight++;
+  ordered(() => post('/api/live/send', { job: jobId, cmd: 'mirror', phase, pts, sid }))
+    .catch((e) => { toast(e.message, true); })
+    .finally(() => { inflight--; });
 }
 
 function flush() {
   flushTimer = 0;
   if (!live || $('padMode').value !== 'point') return;
+  if (inflight > 0) { flushTimer = setTimeout(flush, FLUSH_MS); return; }     // one request at a time: no growing queue
   const pts = live.pts.slice(live.sent, live.sent + MAX_POINTS);
-  if (pts.length) { live.sent += pts.length; send('move', pts, live.job); }
+  if (pts.length) { live.sent += pts.length; send('move', pts, live.job, live.sid); }
   if (live.sent < live.pts.length) flushTimer = setTimeout(flush, FLUSH_MS);
 }
 
@@ -136,9 +140,9 @@ function down(e) {
   $('padCanvas').setPointerCapture(e.pointerId);
   t0 = e.timeStamp;
   const p = toMm(e);
-  live = { pts: [p], sent: 0, mode: $('padMode').value, job: j.id, pointer: e.pointerId };
+  live = { pts: [p], sent: 0, mode: $('padMode').value, job: j.id, pointer: e.pointerId, sid: Math.random().toString(36).slice(2, 12) };
   ink.push([p]);
-  if (live.mode === 'point') { live.sent = 1; send('start', [p], live.job); }
+  if (live.mode === 'point') { live.sent = 1; send('start', [p], live.job, live.sid); }
   draw();
 }
 
@@ -159,13 +163,21 @@ function move(e) {
 
 function up(e) {
   if (!live || e.pointerId !== live.pointer) return;
+  const p = toMm(e), last = live.pts[live.pts.length - 1];     // the release point counts too
+  if (Math.abs(p[0] - last[0]) >= 0.02 || Math.abs(p[1] - last[1]) >= 0.02) { live.pts.push(p); ink[ink.length - 1].push(p); }
+  finish();
+}
+
+// End the stroke being written (pen lifted, pad resized or cleared): everything not yet sent goes with it.
+function finish() {
+  if (!live) return;
   const s = live;
   live = null;
   clearTimeout(flushTimer); flushTimer = 0;
   if (s.mode === 'point') {
     // everything not yet sent goes with the end of the stroke (the last point is always included)
-    for (let i = s.sent; i < s.pts.length - 1; i += MAX_POINTS) send('move', s.pts.slice(i, Math.min(i + MAX_POINTS, s.pts.length - 1)), s.job);
-    send('end', [s.pts[s.pts.length - 1]], s.job);
+    for (let i = s.sent; i < s.pts.length - 1; i += MAX_POINTS) send('move', s.pts.slice(i, Math.min(i + MAX_POINTS, s.pts.length - 1)), s.job, s.sid);
+    send('end', [s.pts[s.pts.length - 1]], s.job, s.sid);
   } else {
     let pts = s.pts;
     if (pts.length > MAX_POINTS) {          // thin evenly, keeping both ends

@@ -131,7 +131,8 @@ def test_mirror_stroke_and_point_modes():
     for extra in ([], ["--sport"]):
         ev, _ = control_args(cmds, extra)
         strokes = [e for e in ev if e["event"] == "mirror_stroke"]
-        assert len(strokes) == 3 and ev[-1]["status"] == "complete" and ev[-1]["end_world_steps"] == [0, 0]
+        assert len(strokes) == 3 and ev[-1]["status"] == "complete"
+        assert (ev[-1]["end_world_steps"] == [0, 0]) == (not extra)      # sport mode does not drive back to S
         for s in strokes:
             for x, y in s["strokes"][0]["pts"]:
                 assert 70 - 0.01 <= x <= 337 + 0.01 and 21 - 0.01 <= y <= 201 + 0.01
@@ -191,3 +192,36 @@ def test_quit_with_an_open_stroke_lifts_the_pen():
     m = lambda ph, pts: "MIRROR " + ph + " " + json.dumps(pts)
     ev, _ = control_args([m("start", [[100, 100, 0]]), m("move", [[120, 110, 10]]), "QUIT"], [])
     assert [e["event"] for e in ev].count("mirror_stroke") == 1 and ev[-1]["status"] == "complete"
+
+
+def test_sport_refuses_new_page_and_does_not_return():
+    ev, _ = control_args(["MIRROR stroke " + json.dumps([[100, 100, 0], [120, 100, 100]]), "NEWPAGE", "QUIT"], ["--sport"])
+    assert not any(e["event"] == "new_page" for e in ev)
+    assert any(e["event"] == "error" and "sport" in e["message"] for e in ev)
+
+
+def test_open_stroke_is_ended_when_the_pad_goes_quiet():
+    import subprocess as sp
+    import time
+    p = sp.Popen([sys.executable, str(LIVE), "--sim", "--control", "--font", "Comic Neue"], stdin=sp.PIPE, stdout=sp.PIPE, text=True)
+    p.stdin.write("MIRROR start " + json.dumps([[100, 100, 0]]) + "\n")
+    p.stdin.flush()
+    t0 = time.time()
+    seen = False
+    for line in p.stdout:
+        if '"mirror_stroke"' in line:
+            seen = True
+            break
+        if time.time() - t0 > 30:
+            break
+    p.stdin.write("QUIT\n")
+    p.stdin.flush()
+    p.communicate(timeout=30)
+    assert seen
+
+
+def test_end_over_budget_is_kept():
+    big = [[100 + i * 0.01, 100, i] for i in range(2000)]
+    cmds = ["MIRROR start " + json.dumps([[100, 100, 0]])] + ["MIRROR move " + json.dumps(big)] * 3 + ["MIRROR end " + json.dumps(big), "QUIT"]
+    ev, _ = control_args(cmds, [])
+    assert sum(1 for e in ev if e["event"] == "mirror_stroke") >= 1

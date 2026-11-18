@@ -17,6 +17,7 @@ SPORT_MAX = 100.0       # mm/s, pen down, sport mode only
 SPORT_MIN = 5.0
 SPORT_CATCHUP = 0.4     # s: a backlog is drawn within about this long (up to SPORT_MAX)
 SPORT_PEN_DELAY = 100   # ms for each pen up/down in sport mode
+MAX_HISTORY = 20000      # points kept of one stroke for the display; more are thinned
 MIN_STEP_MM = 0.25      # points closer than this to the previous one are dropped
 SIMPLIFY_MM = 0.08
 
@@ -31,6 +32,7 @@ class Mirror:
         self.open = False
         self.cur = []          # points of the stroke being drawn (x, y)
         self.last = None       # last point sent to the plotter (x, y)
+        self.last_t = 0.0      # its time (ms)
         self.strokes_done = 0
 
     # ---- helpers
@@ -73,13 +75,14 @@ class Mirror:
     # ---- stroke life cycle
     def begin(self, pt):
         s, p, a = self.s, self.s.plotter, self.s.a
-        x, y, _ = self._clamp(pt)
+        x, y, t = self._clamp(pt)
         p.move_to(*s.steps(x, y), a.travel_speed)
         p.set_pressure(a.pressure if a.pressure is not None else s.engine.fixed_pressure)
         p.pen(False, self._delay())
         self.open = True
         self.cur = [(x, y)]
         self.last = (x, y)
+        self.last_t = t
 
     def move(self, pts):
         if not pts:
@@ -90,12 +93,15 @@ class Mirror:
         pts = self._prep(pts)
         if not pts:
             return
-        v = self.speed(pts)
+        v = self.speed([(self.last[0], self.last[1], self.last_t)] + pts)
         p, s = self.s.plotter, self.s
-        for x, y, _t in pts:
+        for x, y, t in pts:
             p.move_to(*s.steps(x, y), v)
             self.cur.append((x, y))
             self.last = (x, y)
+            self.last_t = t
+        if len(self.cur) > MAX_HISTORY:
+            self.cur = self.cur[::2] + ([self.cur[-1]] if len(self.cur) % 2 == 0 else [])
 
     def end(self, pts=()):
         s, p = self.s, self.s.plotter
