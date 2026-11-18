@@ -276,7 +276,8 @@ def main():
     ap.add_argument("--sim", action="store_true", help="virtual machine and clock, no hardware")
     ap.add_argument("--port")
     ap.add_argument("--config", default=str(ROOT / "config" / "machine.json"))
-    ap.add_argument("--samples", default=str(ROOT / "handwriting" / "samples"))
+    ap.add_argument("--writer", default="default", help="whose handwriting to write in (see tools/handwriting/writers.py list)")
+    ap.add_argument("--samples", help="samples directory (default: the writer's own)")
     ap.add_argument("--prompts", default=str(ROOT / "handwriting" / "prompts.json"))
     ap.add_argument("--font", help="write in a standard font (family name such as 'Comic Neue', or a .ttf/.otf path) "
                                    "instead of your handwriting; outlines are drawn as contours")
@@ -296,6 +297,12 @@ def main():
     ap.add_argument("--sport", action="store_true",
                     help="mirror mode follows the speed of the hand, up to 100 mm/s: above the tested ceiling, steps may be lost")
     a = ap.parse_args()
+    if not a.samples:
+        import writers
+        try:
+            a.samples = str(writers.samples_dir(a.writer))
+        except ValueError as ex:
+            sys.exit(str(ex))
     if a.control:
         a.json = a.track = True
     if a.sport and not a.control:

@@ -84,9 +84,11 @@ You will write the samples on a tablet, so the target is option E. The plan has 
 ### 1. Capture (built): `tools/handwriting/capture_server.py`
 A small web server plus a tablet page. It shows one prompt at a time over ruled guide lines (baseline, x-height,
 ascender, descender; size adjustable), records every pen point with position, time and pressure, and saves one JSON
-file per prompt under `handwriting/samples/` (gitignored: personal data). Undo, clear, skip, back, deep links
+file per prompt under `handwriting/writers/<name>/samples/` (gitignored: personal data, never push it). Undo, clear, skip, back, deep links
 (`/?id=w012`), resume where you stopped, and replacing a sample keeps the old one as `.prev.json`.
 Run `python3 tools/handwriting/capture_server.py --host tailscale` and open the printed address on the tablet.
+
+**Several writers.** Each person is a writer with their own samples and (later) model, all under the gitignored `handwriting/writers/<name>/`. Make one with `python3 tools/handwriting/writers.py new NAME`, list with `writers.py list`, see what is still missing with `writers.py status NAME`. One capture server serves everyone: a writer opens `http://<host>:8765/w/<name>/` (the list is at `/w/`; `--writer NAME` picks who is at `/`). Live writing takes `--writer NAME`, and the web UI lists every writer that has samples under Writing. Samples and models never go to git or any remote: `.gitignore` covers `handwriting/writers/`, `handwriting/samples/`, `model/` directories and the usual model file extensions, and a test checks it.
 `tools/handwriting/prompts.py` builds the prompts: 126 short everyday words (English and Norwegian) chosen so every
 letter pair that occurs in the lists is written at least once, 12 two-line sentences (pangrams, digits,
 punctuation), each letter three times, each capital three times, symbols. About 200 prompts, roughly 45 to 60

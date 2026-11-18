@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import converters, hardware, plotjob, tools
+from . import converters, hardware, plotjob, prepare, tools
 from .auth import COOKIE, SESSION_AGE, Auth
 from .config import LIMITS, WEB
 from .events import EventLog
@@ -41,6 +41,7 @@ class App:
         self.auth = Auth(web_cfg)
         self.lib = Library(settings, self.ev)
         self.runner = JobRunner(settings, self.ev)
+        self.prep = prepare.Workshop(settings)
         self.plans = {}
         self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
         self.plans_lock = threading.Lock()
@@ -259,6 +260,9 @@ class App:
             raise ApiError(400, "Confirm that the carriage is parked by hand at the paper's top-left with the pen up.")
         import fonts
         font = str(body.get("font") or "")[:80]
+        writer = None
+        if font.startswith("hand:") or not font:
+            writer, font = (font[5:] or "default"), ""
         argv = [self.s.python, str(self.s.root / "tools" / "live_plot.py"), "--control",
                 "--config", str(self.s.machine_path)]
         if font:
@@ -266,10 +270,13 @@ class App:
                 raise ApiError(400, f"Unknown font {font!r}. Pick one from the list.")
             argv += ["--font", font]
         else:
-            samples = self.s.root / "handwriting" / "samples"
-            if not any(samples.glob("[a-z][0-9][0-9][0-9].json")):
-                raise ApiError(400, "No handwriting samples yet. Write some with tools/handwriting/capture_server.py, "
+            from handwriting import writers
+            if not writers.valid(writer):
+                raise ApiError(400, "Unknown writer.")
+            if not writers.count(writer):
+                raise ApiError(400, f"{writer!r} has no handwriting samples yet. Write some with tools/handwriting/capture_server.py, "
                                     "or choose a font.")
+            argv += ["--writer", writer]
         try:
             xh = float(body.get("xheight", 4.5))
             speed = float(body.get("speed", 15))
@@ -294,7 +301,7 @@ class App:
             argv += ["--pressure", f"{pressure:g}"]
         if sim:
             argv.append("--sim")
-        ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or "handwriting", "xheight": xh, "sport": sport})
+        ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or f"handwriting ({writer})", "xheight": xh, "sport": sport})
         if not ok:
             raise ApiError(409, job_id)
         try:
@@ -363,6 +370,142 @@ class App:
         entry = self.lib.add_svg_text(text, pathlib.Path(path).name, kind="sheet", pen=pen, test=tool.id,
                                       notes=out)
         return {"ok": True, "file": {k: entry.get(k) for k in ("id", "name", "kind", "pen", "test")}, "output": out}
+
+    # ------------------------------------------------------------ prepare workspace
+    def _prep_dry(self, run, fill, fill_angle):
+        """Dry run of a prepared SVG at its natural size, at the canvas top-left. Cached next to the stage."""
+        memo = self.prep.dir / f"st_{run['key']}_dry_{fill:g}_{fill_angle:g}.json"
+        if memo.is_file():
+            return json.loads(memo.read_text()), memo.with_suffix(".log").read_text() \
+                if memo.with_suffix(".log").is_file() else ""
+        v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"], "x": None,
+             "y": None, "w": None, "paper": None, "layers": [], "fill": fill, "fill_angle": fill_angle}
+        tmp = self.prep.dir / f".dry_{secrets.token_hex(4)}.json"
+        rc, out = plotjob.run_dry(plotjob.build_argv(self.s, run["svg"], v, "dry", None, preview_json=tmp))
+        if not tmp.exists():
+            tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
+            raise ApiError(400, "The result cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"),
+                           output=out[-4000:])
+        memo.with_suffix(".log").write_text(out, encoding="utf-8")
+        pv = json.loads(tmp.read_text())
+        tmp.replace(memo)
+        return pv, out
+
+    @staticmethod
+    def _prep_fill(settings):
+        s = settings if isinstance(settings, dict) else {}
+        try:
+            fill = float(s.get("fill") or 0)
+            angle = float(s.get("fill_angle") if s.get("fill_angle") not in (None, "") else 45)
+        except (TypeError, ValueError):
+            raise ApiError(400, "Fill spacing and angle must be numbers.")
+        if fill and not 0.2 <= fill <= 50:
+            raise ApiError(400, "Fill spacing must be 0 (off) or between 0.2 and 50 mm.")
+        if not 0 <= angle <= 180:
+            raise ApiError(400, "Fill angle must be between 0 and 180 degrees.")
+        return round(fill, 2), round(angle, 1)
+
+    def _prep_run(self, recipe):
+        try:
+            return self.prep.run(recipe, self.s.bed()["canvas"])
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+
+    def prepare_run(self, body):
+        """Run a recipe and dry-run the result: the same strokes and summary a Plot preview gets."""
+        t0 = time.time()
+        run = self._prep_run(body.get("recipe"))
+        fill, angle = self._prep_fill(body.get("settings"))
+        pv, out = self._prep_dry(run, fill, angle)
+        sm = pv["summary"]
+        b, c = sm["bbox_machine_mm"], sm["canvas_mm"]
+        fit = min(1.0, (c[2] - c[0]) / max(b[2] - b[0], 1e-6), (c[3] - c[1]) / max(b[3] - b[1], 1e-6))
+        # Too big for the canvas is not a problem here: Plot shrinks it to fit (the fit value says by how much).
+        problems = [p for p in plotjob.friendly_problems(sm, out) if not p.startswith("The drawing runs")
+                    and "canvas" not in p and "travel is" not in p and "edge margin" not in p] if sm["problems"] else []
+        src = run["source"]
+        return {"ok": True, "key": run["key"], "method": run["method"].id,
+                "image": run["image"].name[3:-4] if run["image"] else None, "mask": bool(run["mask"]),
+                "source": src and {k: v for k, v in src.items() if k != "path"},
+                "stats": run["stats"], "summary": _public_summary(sm), "placement": pv["placement"],
+                "order": pv["order"], "strokes": _thin(pv["strokes"]), "fit": round(fit, 4),
+                "layers": [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]],
+                "problems": problems, "fill": fill, "fill_angle": angle, "ms": round((time.time() - t0) * 1000)}
+
+    def _prep_layers(self, raw, keys):
+        """Pens chosen in Prepare -> layer settings, with the pen's own speed and pressure when it has them."""
+        pens = self.s.pens()
+        given = {ly.get("key"): ly for ly in raw or [] if isinstance(ly, dict)}
+        out = []
+        for k in keys:
+            g = given.get(k) or {}
+            pen = g.get("pen") if g.get("pen") in pens else None
+            prof = pens.get(pen) or {}
+            sp, pr = prof.get("speed"), prof.get("pressure")
+            ok_sp = isinstance(sp, (int, float)) and LIMITS["speed"]["min"] <= sp <= LIMITS["speed"]["max"]
+            ok_pr = isinstance(pr, (int, float)) and 0 <= pr <= LIMITS["pressure"]["max"]
+            out.append({"key": k, "enabled": g.get("enabled", True) is not False, "pen": pen,
+                        "speed": sp if ok_sp else None, "pressure": pr if ok_pr else None})
+        return out
+
+    def prepare_save(self, body):
+        recipe = body.get("recipe")
+        run = self._prep_run(recipe)
+        fill, angle = self._prep_fill(body.get("settings"))
+        pv, _ = self._prep_dry(run, fill, angle)
+        layers = self._prep_layers((body.get("settings") or {}).get("layers"),
+                                   [ly["key"] for ly in pv["summary"]["layers"]])
+        src = run["source"]
+        name = str(body.get("name") or "").strip()[:80] or \
+            (pathlib.Path(src["name"]).stem if src else run["method"].title.lower().replace(" ", "-"))
+        old = None
+        if body.get("replace"):
+            old = self.lib.get(body["replace"])
+            if not old:
+                raise ApiError(404, "The drawing to update is no longer in the library. Save it as new.")
+            job = self.runner.snapshot()["job"]
+            if self.runner.busy() and job and job["meta"].get("file") == old["id"]:
+                raise ApiError(409, "That drawing is being plotted. Save it as new, or wait for the job.")
+        settings = {"fill": fill, "fill_angle": angle, "layers": layers}
+        if old:      # keep where it sits on the bed and how fast it plots; the size follows the new drawing
+            prev = old.get("settings") or {}
+            settings.update({k: prev[k] for k in ("x", "y", "speed", "travel_speed", "paper") if k in prev})
+        steps = [s for s in recipe.get("steps") or [] if isinstance(s, dict)]
+        try:
+            e = self.lib.add_prepared(run["svg"], name, src and src["path"], method=run["method"].id,
+                                      recipe={"steps": steps}, settings=settings, replace=old)
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        self.ev.log("info", f"{'Updated' if old else 'Added'} {e['name']} from Prepare ({run['method'].title}).")
+        return {"ok": True, "file": {k: e.get(k) for k in ("id", "name", "kind")}}
+
+    def prepare_from(self, body):
+        """Reopen a library drawing in Prepare: its source, its recipe (or one rebuilt from it), its plot settings."""
+        e = self.lib.get(body.get("file") or "")
+        if not e:
+            raise ApiError(404, "That file is no longer in the library.")
+        recipe = prepare.recipe_for_entry(e)
+        method = next((prepare.STEPS[s["step"]] for s in (recipe or {}).get("steps", [])
+                       if s.get("step") in prepare.STEPS and prepare.STEPS[s["step"]].stage == "method"), None)
+        src = None
+        if not (method and not method.accepts):          # a generator (text) needs no source
+            orig, svg = self.lib.path(e, "orig"), self.lib.path(e, "svg")
+            use = orig if orig and orig != svg and prepare.kind_of(orig.suffix) else svg
+            if not use:
+                raise ApiError(404, "The drawing's files are missing on the server.")
+            try:
+                src = self.prep.add_source(use.read_bytes(), e.get("name") or use.name)
+            except prepare.PrepareError as ex:
+                raise ApiError(400, str(ex))
+            if method and src["kind"] not in method.accepts:
+                recipe = None                            # e.g. a test sheet: reopen the SVG itself
+        if not recipe or not method:
+            recipe = {"steps": [{"step": prepare.DEFAULT_METHOD[src["kind"]], "params": {}}]}
+        st = e.get("settings") or {}
+        return {"ok": True, "source": src and {k: v for k, v in src.items() if k != "path"}, "recipe": recipe,
+                "name": pathlib.Path(e.get("name") or "drawing").stem, "replace": e["id"],
+                "settings": {"fill": st.get("fill") or 0, "fill_angle": st.get("fill_angle", 45),
+                             "layers": [{"key": ly.get("key"), "pen": ly.get("pen")} for ly in st.get("layers") or []]}}
 
 
 def _thin(strokes):
@@ -639,9 +782,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_fonts(self):
         import fonts
-        samples = self.app.s.root / "handwriting" / "samples"
+        from handwriting import writers
+        ws = writers.list_writers()
         self.send(200, {"fonts": fonts.families(), "bundled": sorted({f["family"] for f in fonts.bundled()}),
-                        "hand_samples": len(list(samples.glob("[a-z][0-9][0-9][0-9].json"))) if samples.is_dir() else 0})
+                        "writers": ws, "hand_samples": sum(w["samples"] for w in ws)})
 
     def r_text_page(self):
         """Paragraphs of text in a standard font, wrapped to the canvas, as a library drawing."""
@@ -670,6 +814,51 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_pens(self):
         self.send(200, {"pens": self.app.s.pens()})
+
+    # ---- routes: prepare
+    def r_prep_steps(self):
+        self.send(200, {"steps": prepare.public_steps(),
+                        "kinds": {k: list(v) for k, v in prepare.KINDS.items()}, "max_bytes": prepare.MAX_SOURCE})
+
+    def r_prep_source(self):
+        name, _ = self._upload_meta()
+        try:
+            src = self.app.prep.add_source(self.raw_body(), name)
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+        self.send(200, {"ok": True, "source": {k: v for k, v in src.items() if k != "path"}})
+
+    def r_prep_from(self):
+        self.send(200, self.app.prepare_from(self.json_body()))
+
+    def r_prep_run(self):
+        self.send(200, self.app.prepare_run(self.json_body()))
+
+    def r_prep_save(self):
+        self.send(200, self.app.prepare_save(self.json_body()))
+
+    def r_prep_file(self):
+        """Stage results (adjusted image, mask, SVG) and source originals, for the previews."""
+        q = self.query()
+        kind = q.get("kind", "")
+        sandbox = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                   "Cache-Control": "private, max-age=86400"}
+        if kind == "source":
+            src = self.app.prep.source(q.get("id", ""))
+            if not src or src["kind"] not in ("image", "svg"):
+                raise ApiError(404, "No such source image.")
+            ctype = "image/svg+xml" if src["kind"] == "svg" else (mimetypes.guess_type(src["path"].name)[0]
+                                                                  or "application/octet-stream")
+            return self.send(200, src["path"].read_bytes(), ctype, sandbox)
+        suffix = {"png": ".png", "mask": "_mask.png", "svg": ".svg"}.get(kind)
+        p = suffix and self.app.prep.stage_file(q.get("key", ""), suffix)
+        if not p:
+            raise ApiError(404, "That preview has expired. Run the recipe again.")
+        ctype = "image/svg+xml" if kind == "svg" else "image/png"
+        headers = dict(sandbox)
+        if q.get("download"):
+            headers["Content-Disposition"] = 'attachment; filename="prepared.svg"'
+        self.send(200, p.read_bytes(), ctype, headers)
 
     # ---- routes: plotting
     def r_preview(self):
@@ -760,6 +949,8 @@ ROUTES_GET = {
     "/api/pens": (Handler.r_pens, True),
     "/api/job/preview": (Handler.r_job_preview, True),
     "/api/plotter": (Handler.r_plotter, True),
+    "/api/prepare/steps": (Handler.r_prep_steps, True),
+    "/api/prepare/file": (Handler.r_prep_file, True),
 }
 ROUTES_POST = {
     "/api/login": (Handler.r_login, False),
@@ -779,6 +970,10 @@ ROUTES_POST = {
     "/api/job/return": (Handler.r_return, True),
     "/api/tools/run": (Handler.r_tool, True),
     "/api/pentest": (Handler.r_pentest, True),
+    "/api/prepare/source": (Handler.r_prep_source, True),
+    "/api/prepare/from_library": (Handler.r_prep_from, True),
+    "/api/prepare/run": (Handler.r_prep_run, True),
+    "/api/prepare/save": (Handler.r_prep_save, True),
 }
 
 

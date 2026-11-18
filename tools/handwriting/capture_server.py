@@ -4,9 +4,11 @@
   capture_server.py                       http://127.0.0.1:8765 (this computer only)
   capture_server.py --host tailscale      listen on this computer's Tailscale address, so a tablet on your tailnet can use it
   capture_server.py --host 0.0.0.0        every network interface (anyone on the LAN can write into your samples)
+  capture_server.py --writer anna         the writer served at / (default: default); every writer is also at /w/<name>/
 
 Open the printed URL in the tablet's browser, write each prompt on the ruled guide with the pen, and press Save. Samples go to
-handwriting/samples/<prompt id>.json (kept out of git: it is your handwriting). Saving again replaces a sample and keeps the old
+handwriting/writers/<writer>/samples/<prompt id>.json (kept out of git: it is somebody's handwriting).
+Several people can use one server: each opens /w/<their name>/ (make the name first: writers.py new NAME). Saving again replaces a sample and keeps the old
 one as <id>.prev.json. The prompt list is handwriting/prompts.json (build it with tools/handwriting/prompts.py).
 
 Sample format (version 1), one JSON object per prompt:
@@ -29,6 +31,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import writers  # noqa: E402
 ROOT = HERE.parent.parent
 WEB = HERE / "web"
 MAX_BODY = 8 * 1024 * 1024
@@ -103,7 +107,32 @@ class Store:
             os.replace(tmp, f)
 
 
-def make_handler(store):
+class Stores:
+    """One Store per writer, opened on first use. Only writers that already exist can be used."""
+
+    def __init__(self, prompts_path, default, fixed_dir=None):
+        self.prompts_path, self.default, self.fixed_dir = prompts_path, default, fixed_dir
+        self.by = {}
+        self.lock = threading.Lock()
+
+    def get(self, name):
+        name = name or self.default
+        with self.lock:
+            if name not in self.by:
+                if name == self.default and self.fixed_dir:
+                    d = pathlib.Path(self.fixed_dir)
+                else:
+                    if not writers.valid(name) or not any(w["name"] == name for w in writers.list_writers()):
+                        return None
+                    d = writers.samples_dir(name)
+                self.by[name] = Store(d, self.prompts_path)
+            return self.by[name]
+
+
+WRITER_PATH = re.compile(r"^/w/([a-z][a-z0-9_-]{0,31})(/.*)?$")
+
+
+def make_handler(stores):
     class H(BaseHTTPRequestHandler):
         server_version = "capture"
 
@@ -121,8 +150,38 @@ def make_handler(store):
             self.end_headers()
             self.wfile.write(body)
 
-        def do_GET(self):
+        def route(self):
+            """-> (store, path inside the writer), or None after answering."""
             path = self.path.split("?")[0]
+            m = WRITER_PATH.match(path)
+            if path in ("/w", "/w/"):
+                links = "".join(f'<li><a href="/w/{w["name"]}/">{w["name"]}</a> ({w["samples"]} samples)</li>'
+                                for w in writers.list_writers())
+                self.send(200, ("<!doctype html><meta name=viewport content='width=device-width'><title>Writers</title>"
+                                "<h1>Who is writing?</h1><ul>" + links + "</ul>").encode(), "text/html; charset=utf-8")
+                return None
+            if m:
+                name, rest = m.group(1), m.group(2)
+                if rest is None:
+                    self.send_response(301)
+                    self.send_header("Location", f"/w/{name}/")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
+                path = rest
+            else:
+                name = None
+            store = stores.get(name)
+            if store is None:
+                self.send(404, {"error": "no such writer: make one with tools/handwriting/writers.py new NAME"})
+                return None
+            return store, path
+
+        def do_GET(self):
+            r = self.route()
+            if r is None:
+                return
+            store, path = r
             if path == "/api/prompts":
                 return self.send(200, json.loads(store.prompts_path.read_text(encoding="utf-8")))
             if path == "/api/samples":
@@ -140,7 +199,11 @@ def make_handler(store):
             self.send(404, {"error": "not found"})
 
         def do_POST(self):
-            m = re.fullmatch(r"/api/sample/([a-z]\d{3})", self.path.split("?")[0])
+            r = self.route()
+            if r is None:
+                return
+            store, path = r
+            m = re.fullmatch(r"/api/sample/([a-z]\d{3})", path)
             if not m or m.group(1) not in store.prompts:
                 return self.send(404, {"error": "unknown prompt"})
             try:
@@ -177,18 +240,24 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="address to listen on, or 'tailscale' (default %(default)s)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--prompts", default=str(ROOT / "handwriting" / "prompts.json"))
-    ap.add_argument("--samples", default=str(ROOT / "handwriting" / "samples"))
+    ap.add_argument("--writer", default="default", help="the writer served at / (default %(default)s)")
+    ap.add_argument("--samples", help="use this samples directory for --writer (default: the writer's own)")
     a = ap.parse_args()
     if not pathlib.Path(a.prompts).exists():
         sys.exit(f"{a.prompts} not found; run tools/handwriting/prompts.py first")
     host = resolve_host(a.host)
-    store = Store(a.samples, a.prompts)
-    srv = ThreadingHTTPServer((host, a.port), make_handler(store))
+    if not writers.valid(a.writer):
+        sys.exit("writer name: lowercase letters, digits, - and _, starting with a letter")
+    a.samples = a.samples or str(writers.create(a.writer))
+    stores = Stores(a.prompts, a.writer, a.samples)
+    store = stores.get(a.writer)
+    srv = ThreadingHTTPServer((host, a.port), make_handler(stores))
     done = len(store.status())
     stale = len(list(store.dir.glob("[a-z][0-9][0-9][0-9].json"))) - done
     if stale > 0:
         print(f"NOTE: {stale} saved sample(s) no longer match their prompt text (prompt list rebuilt); they are kept but not counted.")
-    print(f"Handwriting capture: http://{host}:{a.port}/   ({done} of {len(store.prompts)} prompts already saved)")
+    print(f"Handwriting capture for '{a.writer}': http://{host}:{a.port}/   ({done} of {len(store.prompts)} prompts already saved)")
+    print(f"Everyone: http://{host}:{a.port}/w/   (new writers: tools/handwriting/writers.py new NAME)")
     if host in ("0.0.0.0", "::"):
         print("WARNING: listening on every interface with no login; anyone on the network can write into the samples.")
     print(f"Samples: {a.samples}   Ctrl-C to stop")

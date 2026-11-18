@@ -12,5 +12,13 @@ maps/*/data/
 maps/*/out/
 config/web.json
 
-# personal handwriting samples
-handwriting/samples/
+# personal handwriting: samples and trained models of every writer. NEVER commit or push these.
+/handwriting/writers/
+/handwriting/samples/
+/handwriting/**/model/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+*.npz

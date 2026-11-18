@@ -23,7 +23,9 @@ export function initLive() {
 
 function fillFonts(r) {
   const opts = [];
-  if (r.hand_samples > 0) opts.push(el('option', { value: '', text: `My handwriting (${r.hand_samples} samples)` }));
+  for (const w of r.writers || []) {
+    if (w.samples > 0) opts.push(el('option', { value: `hand:${w.name}`, text: `Handwriting: ${w.name} (${w.samples} samples)` }));
+  }
   const bundled = new Set(r.bundled);
   for (const f of r.fonts) opts.push(el('option', { value: f, text: bundled.has(f) ? `${f} (bundled)` : f }));
   $('liveFont').replaceChildren(...opts);
@@ -33,7 +35,7 @@ async function start(simulate) {
   const m = state.me.machine;
   const font = $('liveFont').value;
   const simulated = simulate || state.me.sim;
-  const rows = [['Writing', font || 'your own handwriting'], ['Letter height', `${$('liveSize').value} mm`],
+  const rows = [['Writing', font.startsWith('hand:') ? `handwriting of ${font.slice(5)}` : (font || 'handwriting')], ['Letter height', `${$('liveSize').value} mm`],
     ['Speed', `${$('liveSpeed').value} mm/s`], ['Mode', simulated ? 'Simulator: nothing moves' : 'Real plotter']];
   const sport = $('liveSport').checked;
   const checks = [

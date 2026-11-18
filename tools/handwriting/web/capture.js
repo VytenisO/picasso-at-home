@@ -135,7 +135,7 @@ async function show(i) {
   store("last", p.id);
   if (done[p.id]) {
     try {
-      const r = await fetch("/api/sample/" + p.id);
+      const r = await fetch(BASE + "/api/sample/" + p.id);
       if (r.ok && order[cur] === p) {
         const s = await r.json();
         strokes = s.strokes; t0 = null; redraw();
@@ -158,7 +158,7 @@ async function save() {
   if (!strokes.length) { say("Nothing written yet.", true); return; }
   $("save").disabled = true;
   try {
-    const r = await fetch("/api/sample/" + p.id, {
+    const r = await fetch(BASE + "/api/sample/" + p.id, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pointer: pointerKind || (sawPen ? "pen" : ""), strokes, guide,
                               canvas: { w: pad.clientWidth, h: pad.clientHeight, dpr: window.devicePixelRatio || 1 } }),
@@ -195,12 +195,15 @@ window.addEventListener("keydown", (e) => {
   else if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); $("undo").click(); }
 });
 
+const BASE = (location.pathname.match(/^\/w\/[^/]+/) || [""])[0];     // /w/<writer> when several people share one server
+
 async function init() {
+  if (BASE) document.title += " - " + BASE.slice(3);
   const saved = +recall("xh"); if (saved >= 28 && saved <= 90) xh = saved;
   $("size").value = xh; $("sizeout").textContent = xh + " px";
   try {
-    prompts = (await (await fetch("/api/prompts")).json()).prompts;
-    done = await (await fetch("/api/samples")).json();
+    prompts = (await (await fetch(BASE + "/api/prompts")).json()).prompts;
+    done = await (await fetch(BASE + "/api/samples")).json();
   } catch (e) { say("Cannot reach the server.", true); return; }
   const sel = $("section");
   for (const s of ["all", ...sectionList()]) {
