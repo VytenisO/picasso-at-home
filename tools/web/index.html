@@ -252,6 +252,12 @@
           <label class="field"><span id="speedLbl">Drawing (mm/s)</span><input name="speed" type="number" step="1"></label>
           <label class="field"><span id="travelLbl">Pen up (mm/s)</span><input name="travel_speed" type="number" step="5"></label>
         </div>
+        <h3>Fill</h3>
+        <div class="field-row">
+          <label class="field"><span>Hatch spacing (mm, 0 = off)</span><input name="fill" type="number" step="0.1" min="0" max="50"></label>
+          <label class="field"><span>Angle (deg)</span><input name="fill_angle" type="number" step="5" min="0" max="180"></label>
+        </div>
+        <p class="hint">Shapes that have a fill colour are filled with parallel lines at this spacing for full ink. Lighter colours get wider lines, very dark ones a second pass. Shapes without a fill colour stay outlines.</p>
         <details>
           <summary>Paper</summary>
           <p class="hint" id="paperHint"></p>

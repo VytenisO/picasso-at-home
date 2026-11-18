@@ -102,7 +102,7 @@ Supported SVG: `path` (no arcs), `line`, `polyline`, `polygon`, `rect`, `circle`
 
 ### Technical drawings (vector SVG, no thresholding)
 
-SVGs are ingested **as vectors** — no rasterisation or thresholding. On upload, `tools/svg_vector.py` converts any `<text>`/`<tspan>` into real glyph outline paths using fontTools and the machine's installed fonts (pick a font in the Upload card; `fc-match` resolves aliases like Arial). The prepared SVG is what you see in the large preview and what gets plotted, so text won't look different on paper. Filled regions are drawn as outlines only; if you need shading, use the raster styles instead.
+SVGs are ingested **as vectors** — no rasterisation or thresholding. On upload, `tools/svg_vector.py` converts any `<text>`/`<tspan>` into real glyph outline paths using fontTools and the machine's installed fonts (pick a font in the Upload card; `fc-match` resolves aliases like Arial). The prepared SVG is what you see in the large preview and what gets plotted, so text won't look different on paper. Filled regions are drawn as outlines unless you set a hatch spacing (Fill in the placement panel, or `plot_svg.py --fill 0.8`): shapes with a fill colour are then filled with parallel lines, closer for darker colours, with a cross pass for near-black, and even-odd or nonzero holes respected. Shapes without a fill colour stay outlines, and the fill uses the pen of its colour like any other ink. Photos can be shaded with the raster style "Shading by hatching".
 
 ```
 python3 tools/svg_vector.py technical.svg technical_plot.svg --font "DejaVu Sans"

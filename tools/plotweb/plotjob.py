@@ -48,6 +48,9 @@ def validate(raw, bed, pens, layer_keys):
         "w": _num(raw, "w", 1, 1000, label="Width"),
         "paper": None,
     }
+    fill = raw.get("fill")
+    out["fill"] = 0.0 if fill in (None, "", 0, "0") else _num(raw, "fill", 0.2, 50, label="Fill spacing")
+    out["fill_angle"] = _num(raw, "fill_angle", 0, 180, 45.0, False, "Fill angle")
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -126,6 +129,8 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--x0", f"{v['x'] - c[0]:.3f}", "--y0", f"{v['y'] - c[1]:.3f}"]
     if v.get("w") and geom and geom.get("raw_w", 0) > 1e-6:
         argv += ["--width", f"{v['w'] * geom['doc_w'] / geom['raw_w']:.4f}"]
+    if v.get("fill"):
+        argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]
     if layers_json:
         argv += ["--layers", str(layers_json)]
     if preview_json:

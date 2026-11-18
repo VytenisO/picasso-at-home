@@ -42,6 +42,7 @@ class App:
         self.lib = Library(settings, self.ev)
         self.runner = JobRunner(settings, self.ev)
         self.plans = {}
+        self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
         self.plans_lock = threading.Lock()
         self.hw_lock = threading.Lock()      # one read-only plotter check at a time, never during a job start
         self.plan_dir = settings.cache / "plans"
@@ -76,10 +77,33 @@ class App:
             raise ApiError(404, "The file's plot data is missing on the server. Upload it again.")
         return e, p
 
-    def geometry(self, e, svg_path):
-        """Natural-size geometry and the layer list of a file, cached in its manifest entry."""
+    def geometry(self, e, svg_path, fill=0.0, fill_angle=45.0):
+        """Natural-size geometry and the layer list of a file, cached in its manifest entry.
+
+        With a fill the layer list can have more inks (a fill colour the outlines do not have): that list is
+        measured by its own dry run and remembered in memory."""
         data = svg_path.read_bytes()
         digest = hashlib.sha256(data).hexdigest()[:16]
+        if fill:
+            g, _, _ = self.geometry(e, svg_path)
+            memo = (digest, fill, fill_angle)
+            hit = self._fill_layers.get(memo)
+            if hit is None:
+                tmp = self.plan_dir / f"geomf_{digest}_{secrets.token_hex(4)}.json"
+                v = {"speed": LIMITS["speed"]["default"], "travel_speed": LIMITS["travel_speed"]["default"], "x": None,
+                     "y": None, "w": None, "paper": None, "layers": [], "fill": fill, "fill_angle": fill_angle}
+                rc, out = plotjob.run_dry(plotjob.build_argv(self.s, svg_path, v, "dry", None, preview_json=tmp))
+                if not tmp.exists():
+                    tail = [ln for ln in out.strip().splitlines() if ln.strip() and not ln.startswith("__")]
+                    raise ApiError(400, "This fill cannot be plotted: " + (tail[-1] if tail else f"exit code {rc}"))
+                sm = json.loads(tmp.read_text())["summary"]
+                tmp.unlink()
+                lay = [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]]
+                hit = ([ly["key"] for ly in lay], lay)
+                if len(self._fill_layers) > 200:
+                    self._fill_layers.clear()
+                self._fill_layers[memo] = hit
+            return g, hit[0], hit[1]
         g = e.get("geom")
         if g and g.get("svg_hash") == digest and e.get("layers_keys") is not None:
             return g, e["layers_keys"], e.get("layers") or []
@@ -104,7 +128,15 @@ class App:
 
     def _resolve(self, e, svg_path, raw_settings):
         """-> resolved settings, geometry, plan id, layers, plan dir (with staged svg, machine.json, layers.json)."""
-        g, keys, layers = self.geometry(e, svg_path)
+        rs = raw_settings if isinstance(raw_settings, dict) else {}
+        try:
+            fill = float(rs.get("fill") or 0)
+            fill_angle = float(rs.get("fill_angle", 45.0) if rs.get("fill_angle") not in (None, "") else 45.0)
+        except (TypeError, ValueError):
+            fill, fill_angle = 0.0, 45.0
+        if not 0.2 <= fill <= 50 or not 0 <= fill_angle <= 180:
+            fill = 0.0       # out of range: validate() below says so
+        g, keys, layers = self.geometry(e, svg_path, fill, fill_angle)
         svg_bytes, machine_bytes = svg_path.read_bytes(), self.s.machine_path.read_bytes()
         bed = self.s.bed_from(machine_bytes)
         if e.get("pen"):

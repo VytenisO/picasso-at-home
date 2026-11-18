@@ -241,6 +241,19 @@ class TestApi(SimServer):
         self.assertEqual(code, 400)
         self.assertIn("does not fit", d["error"])
 
+    def test_03b_fill(self):
+        fid = self.upload("filled.svg")
+        d0 = self.preview(fid)
+        d1 = self.preview(fid, {"fill": 1.0, "fill_angle": 30})
+        self.assertTrue(d1["ok"], d1["problems"])
+        self.assertEqual(d1["settings"]["fill"], 1.0)
+        self.assertNotEqual(d0["plan_id"], d1["plan_id"])
+        self.assertGreater(d1["summary"]["drawing_mm"], 5 * d0["summary"]["drawing_mm"])
+        self.assertEqual(len(d1["summary"]["layers"]), len(d0["summary"]["layers"]))
+        for bad in ({"fill": 0.05}, {"fill": 80}, {"fill": 1, "fill_angle": 400}):
+            code, d = self.call("POST", "/api/preview", {"id": fid, "settings": bad})
+            self.assertEqual(code, 400, bad)
+
     def test_04_start_requires_confirmation_and_current_plan(self):
         fid = self.upload("two_layers.svg")
         d = self.preview(fid)

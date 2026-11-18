@@ -8,6 +8,8 @@ directly (plain M/L paths, no arcs, no transforms):
   halftone   a grid of dots whose size follows local darkness
   one-line   a single continuous serpentine line that packs tightly in the
              dark regions (the classic "one-line drawing" look)
+  hatch      tone by hatching: parallel lines where the picture is dark, a second and third
+             pass at other angles in the shadows (fill, as shading)
 
 The dark parts of the photo can be split across several ink layers (pens).
 Each ink becomes an Inkscape-style layer with a stroke colour; plot_svg.py
@@ -24,6 +26,8 @@ import pathlib
 import sys
 from collections import defaultdict
 
+import fill
+
 try:
     from PIL import Image, ImageFilter, ImageOps
 except ImportError:
@@ -39,7 +43,7 @@ INKS = {
     3: [("Black", "#111111"), ("Blue", "#2463a6"), ("Red", "#c0392b")],
     4: [("Key", "#111111"), ("Magenta", "#c2187e"), ("Cyan", "#00a0b0"), ("Yellow", "#d9a400")],
 }
-STYLES = ("contour", "halftone", "one-line", "lineart")
+STYLES = ("contour", "halftone", "one-line", "lineart", "hatch")
 
 
 def read_pixels(path, width_px, blur, levels=0):
@@ -375,6 +379,30 @@ def halftone_bands(w, h, pix, threshold, inks, density):
     return bands
 
 
+HATCH_ANGLES = (45.0, 135.0, 0.0, 90.0)
+HATCH_TONES = (0.12, 0.35, 0.58, 0.8)      # a pass draws where the tone (0 paper .. 1 black) is above this
+
+
+def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0):
+    """Shading by hatching: one pass per tone step, each at its own angle, darker steps add more lines."""
+    passes = levels - 1 if 2 <= levels <= 5 else len(HATCH_ANGLES)
+    spacing_mm = 2.4 - 0.019 * density          # density 1..100 -> 2.4 .. 0.5 mm between lines
+    spacing = max(2.0, spacing_mm / mm_per_px)
+    cut = max(1, threshold)
+
+    def tone(x, y):
+        g = pix[min(w - 1, max(0, int(x))), min(h - 1, max(0, int(y)))]
+        return max(0.0, (cut - g) / cut)
+
+    bands = [[] for _ in range(inks)]
+    for k in range(passes):
+        thr = HATCH_TONES[k] if passes == len(HATCH_ANGLES) else (k + 0.5) / passes * 0.9
+        lines = fill.tone_runs(tone, w, h, spacing, HATCH_ANGLES[k], thr, step=1.0, min_run=max(1.0, 0.6 / mm_per_px))
+        mid = thr + (1.0 - thr) / 2
+        bands[band_of(mid, inks)].extend(lines)
+    return bands
+
+
 def one_line_bands(w, h, pix, threshold, inks, density):
     """One continuous serpentine line, packed by cumulative darkness per column.
 
@@ -499,6 +527,8 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
         bands = halftone_bands(w, h, pix, threshold, inks, density)
     elif style == "lineart":
         bands = lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px)
+    elif style == "hatch":
+        bands = hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels)
     else:
         bands = one_line_bands(w, h, pix, threshold, inks, density)
 

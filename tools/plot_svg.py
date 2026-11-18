@@ -45,6 +45,8 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
+import fill as fillmod
+
 try:
     import serial
     from serial.tools import list_ports
@@ -96,6 +98,22 @@ def normalize_color(s):
     if m:
         return "#%02x%02x%02x" % tuple(min(255, int(v)) for v in m.groups())
     return CSS_COLORS.get(s)
+
+
+def style_prop(el, prop):
+    """Presentation attribute or inline style value of one element, or None."""
+    v = el.get(prop)
+    if not v:
+        m = re.search(r"(?:^|;)\s*" + prop + r"\s*:\s*([^;]+)", el.get("style") or "")
+        v = m.group(1) if m else None
+    return v.strip() if v else None
+
+
+def _frac(v, default=1.0):
+    try:
+        return max(0.0, min(1.0, float(v)))
+    except (TypeError, ValueError):
+        return default
 
 
 def element_color(el):
@@ -415,6 +433,7 @@ def load_svg(path, ignore_unsupported):
     scale = min(sx, sy)
 
     polys, metas, skipped = [], [], {}
+    fills = []       # filled shapes: rings (document units), colour, darkness, rule, ink meta
 
     def walk(el, ctx, parent_xform):
         tag = el.tag.split("}")[-1]
@@ -433,11 +452,22 @@ def load_svg(path, ignore_unsupported):
         if el.get("data-pressure") is not None:
             cur["pressure"] = float(el.get("data-pressure"))
         meta = {"color": cur.get("color"), "layer": cur.get("layer"), "pressure": cur.get("pressure")}
+        fv = style_prop(el, "fill")
+        if fv is not None:
+            cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
+                else normalize_color(fv)
+        fr = style_prop(el, "fill-rule")
+        if fr:
+            cur["rule"] = "nonzero" if fr.lower() == "nonzero" else "evenodd"
+        cur["fop"] = cur.get("fop", 1.0) * _frac(style_prop(el, "fill-opacity")) * _frac(style_prop(el, "opacity"))
+        el_rings = []
 
         def add(poly):
             if len(poly) >= 2:
-                polys.append([mat_apply(xform, p) for p in poly])
+                q = [mat_apply(xform, p) for p in poly]
+                polys.append(q)
                 metas.append(dict(meta))
+                el_rings.append(q)
 
         f = lambda k, dflt=0.0: float(el.get(k, dflt))  # noqa: E731
         if tag == "path":
@@ -484,17 +514,22 @@ def load_svg(path, ignore_unsupported):
             pass
         else:
             skipped[tag] = skipped.get(tag, 0) + 1
+        if cur.get("fill") and el_rings and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
+            fills.append({"rings": el_rings, "color": cur["fill"], "opacity": cur["fop"],
+                          "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure")})
         for child in el:
             walk(child, cur, xform)
 
-    walk(root, {"color": None, "layer": None, "pressure": None}, IDENTITY)
+    walk(root, {"color": None, "layer": None, "pressure": None, "fill": None, "fop": 1.0}, IDENTITY)
     if skipped:
         msg = f"unsupported elements: {skipped}"
         if not ignore_unsupported:
             raise ValueError(msg + " (use --ignore-unsupported to skip them)")
         log("WARNING: " + msg + " -- skipped")
     mm = [[((px - vx) * scale, (py - vy) * scale) for px, py in p] for p in polys]
-    return mm, metas, (vw * scale, vh * scale)
+    for f in fills:
+        f["rings"] = [[((px - vx) * scale, (py - vy) * scale) for px, py in r] for r in f["rings"]]
+    return mm, metas, (vw * scale, vh * scale), fills
 
 
 # ------------------------------------------------------------ path processing
@@ -762,6 +797,10 @@ def main():
     ap.add_argument("--pen-down", type=int, help="override servo pen-down value")
     ap.add_argument("--pen-up", type=int, help="override servo pen-up value")
     ap.add_argument("--ignore-unsupported", action="store_true")
+    ap.add_argument("--fill", type=float, default=0.0, metavar="MM",
+                    help="fill shapes that have a fill colour with hatch lines this far apart on paper at full ink (0 = off); "
+                         "lighter colours get wider lines, very dark ones a cross pass")
+    ap.add_argument("--fill-angle", type=float, default=45.0, help="hatch angle in degrees (default 45)")
     ap.add_argument("--track", action="store_true", help="emit __POS__ lines for the web live tracker")
     ap.add_argument("--control", action="store_true", help="read CONTINUE/PAUSE/STOP/RETURN from stdin (web UI)")
     ap.add_argument("--sim-speed", type=float, help="with --sim: also run in real time at this speed factor")
@@ -833,7 +872,9 @@ def main():
     LOGF = open(OUT / f"plot_{stamp}.log", "w")
     log(f"mode={a.mode} sim={a.sim} svg={a.svg}")
 
-    polys, metas, (w_mm, h_mm) = load_svg(a.svg, a.ignore_unsupported)
+    if a.fill and not 0.2 <= a.fill <= 50:
+        sys.exit("--fill spacing must be 0 (off) or 0.2..50 mm")
+    polys, metas, (w_mm, h_mm), fills = load_svg(a.svg, a.ignore_unsupported)
     base_scale = a.scale * (a.width / w_mm if a.width else 1.0)
     scale = base_scale
     if region:
@@ -843,6 +884,23 @@ def main():
                   (ry1 - ry0) / max(1e-9, (raw[3] - raw[1]) * base_scale))
         scale = base_scale * fit   # fit the whole drawing into the chosen region
     strokes, metas = prepare(polys, metas, a.simplify, a.join, scale, 0.0, 0.0)
+    if a.fill and fills:
+        fpolys, fmetas = [], []
+        for f in fills:
+            rings = [[(x * scale, y * scale) for x, y in r] for r in f["rings"]]
+            dark = fillmod.darkness(fillmod.color_luminance(f["color"]), f["opacity"])
+            try:
+                lines = fillmod.fill_shape(rings, a.fill, dark, a.fill_angle, f["rule"])
+            except ValueError as ex:
+                sys.exit(str(ex))
+            for ln in lines:
+                fpolys.append(ln)
+                fmetas.append({"color": f["color"], "layer": f["layer"], "pressure": f["pressure"]})
+        fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
+        log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} hatch strokes at {a.fill} mm, {a.fill_angle:g} deg")
+        for m in fmetas:
+            m["fill"] = True
+        strokes, metas = strokes + fstrokes, metas + fmetas      # inks keep the order of the outlines; fills are drawn first within an ink
     if not strokes:
         sys.exit("no drawable geometry found")
     groups = color_groups(metas)
@@ -910,6 +968,7 @@ def main():
     by_layer = a.mode in ("plot", "dry") and len(groups) > 1
     order = [i for _, idxs in groups for i in idxs] if by_layer else list(range(len(strokes)))
     order = [i for i in order if lset[stroke_group[i]].get("enabled", True)]
+    order.sort(key=lambda i: (stroke_group[i] if by_layer else 0, not metas[i].get("fill")))   # stable: fill, then outline
     speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     per_stroke = []
     dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,

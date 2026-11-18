@@ -33,6 +33,7 @@ export async function openFile(id, { quiet = false } = {}) {
   set({ current: { id, name: entry.name, entry }, preview: null, previewStale: true,
     settings: { x: saved.x ?? null, y: saved.y ?? null, w: saved.w ?? null,
       speed: saved.speed ?? state.me.limits.speed.default, travel_speed: saved.travel_speed ?? state.me.limits.travel_speed.default,
+      fill: saved.fill || 0, fill_angle: saved.fill_angle ?? 45,
       paper: saved.paper || null, layers: layers.filter((l) => !l.pen || pens[l.pen]) } });
   prefs('lastFile', id);
   $('bedTitle').textContent = entry.name + (entry.pen ? `  (test sheet for pen ${entry.pen})` : '');
@@ -84,6 +85,7 @@ function fillForm() {
   const set_ = (name, v) => { if (document.activeElement !== f[name]) f[name].value = v ?? ''; };
   set_('x', st.x); set_('y', st.y); set_('w', st.w);
   set_('speed', st.speed); set_('travel_speed', st.travel_speed);
+  set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -100,7 +102,13 @@ function fillForm() {
 function fromForm(e) {
   const f = $('placeForm');
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
-  const patch = { x: num('x'), y: num('y'), w: num('w'), speed: num('speed'), travel_speed: num('travel_speed') };
+  const patch = { x: num('x'), y: num('y'), w: num('w'), speed: num('speed'), travel_speed: num('travel_speed'),
+    fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45 };
+  if (patch.fill && (patch.fill < 0.2 || patch.fill > 50)) {
+    toast('Fill spacing must be 0 (off) or between 0.2 and 50 mm.', true);
+    f.fill.value = state.settings.fill || 0;
+    return;
+  }
   const L = state.me.limits;
   for (const [k, lim] of [['speed', L.speed], ['travel_speed', L.travel_speed]]) {
     if (patch[k] === null || patch[k] < lim.min || patch[k] > lim.max) {

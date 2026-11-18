@@ -78,11 +78,12 @@ REGISTRY = {c.id: c for c in [
     Converter("svg", "SVG drawing", [".svg"], [
         {"key": "font", "label": "Font for text", "type": "text", "default": "DejaVu Sans",
          "help": "Text in the SVG is turned into outlines with this font."},
-    ], _svg, help="Vector drawings are plotted as they are: strokes, not fills."),
+    ], _svg, help="Vector drawings are plotted as they are: outlines. Set a hatch spacing under Fill to fill coloured shapes."),
     Converter("raster", "Photo or image", IMG, [
         {"key": "style", "label": "Style", "type": "select", "default": "contour",
          "options": [["contour", "Contours (outlines of dark shapes)"], ["lineart", "Line art (centre lines)"],
-                     ["halftone", "Halftone hatching"], ["one-line", "One continuous line"]]},
+                     ["halftone", "Halftone dots"], ["hatch", "Shading by hatching (fill)"],
+                     ["one-line", "One continuous line"]]},
         {"key": "inks", "label": "Pens (ink layers)", "type": "number", "default": 1, "min": 1, "max": 4,
          "step": 1, "integer": True, "help": "More pens = darker tones in separate layers, one pen swap each."},
         {"key": "levels", "label": "Tone levels", "type": "number", "default": 0, "min": 0, "max": 6, "step": 1,
