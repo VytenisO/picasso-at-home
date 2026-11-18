@@ -22,3 +22,5 @@ config/web.json
 *.safetensors
 *.ckpt
 *.npz
+
+/handwriting/corpus/

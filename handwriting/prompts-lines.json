@@ -1,0 +1,3011 @@
+{
+ "version": 1,
+ "langs": [
+  "en",
+  "no"
+ ],
+ "kind": "running-text lines",
+ "source": "Tatoeba.org sentences, CC BY 2.0 FR (https://tatoeba.org)",
+ "prompts": [
+  {
+   "id": "r001",
+   "section": "en-01",
+   "text": "Richard Of York Gave Battle In Vain.",
+   "lines": 1
+  },
+  {
+   "id": "r002",
+   "section": "en-01",
+   "text": "The Russo-Japanese War ended in 1905.",
+   "lines": 1
+  },
+  {
+   "id": "r003",
+   "section": "en-01",
+   "text": "Antoine Lavoisier died on May 8, 1794.",
+   "lines": 1
+  },
+  {
+   "id": "r004",
+   "section": "en-01",
+   "text": "Good day. Are you Mr. Sherlock Holmes?",
+   "lines": 1
+  },
+  {
+   "id": "r005",
+   "section": "en-01",
+   "text": "Merry Christmas and a Happy New Year!",
+   "lines": 1
+  },
+  {
+   "id": "r006",
+   "section": "en-01",
+   "text": "European Fish Week starts on June 4th.",
+   "lines": 1
+  },
+  {
+   "id": "r007",
+   "section": "en-01",
+   "text": "My phone number is 090-1234-5678.",
+   "lines": 1
+  },
+  {
+   "id": "r008",
+   "section": "en-01",
+   "text": "Don't blame Ziri. It was Rima's fault.",
+   "lines": 1
+  },
+  {
+   "id": "r009",
+   "section": "en-01",
+   "text": "Call us toll-free at 1-800-446-2581.",
+   "lines": 1
+  },
+  {
+   "id": "r010",
+   "section": "en-01",
+   "text": "Police tracked Fadil to Khalifa Hotel.",
+   "lines": 1
+  },
+  {
+   "id": "r011",
+   "section": "en-01",
+   "text": "Yanni grew up in Tizi-Ouzou, Algeria.",
+   "lines": 1
+  },
+  {
+   "id": "r012",
+   "section": "en-01",
+   "text": "Mie Prefecture's capital is Tsu City.",
+   "lines": 1
+  },
+  {
+   "id": "r013",
+   "section": "en-01",
+   "text": "What did Abdelaziz Bouteflika achieve?",
+   "lines": 1
+  },
+  {
+   "id": "r014",
+   "section": "en-01",
+   "text": "I'm selling Jean-Claude Van Damme.",
+   "lines": 1
+  },
+  {
+   "id": "r015",
+   "section": "en-01",
+   "text": "Nobuhiko Takada lost to Hikson Grasy.",
+   "lines": 1
+  },
+  {
+   "id": "r016",
+   "section": "en-01",
+   "text": "The Queen lives in Buckingham Palace.",
+   "lines": 1
+  },
+  {
+   "id": "r017",
+   "section": "en-01",
+   "text": "For reservations, call 202-555-0132.",
+   "lines": 1
+  },
+  {
+   "id": "r018",
+   "section": "en-01",
+   "text": "As a Muslim, Sami felt very isolated.",
+   "lines": 1
+  },
+  {
+   "id": "r019",
+   "section": "en-01",
+   "text": "Apart from English, he speaks German.",
+   "lines": 1
+  },
+  {
+   "id": "r020",
+   "section": "en-01",
+   "text": "Skura wore a beautiful Kabyle dress.",
+   "lines": 1
+  },
+  {
+   "id": "r021",
+   "section": "en-01",
+   "text": "Chuck Norris knows Victoria's Secret.",
+   "lines": 1
+  },
+  {
+   "id": "r022",
+   "section": "en-01",
+   "text": "What if Bruno Mars played Among Us?",
+   "lines": 1
+  },
+  {
+   "id": "r023",
+   "section": "en-01",
+   "text": "I love Modern South Arabian languages.",
+   "lines": 1
+  },
+  {
+   "id": "r024",
+   "section": "en-01",
+   "text": "E5 fuel costs 1.239 euros per liter.",
+   "lines": 1
+  },
+  {
+   "id": "r025",
+   "section": "en-01",
+   "text": "DNI means National Identity Document.",
+   "lines": 1
+  },
+  {
+   "id": "r026",
+   "section": "en-01",
+   "text": "Was Lee Harvey Oswald really a patsy?",
+   "lines": 1
+  },
+  {
+   "id": "r027",
+   "section": "en-01",
+   "text": "Alright! Ten yuan buys five kilos, OK?",
+   "lines": 1
+  },
+  {
+   "id": "r028",
+   "section": "en-01",
+   "text": "Mr Yamada, may I introduce Miss Lloyd?",
+   "lines": 1
+  },
+  {
+   "id": "r029",
+   "section": "en-01",
+   "text": "Did Edward Zuckerberg commit incest?",
+   "lines": 1
+  },
+  {
+   "id": "r030",
+   "section": "en-01",
+   "text": "In August 1990, Iraq invaded Kuwait.",
+   "lines": 1
+  },
+  {
+   "id": "r031",
+   "section": "en-01",
+   "text": "Eat fruit! Your system needs vitamins!",
+   "lines": 1
+  },
+  {
+   "id": "r032",
+   "section": "en-01",
+   "text": "Vladimir broke up with his girlfriend.",
+   "lines": 1
+  },
+  {
+   "id": "r033",
+   "section": "en-01",
+   "text": "Again, Tom drank himself unconscious.",
+   "lines": 1
+  },
+  {
+   "id": "r034",
+   "section": "en-01",
+   "text": "He looks exactly like Luke. Cool, huh?",
+   "lines": 1
+  },
+  {
+   "id": "r035",
+   "section": "en-01",
+   "text": "Economic development proceeded slowly.",
+   "lines": 1
+  },
+  {
+   "id": "r036",
+   "section": "en-01",
+   "text": "Such opportunities should be seized.",
+   "lines": 1
+  },
+  {
+   "id": "r037",
+   "section": "en-01",
+   "text": "Is borscht Ukrainian or Ashkenazi?",
+   "lines": 1
+  },
+  {
+   "id": "r038",
+   "section": "en-01",
+   "text": "Puyehue Volcano keeps on spewing lava.",
+   "lines": 1
+  },
+  {
+   "id": "r039",
+   "section": "en-01",
+   "text": "Blimey, O'Reilly, who's got a veranda?",
+   "lines": 1
+  },
+  {
+   "id": "r040",
+   "section": "en-01",
+   "text": "We celebrate Eid al-Adha in Kabylie.",
+   "lines": 1
+  },
+  {
+   "id": "r041",
+   "section": "en-01",
+   "text": "Yuri passed by Sidi Aich a few times.",
+   "lines": 1
+  },
+  {
+   "id": "r042",
+   "section": "en-01",
+   "text": "Please, let somebody hear our voice.",
+   "lines": 1
+  },
+  {
+   "id": "r043",
+   "section": "en-01",
+   "text": "Ottoman Turks conquered Egypt in 1517.",
+   "lines": 1
+  },
+  {
+   "id": "r044",
+   "section": "en-01",
+   "text": "Piers Morgan interviewed Noam Chomsky.",
+   "lines": 1
+  },
+  {
+   "id": "r045",
+   "section": "en-01",
+   "text": "Gustavo saw Melissa go visibly tense.",
+   "lines": 1
+  },
+  {
+   "id": "r046",
+   "section": "en-01",
+   "text": "Flavio crawled through a small tunnel.",
+   "lines": 1
+  },
+  {
+   "id": "r047",
+   "section": "en-01",
+   "text": "Johnny Depp remains a domestic abuser.",
+   "lines": 1
+  },
+  {
+   "id": "r048",
+   "section": "en-01",
+   "text": "Arf! Ruff! Bow-wow! Woof! Grrrrrr....",
+   "lines": 1
+  },
+  {
+   "id": "r049",
+   "section": "en-01",
+   "text": "Sodium hydroxide is quite hygroscopic.",
+   "lines": 1
+  },
+  {
+   "id": "r050",
+   "section": "en-01",
+   "text": "How about 2:30 p.m. on October 20th?",
+   "lines": 1
+  },
+  {
+   "id": "r051",
+   "section": "no-01",
+   "text": "Albert Einstein ble født i Ulm i 1879.",
+   "lines": 1
+  },
+  {
+   "id": "r052",
+   "section": "no-01",
+   "text": "Mary Hat var i New Orleans denne uken.",
+   "lines": 1
+  },
+  {
+   "id": "r053",
+   "section": "no-01",
+   "text": "Tom bore ikke på Park Street lengre.",
+   "lines": 1
+  },
+  {
+   "id": "r054",
+   "section": "no-01",
+   "text": "Sekretæren til Dr. Georges er japaner.",
+   "lines": 1
+  },
+  {
+   "id": "r055",
+   "section": "no-01",
+   "text": "Profeten Muhammed døde i Medina i 632.",
+   "lines": 1
+  },
+  {
+   "id": "r056",
+   "section": "no-01",
+   "text": "Jeg reiser ofte mellom Roma og Milano.",
+   "lines": 1
+  },
+  {
+   "id": "r057",
+   "section": "no-01",
+   "text": "Har Bulgaria erklært krig mot Tyrkia?",
+   "lines": 1
+  },
+  {
+   "id": "r058",
+   "section": "no-01",
+   "text": "Hun besøkte Kanazawa for to år siden.",
+   "lines": 1
+  },
+  {
+   "id": "r059",
+   "section": "no-01",
+   "text": "God ettermiddag. Hyggelig å møte deg.",
+   "lines": 1
+  },
+  {
+   "id": "r060",
+   "section": "no-01",
+   "text": "Ingen er så irsk som Barack Obama!",
+   "lines": 1
+  },
+  {
+   "id": "r061",
+   "section": "no-01",
+   "text": "Ikke bland Østerrike og Australia.",
+   "lines": 1
+  },
+  {
+   "id": "r062",
+   "section": "no-01",
+   "text": "Kan du ta oss med til British Museum?",
+   "lines": 1
+  },
+  {
+   "id": "r063",
+   "section": "no-01",
+   "text": "Dårlig vær forhindret dem fra å seile.",
+   "lines": 1
+  },
+  {
+   "id": "r064",
+   "section": "no-01",
+   "text": "Hvor lenge har du kjent Jim Robinson?",
+   "lines": 1
+  },
+  {
+   "id": "r065",
+   "section": "no-01",
+   "text": "Fotballkampen ble direktesendt på TV.",
+   "lines": 1
+  },
+  {
+   "id": "r066",
+   "section": "no-01",
+   "text": "John vil sannsynligvis gjøre en tabbe.",
+   "lines": 1
+  },
+  {
+   "id": "r067",
+   "section": "no-01",
+   "text": "Esperanto snakkes i 120 land i verden.",
+   "lines": 1
+  },
+  {
+   "id": "r068",
+   "section": "no-01",
+   "text": "Herr Wilder ga meg din e-postadresse.",
+   "lines": 1
+  },
+  {
+   "id": "r069",
+   "section": "no-01",
+   "text": "Ta appelsinene ut av kjøleskapet.",
+   "lines": 1
+  },
+  {
+   "id": "r070",
+   "section": "no-01",
+   "text": "I går kveld så jeg Pulp Fiction.",
+   "lines": 1
+  },
+  {
+   "id": "r071",
+   "section": "no-01",
+   "text": "Hvordan dekomprimerer man LZH-filer?",
+   "lines": 1
+  },
+  {
+   "id": "r072",
+   "section": "no-01",
+   "text": "Skjebnen skal være alltid lunefull.",
+   "lines": 1
+  },
+  {
+   "id": "r073",
+   "section": "no-01",
+   "text": "Vi kunne se havet fra vårt hotellrom.",
+   "lines": 1
+  },
+  {
+   "id": "r074",
+   "section": "no-01",
+   "text": "JavaScript er et programmeringsspråk.",
+   "lines": 1
+  },
+  {
+   "id": "r075",
+   "section": "no-01",
+   "text": "Slå opp læreboka på side 50.",
+   "lines": 1
+  },
+  {
+   "id": "r076",
+   "section": "no-01",
+   "text": "Kommunister tok makten i Kina i 1949.",
+   "lines": 1
+  },
+  {
+   "id": "r077",
+   "section": "no-01",
+   "text": "Et år består av 365 eller 366 dager.",
+   "lines": 1
+  },
+  {
+   "id": "r078",
+   "section": "no-01",
+   "text": "Løperen hadde nådd halvveismerket.",
+   "lines": 1
+  },
+  {
+   "id": "r079",
+   "section": "no-01",
+   "text": "Ah! Datamaskinen min er ødelagt!",
+   "lines": 1
+  },
+  {
+   "id": "r080",
+   "section": "no-01",
+   "text": "Kom hit og spis sjokoladekake!",
+   "lines": 1
+  },
+  {
+   "id": "r081",
+   "section": "no-01",
+   "text": "Følg ditt hjerte, for det lyver aldri.",
+   "lines": 1
+  },
+  {
+   "id": "r082",
+   "section": "no-01",
+   "text": "Han jobbet som lastebilsjåfør i Norge.",
+   "lines": 1
+  },
+  {
+   "id": "r083",
+   "section": "no-01",
+   "text": "Våre kurs bruker en interaktiv metode.",
+   "lines": 1
+  },
+  {
+   "id": "r084",
+   "section": "no-01",
+   "text": "Juba er hovedstaden i Sør-Sudan.",
+   "lines": 1
+  },
+  {
+   "id": "r085",
+   "section": "no-01",
+   "text": "Liljer er nasjonalblomsten til Italia.",
+   "lines": 1
+  },
+  {
+   "id": "r086",
+   "section": "no-01",
+   "text": "Arabisk skrives fra høyre mot venstre.",
+   "lines": 1
+  },
+  {
+   "id": "r087",
+   "section": "no-01",
+   "text": "Tom planlegger å bo på Hilton Hotel.",
+   "lines": 1
+  },
+  {
+   "id": "r088",
+   "section": "no-01",
+   "text": "Sami vokste opp utenfor Cairo.",
+   "lines": 1
+  },
+  {
+   "id": "r089",
+   "section": "no-01",
+   "text": "Hamburg er Tysklands nest største by.",
+   "lines": 1
+  },
+  {
+   "id": "r090",
+   "section": "no-01",
+   "text": "YouTube videoer er veldig meningsløse.",
+   "lines": 1
+  },
+  {
+   "id": "r091",
+   "section": "no-01",
+   "text": "Svinekjøtt inneholder mye fett.",
+   "lines": 1
+  },
+  {
+   "id": "r092",
+   "section": "no-01",
+   "text": "Unnskyld meg, hvor er postkontoret?",
+   "lines": 1
+  },
+  {
+   "id": "r093",
+   "section": "no-01",
+   "text": "Hun gråt krokodilletårer da han gikk.",
+   "lines": 1
+  },
+  {
+   "id": "r094",
+   "section": "no-01",
+   "text": "Vi gjemte oss i buskene og bak trærne.",
+   "lines": 1
+  },
+  {
+   "id": "r095",
+   "section": "no-01",
+   "text": "Yatch-klubben vår har 10 medlemmer.",
+   "lines": 1
+  },
+  {
+   "id": "r096",
+   "section": "no-01",
+   "text": "Muldvarpen hadde fløyelsmyk pels.",
+   "lines": 1
+  },
+  {
+   "id": "r097",
+   "section": "no-01",
+   "text": "Vladivostok er en by i Russland.",
+   "lines": 1
+  },
+  {
+   "id": "r098",
+   "section": "no-01",
+   "text": "Fargeløse grønne ideer sover rasende.",
+   "lines": 1
+  },
+  {
+   "id": "r099",
+   "section": "no-01",
+   "text": "De erklærte uavhengighet i 1847.",
+   "lines": 1
+  },
+  {
+   "id": "r100",
+   "section": "no-01",
+   "text": "Er Israel et teokrati?",
+   "lines": 1
+  },
+  {
+   "id": "r101",
+   "section": "en-02",
+   "text": "Funky music, fellas! Let's jive!",
+   "lines": 1
+  },
+  {
+   "id": "r102",
+   "section": "en-02",
+   "text": "Kiddo! Two medium-size drafts here.",
+   "lines": 1
+  },
+  {
+   "id": "r103",
+   "section": "en-02",
+   "text": "Jackdaws love my big sphinx of quartz.",
+   "lines": 1
+  },
+  {
+   "id": "r104",
+   "section": "en-02",
+   "text": "Get up, sleepyhead! It's 6.30!",
+   "lines": 1
+  },
+  {
+   "id": "r105",
+   "section": "en-02",
+   "text": "Why doesn't JD Vance embrace Hinduism?",
+   "lines": 1
+  },
+  {
+   "id": "r106",
+   "section": "en-02",
+   "text": "Fyodor helped Anna unload her luggage.",
+   "lines": 1
+  },
+  {
+   "id": "r107",
+   "section": "en-02",
+   "text": "Thirty-four. Hmm... I'm recounting.",
+   "lines": 1
+  },
+  {
+   "id": "r108",
+   "section": "en-02",
+   "text": "Nefertari was Ramses II's first wife.",
+   "lines": 1
+  },
+  {
+   "id": "r109",
+   "section": "en-02",
+   "text": "Dr. Zamenhof became famous world-over.",
+   "lines": 1
+  },
+  {
+   "id": "r110",
+   "section": "en-02",
+   "text": "Evenings by candle-light in Wroclaw.",
+   "lines": 1
+  },
+  {
+   "id": "r111",
+   "section": "en-02",
+   "text": "He went to Philippeville, now Skikda.",
+   "lines": 1
+  },
+  {
+   "id": "r112",
+   "section": "en-02",
+   "text": "The zombie had extraordinary strength.",
+   "lines": 1
+  },
+  {
+   "id": "r113",
+   "section": "en-02",
+   "text": "Oleg made Rima editor-in-chief.",
+   "lines": 1
+  },
+  {
+   "id": "r114",
+   "section": "en-02",
+   "text": "Pikachu is an electric-type Pokemon.",
+   "lines": 1
+  },
+  {
+   "id": "r115",
+   "section": "en-02",
+   "text": "I've switched off romaji in Duolingo.",
+   "lines": 1
+  },
+  {
+   "id": "r116",
+   "section": "en-02",
+   "text": "Prokaryotic cells do not have nuclei.",
+   "lines": 1
+  },
+  {
+   "id": "r117",
+   "section": "en-02",
+   "text": "Smile! You're on closed circuit TV.",
+   "lines": 1
+  },
+  {
+   "id": "r118",
+   "section": "en-02",
+   "text": "Awww, how cute: Cookie's snoring!",
+   "lines": 1
+  },
+  {
+   "id": "r119",
+   "section": "en-02",
+   "text": "Layla joined a white-supremacy group.",
+   "lines": 1
+  },
+  {
+   "id": "r120",
+   "section": "en-02",
+   "text": "Each individual paid 1,000 dollars.",
+   "lines": 1
+  },
+  {
+   "id": "r121",
+   "section": "en-02",
+   "text": "Tatoeba was temporarily unavailable.",
+   "lines": 1
+  },
+  {
+   "id": "r122",
+   "section": "en-02",
+   "text": "That's 486-2435, area code 213.",
+   "lines": 1
+  },
+  {
+   "id": "r123",
+   "section": "en-02",
+   "text": "Muammar Kaddafi escaped unharmed.",
+   "lines": 1
+  },
+  {
+   "id": "r124",
+   "section": "en-02",
+   "text": "Oh jah, my keyboard is misbehaving!",
+   "lines": 1
+  },
+  {
+   "id": "r125",
+   "section": "en-02",
+   "text": "Daniel recognized Jessica right away.",
+   "lines": 1
+  },
+  {
+   "id": "r126",
+   "section": "en-02",
+   "text": "Uh...Um...No, sorry. I don't know.",
+   "lines": 1
+  },
+  {
+   "id": "r127",
+   "section": "en-02",
+   "text": "I'm a curly-haired, blue-eyed angel.",
+   "lines": 1
+  },
+  {
+   "id": "r128",
+   "section": "en-02",
+   "text": "Break is from 10.40 till 11 o'clock.",
+   "lines": 1
+  },
+  {
+   "id": "r129",
+   "section": "en-02",
+   "text": "Trump has an impulsive foreign policy.",
+   "lines": 1
+  },
+  {
+   "id": "r130",
+   "section": "en-02",
+   "text": "Steel-toe boots protect workers' feet.",
+   "lines": 1
+  },
+  {
+   "id": "r131",
+   "section": "en-02",
+   "text": "DVDs tumbled down around Santiago.",
+   "lines": 1
+  },
+  {
+   "id": "r132",
+   "section": "en-02",
+   "text": "Scrub with a microwave-safe sponge.",
+   "lines": 1
+  },
+  {
+   "id": "r133",
+   "section": "en-02",
+   "text": "Suddenly, Ziri burst out laughing.",
+   "lines": 1
+  },
+  {
+   "id": "r134",
+   "section": "en-02",
+   "text": "Tom's dog got accepted to Glassboro.",
+   "lines": 1
+  },
+  {
+   "id": "r135",
+   "section": "en-02",
+   "text": "Judaism defies easy categorization.",
+   "lines": 1
+  },
+  {
+   "id": "r136",
+   "section": "en-02",
+   "text": "Do you use LSD, PCP, or peyote?",
+   "lines": 1
+  },
+  {
+   "id": "r137",
+   "section": "en-02",
+   "text": "Psychoanalysis is a pseudoscience.",
+   "lines": 1
+  },
+  {
+   "id": "r138",
+   "section": "en-02",
+   "text": "Yes, I am Xiaoyu. Who are you?",
+   "lines": 1
+  },
+  {
+   "id": "r139",
+   "section": "en-02",
+   "text": "Het heeft vannacht geweldig gesneeuwd.",
+   "lines": 1
+  },
+  {
+   "id": "r140",
+   "section": "en-02",
+   "text": "My husband's name is Krzysztof.",
+   "lines": 1
+  },
+  {
+   "id": "r141",
+   "section": "en-02",
+   "text": "Russia occupied Crimea in 2014.",
+   "lines": 1
+  },
+  {
+   "id": "r142",
+   "section": "en-02",
+   "text": "Miroslav got DZD400,000 instantly.",
+   "lines": 1
+  },
+  {
+   "id": "r143",
+   "section": "en-02",
+   "text": "Isabella sent Claudio swimsuit photos.",
+   "lines": 1
+  },
+  {
+   "id": "r144",
+   "section": "en-02",
+   "text": "Arnold Schwarzenegger is a Republican.",
+   "lines": 1
+  },
+  {
+   "id": "r145",
+   "section": "en-02",
+   "text": "The Udmurts are a Finno-Ugric people.",
+   "lines": 1
+  },
+  {
+   "id": "r146",
+   "section": "en-02",
+   "text": "Munir took a taxi from Gaza to Rafah.",
+   "lines": 1
+  },
+  {
+   "id": "r147",
+   "section": "en-02",
+   "text": "If only you'd kept your gob shut, Tom!",
+   "lines": 1
+  },
+  {
+   "id": "r148",
+   "section": "en-02",
+   "text": "Lidar is revolutionising archaeology.",
+   "lines": 1
+  },
+  {
+   "id": "r149",
+   "section": "en-02",
+   "text": "Today a plethron equals 30,8 meters.",
+   "lines": 1
+  },
+  {
+   "id": "r150",
+   "section": "en-02",
+   "text": "Add flour, baking powder, and milk.",
+   "lines": 1
+  },
+  {
+   "id": "r151",
+   "section": "no-02",
+   "text": "Både hest, løve, hund og geit er dyr.",
+   "lines": 1
+  },
+  {
+   "id": "r152",
+   "section": "no-02",
+   "text": "Liu Xiaobo er kinesisk.",
+   "lines": 1
+  },
+  {
+   "id": "r153",
+   "section": "no-02",
+   "text": "Kypros kjemper mot statskonkurs.",
+   "lines": 1
+  },
+  {
+   "id": "r154",
+   "section": "no-02",
+   "text": "Du bør unngå å gjøre slike feil.",
+   "lines": 1
+  },
+  {
+   "id": "r155",
+   "section": "no-02",
+   "text": "På den tiden dro Yuri ofte til London.",
+   "lines": 1
+  },
+  {
+   "id": "r156",
+   "section": "no-02",
+   "text": "Noen folk finner trøst i selvskading.",
+   "lines": 1
+  },
+  {
+   "id": "r157",
+   "section": "no-02",
+   "text": "Hvem knuste vinduet? Ut med språket.",
+   "lines": 1
+  },
+  {
+   "id": "r158",
+   "section": "no-02",
+   "text": "Klimaspørsmålet er svært komplekst.",
+   "lines": 1
+  },
+  {
+   "id": "r159",
+   "section": "no-02",
+   "text": "Daniel puttet papirbitene i en krukke.",
+   "lines": 1
+  },
+  {
+   "id": "r160",
+   "section": "no-02",
+   "text": "Ørreten var på omtrent 2 kilo.",
+   "lines": 1
+  },
+  {
+   "id": "r161",
+   "section": "no-02",
+   "text": "Ziri gikk rundt naken på gata.",
+   "lines": 1
+  },
+  {
+   "id": "r162",
+   "section": "no-02",
+   "text": "Brevet er datert 1. april 1987.",
+   "lines": 1
+  },
+  {
+   "id": "r163",
+   "section": "no-02",
+   "text": "I lys av sunn fornuft er dette absurd.",
+   "lines": 1
+  },
+  {
+   "id": "r164",
+   "section": "no-02",
+   "text": "Vi må hjelpe ham umiddelbart.",
+   "lines": 1
+  },
+  {
+   "id": "r165",
+   "section": "no-02",
+   "text": "København er en sykkel-vennlig by.",
+   "lines": 1
+  },
+  {
+   "id": "r166",
+   "section": "no-02",
+   "text": "Å! Så vakker Taj Mahal er!",
+   "lines": 1
+  },
+  {
+   "id": "r167",
+   "section": "no-02",
+   "text": "Å nei! Jeg glemte lommeboken min!",
+   "lines": 1
+  },
+  {
+   "id": "r168",
+   "section": "no-02",
+   "text": "Ideologien er filosofiens skyggen.",
+   "lines": 1
+  },
+  {
+   "id": "r169",
+   "section": "no-02",
+   "text": "Legg tanga i verktøykassa!",
+   "lines": 1
+  },
+  {
+   "id": "r170",
+   "section": "no-02",
+   "text": "Tom tilbrakte jula bak lås og slå.",
+   "lines": 1
+  },
+  {
+   "id": "r171",
+   "section": "no-02",
+   "text": "Hvis du hører alarmen, gå, ikke løp.",
+   "lines": 1
+  },
+  {
+   "id": "r172",
+   "section": "no-02",
+   "text": "Bob og Mary spiller blokkfløyte.",
+   "lines": 1
+  },
+  {
+   "id": "r173",
+   "section": "no-02",
+   "text": "Kunne du lånt meg 10,000 yen?",
+   "lines": 1
+  },
+  {
+   "id": "r174",
+   "section": "no-02",
+   "text": "Ansiktet hennes ble plutselig rødt.",
+   "lines": 1
+  },
+  {
+   "id": "r175",
+   "section": "no-02",
+   "text": "Politiet tok ham på fersk gjerning.",
+   "lines": 1
+  },
+  {
+   "id": "r176",
+   "section": "no-02",
+   "text": "Artistens livsstil er ukonvensjonell.",
+   "lines": 1
+  },
+  {
+   "id": "r177",
+   "section": "no-02",
+   "text": "Guus Hiddink er nederlender.",
+   "lines": 1
+  },
+  {
+   "id": "r178",
+   "section": "no-02",
+   "text": "Husk å få deg en god natts søvn.",
+   "lines": 1
+  },
+  {
+   "id": "r179",
+   "section": "no-02",
+   "text": "Biblioteket er i fjerde etasje.",
+   "lines": 1
+  },
+  {
+   "id": "r180",
+   "section": "no-02",
+   "text": "Hmm, Vil du virkelig lyst til og vite?",
+   "lines": 1
+  },
+  {
+   "id": "r181",
+   "section": "no-02",
+   "text": "La døra stå på gløtt, er du snill.",
+   "lines": 1
+  },
+  {
+   "id": "r182",
+   "section": "no-02",
+   "text": "Onani leder til sinnssykdom.",
+   "lines": 1
+  },
+  {
+   "id": "r183",
+   "section": "no-02",
+   "text": "Sjakalen er full av ugagn.",
+   "lines": 1
+  },
+  {
+   "id": "r184",
+   "section": "no-02",
+   "text": "Temaet fortjener å bli diskutert.",
+   "lines": 1
+  },
+  {
+   "id": "r185",
+   "section": "no-02",
+   "text": "Avbrøt jeg noe viktig?",
+   "lines": 1
+  },
+  {
+   "id": "r186",
+   "section": "no-02",
+   "text": "Hvem er Tatoeba? Din nye kjæreste?",
+   "lines": 1
+  },
+  {
+   "id": "r187",
+   "section": "no-02",
+   "text": "Cookie logret med halen og bjeffet.",
+   "lines": 1
+  },
+  {
+   "id": "r188",
+   "section": "no-02",
+   "text": "Mennad begynte å tegne.",
+   "lines": 1
+  },
+  {
+   "id": "r189",
+   "section": "no-02",
+   "text": "Babyen falt og slo haka i gulvet.",
+   "lines": 1
+  },
+  {
+   "id": "r190",
+   "section": "no-02",
+   "text": "Økonomien var i en elendig forfatning.",
+   "lines": 1
+  },
+  {
+   "id": "r191",
+   "section": "no-02",
+   "text": "Doktor, jeg heter Mutaz.",
+   "lines": 1
+  },
+  {
+   "id": "r192",
+   "section": "no-02",
+   "text": "Dmitri spurte hvor Rima var.",
+   "lines": 1
+  },
+  {
+   "id": "r193",
+   "section": "no-02",
+   "text": "Au, kaffen er glovarm!",
+   "lines": 1
+  },
+  {
+   "id": "r194",
+   "section": "no-02",
+   "text": "Ryggraden består av tjuefire bein.",
+   "lines": 1
+  },
+  {
+   "id": "r195",
+   "section": "no-02",
+   "text": "Frankrike er i Vest-Europa.",
+   "lines": 1
+  },
+  {
+   "id": "r196",
+   "section": "no-02",
+   "text": "Isbjørnen klatret opp en bratt klippe.",
+   "lines": 1
+  },
+  {
+   "id": "r197",
+   "section": "no-02",
+   "text": "George har et utrolig stort adamseple.",
+   "lines": 1
+  },
+  {
+   "id": "r198",
+   "section": "no-02",
+   "text": "Løp raskt nedover skråningen!",
+   "lines": 1
+  },
+  {
+   "id": "r199",
+   "section": "no-02",
+   "text": "Sami hater dette arbeidsmiljøet.",
+   "lines": 1
+  },
+  {
+   "id": "r200",
+   "section": "no-02",
+   "text": "Vi drog til New York med fly.",
+   "lines": 1
+  },
+  {
+   "id": "r201",
+   "section": "en-03",
+   "text": "Snail, slowly, slowly, climb Mt. Fuji!",
+   "lines": 1
+  },
+  {
+   "id": "r202",
+   "section": "en-03",
+   "text": "She enjoys avocado in her sushi rolls.",
+   "lines": 1
+  },
+  {
+   "id": "r203",
+   "section": "en-03",
+   "text": "Igor awoke to a blood-curdling scream.",
+   "lines": 1
+  },
+  {
+   "id": "r204",
+   "section": "en-03",
+   "text": "In 1497, Zuan Caboto explored Canada.",
+   "lines": 1
+  },
+  {
+   "id": "r205",
+   "section": "en-03",
+   "text": "Bishkek is Kyrgyzstan's capital.",
+   "lines": 1
+  },
+  {
+   "id": "r206",
+   "section": "en-03",
+   "text": "Mr Mugabe just said: Kutomba wewe.",
+   "lines": 1
+  },
+  {
+   "id": "r207",
+   "section": "en-03",
+   "text": "Quinctilius Varus, return my legions!",
+   "lines": 1
+  },
+  {
+   "id": "r208",
+   "section": "en-03",
+   "text": "George weighs at least 70 kilograms.",
+   "lines": 1
+  },
+  {
+   "id": "r209",
+   "section": "en-03",
+   "text": "Will anybody stop human trafficking?",
+   "lines": 1
+  },
+  {
+   "id": "r210",
+   "section": "en-03",
+   "text": "The horse-fly buzzes 'zz zz'.",
+   "lines": 1
+  },
+  {
+   "id": "r211",
+   "section": "en-03",
+   "text": "I suffer from idiopathic hypersomnia.",
+   "lines": 1
+  },
+  {
+   "id": "r212",
+   "section": "en-03",
+   "text": "Vuyiswa gave birth to three children.",
+   "lines": 1
+  },
+  {
+   "id": "r213",
+   "section": "en-03",
+   "text": "Dmitri opened his lunchbox.",
+   "lines": 1
+  },
+  {
+   "id": "r214",
+   "section": "en-03",
+   "text": "We'll leave Tokyo for Osaka next week.",
+   "lines": 1
+  },
+  {
+   "id": "r215",
+   "section": "en-03",
+   "text": "Ooh! Chocolate mousse. Yummy.",
+   "lines": 1
+  },
+  {
+   "id": "r216",
+   "section": "en-03",
+   "text": "Hernan Cortes destroyed Aztec culture.",
+   "lines": 1
+  },
+  {
+   "id": "r217",
+   "section": "en-03",
+   "text": "Rodrigo cheerfully thanked Melissa.",
+   "lines": 1
+  },
+  {
+   "id": "r218",
+   "section": "en-03",
+   "text": "Zohran Mamdani is a social democrat.",
+   "lines": 1
+  },
+  {
+   "id": "r219",
+   "section": "en-03",
+   "text": "Sergei Korolev died in 1966.",
+   "lines": 1
+  },
+  {
+   "id": "r220",
+   "section": "en-03",
+   "text": "Swans fiercely guard their cygnets.",
+   "lines": 1
+  },
+  {
+   "id": "r221",
+   "section": "en-03",
+   "text": "Do you drink alcohol regularly?",
+   "lines": 1
+  },
+  {
+   "id": "r222",
+   "section": "en-03",
+   "text": "Bobby may watch TV until 7:00.",
+   "lines": 1
+  },
+  {
+   "id": "r223",
+   "section": "en-03",
+   "text": "How does Iuppiter hurl a thunderbolt?",
+   "lines": 1
+  },
+  {
+   "id": "r224",
+   "section": "en-03",
+   "text": "Typhoon No.9 is approaching Shikoku.",
+   "lines": 1
+  },
+  {
+   "id": "r225",
+   "section": "en-03",
+   "text": "Oy vey! I'm farklempt!",
+   "lines": 1
+  },
+  {
+   "id": "r226",
+   "section": "en-03",
+   "text": "Mary practices rhythmic gymnastics.",
+   "lines": 1
+  },
+  {
+   "id": "r227",
+   "section": "en-03",
+   "text": "Durga puja is also called Akalbodhan.",
+   "lines": 1
+  },
+  {
+   "id": "r228",
+   "section": "en-03",
+   "text": "Is Zelensky a homosexual?",
+   "lines": 1
+  },
+  {
+   "id": "r229",
+   "section": "en-03",
+   "text": "They're obviously enjoying themselves.",
+   "lines": 1
+  },
+  {
+   "id": "r230",
+   "section": "en-03",
+   "text": "Pfirsichbaeumchen writes in Berber.",
+   "lines": 1
+  },
+  {
+   "id": "r231",
+   "section": "en-03",
+   "text": "Jonas was a stupid fifteen-year-old.",
+   "lines": 1
+  },
+  {
+   "id": "r232",
+   "section": "en-03",
+   "text": "Those mushrooms are hallucinogenic.",
+   "lines": 1
+  },
+  {
+   "id": "r233",
+   "section": "en-03",
+   "text": "The sum of 12, 24, 7 and 11 is 54.",
+   "lines": 1
+  },
+  {
+   "id": "r234",
+   "section": "en-03",
+   "text": "Nyurgun and Sayaana speak Yakut.",
+   "lines": 1
+  },
+  {
+   "id": "r235",
+   "section": "en-03",
+   "text": "How's Sara getting back to Baghdad?",
+   "lines": 1
+  },
+  {
+   "id": "r236",
+   "section": "en-03",
+   "text": "Sydney has a beautiful natural harbor.",
+   "lines": 1
+  },
+  {
+   "id": "r237",
+   "section": "en-03",
+   "text": "Keiji Muto is IWGP champion.",
+   "lines": 1
+  },
+  {
+   "id": "r238",
+   "section": "en-03",
+   "text": "Sami visited Al-Masjid an-Nabawi.",
+   "lines": 1
+  },
+  {
+   "id": "r239",
+   "section": "en-03",
+   "text": "Spiritual growth requires openness.",
+   "lines": 1
+  },
+  {
+   "id": "r240",
+   "section": "en-03",
+   "text": "The Acropolis' staircase had 60 steps.",
+   "lines": 1
+  },
+  {
+   "id": "r241",
+   "section": "en-03",
+   "text": "Defense! Go team! Stop 'em!",
+   "lines": 1
+  },
+  {
+   "id": "r242",
+   "section": "en-03",
+   "text": "U.S. troops need to evacuate Iraq.",
+   "lines": 1
+  },
+  {
+   "id": "r243",
+   "section": "en-03",
+   "text": "Could you subscribe to our newspaper?",
+   "lines": 1
+  },
+  {
+   "id": "r244",
+   "section": "en-03",
+   "text": "RFK, Jr. is the American Lysenko.",
+   "lines": 1
+  },
+  {
+   "id": "r245",
+   "section": "en-03",
+   "text": "Ichiro puts friendship above profit.",
+   "lines": 1
+  },
+  {
+   "id": "r246",
+   "section": "en-03",
+   "text": "Israel attacked Lebanon in June 1982.",
+   "lines": 1
+  },
+  {
+   "id": "r247",
+   "section": "en-03",
+   "text": "Ubuntu includes lots of software.",
+   "lines": 1
+  },
+  {
+   "id": "r248",
+   "section": "en-03",
+   "text": "We nicknamed Robert 'Bob'.",
+   "lines": 1
+  },
+  {
+   "id": "r249",
+   "section": "en-03",
+   "text": "Always unplug the VCR when not in use.",
+   "lines": 1
+  },
+  {
+   "id": "r250",
+   "section": "en-03",
+   "text": "Was he, in fact, guilty of wrongdoing?",
+   "lines": 1
+  },
+  {
+   "id": "r251",
+   "section": "no-03",
+   "text": "Oslo er simpelthen unik.",
+   "lines": 1
+  },
+  {
+   "id": "r252",
+   "section": "no-03",
+   "text": "Tross innsatsen hans, mislyktes han.",
+   "lines": 1
+  },
+  {
+   "id": "r253",
+   "section": "no-03",
+   "text": "Gi meg ketchupen, takk.",
+   "lines": 1
+  },
+  {
+   "id": "r254",
+   "section": "no-03",
+   "text": "Hun sies å ha absolutt gehør.",
+   "lines": 1
+  },
+  {
+   "id": "r255",
+   "section": "no-03",
+   "text": "Blekkspruten Paul hadde rett.",
+   "lines": 1
+  },
+  {
+   "id": "r256",
+   "section": "no-03",
+   "text": "Japan og Sør-Korea er naboland.",
+   "lines": 1
+  },
+  {
+   "id": "r257",
+   "section": "no-03",
+   "text": "Titanic traff et isfjell.",
+   "lines": 1
+  },
+  {
+   "id": "r258",
+   "section": "no-03",
+   "text": "Lucy er en amerikansk student.",
+   "lines": 1
+  },
+  {
+   "id": "r259",
+   "section": "no-03",
+   "text": "Middag blir servert ombord i flyet.",
+   "lines": 1
+  },
+  {
+   "id": "r260",
+   "section": "no-03",
+   "text": "Dinosaurer er utdødd nå.",
+   "lines": 1
+  },
+  {
+   "id": "r261",
+   "section": "no-03",
+   "text": "Mary prøvde en ny frisyre.",
+   "lines": 1
+  },
+  {
+   "id": "r262",
+   "section": "no-03",
+   "text": "Jeg har kjøpt gulrøtter og kålrabi.",
+   "lines": 1
+  },
+  {
+   "id": "r263",
+   "section": "no-03",
+   "text": "Fjernsynet er veldig tungt.",
+   "lines": 1
+  },
+  {
+   "id": "r264",
+   "section": "no-03",
+   "text": "Tom sov på luftmadrass.",
+   "lines": 1
+  },
+  {
+   "id": "r265",
+   "section": "no-03",
+   "text": "Typisk nordmann er du iallfall ikke.",
+   "lines": 1
+  },
+  {
+   "id": "r266",
+   "section": "no-03",
+   "text": "Hold kjeft, Albert, teorien din suger.",
+   "lines": 1
+  },
+  {
+   "id": "r267",
+   "section": "no-03",
+   "text": "Skru ned volumet på radioen.",
+   "lines": 1
+  },
+  {
+   "id": "r268",
+   "section": "no-03",
+   "text": "Det nærmeste jeg har er størrelse 38.",
+   "lines": 1
+  },
+  {
+   "id": "r269",
+   "section": "no-03",
+   "text": "Sjåfører bør bruke sikkerhetsbelte.",
+   "lines": 1
+  },
+  {
+   "id": "r270",
+   "section": "no-03",
+   "text": "Når pappa kom hjem, så jeg på TV.",
+   "lines": 1
+  },
+  {
+   "id": "r271",
+   "section": "no-03",
+   "text": "Tom bodde i Australia til 2013.",
+   "lines": 1
+  },
+  {
+   "id": "r272",
+   "section": "no-03",
+   "text": "Situasjonen så ofte håpløs ut.",
+   "lines": 1
+  },
+  {
+   "id": "r273",
+   "section": "no-03",
+   "text": "Var du fornøyd med resultatene?",
+   "lines": 1
+  },
+  {
+   "id": "r274",
+   "section": "no-03",
+   "text": "Moren var fæl mot hennes adoptivsønn.",
+   "lines": 1
+  },
+  {
+   "id": "r275",
+   "section": "no-03",
+   "text": "Kan du anbefale ei god ordbok?",
+   "lines": 1
+  },
+  {
+   "id": "r276",
+   "section": "no-03",
+   "text": "Tom lider av forfølgelsesvanvidd.",
+   "lines": 1
+  },
+  {
+   "id": "r277",
+   "section": "no-03",
+   "text": "Han røska brevet ut av hånda mi.",
+   "lines": 1
+  },
+  {
+   "id": "r278",
+   "section": "no-03",
+   "text": "Magnesium er et kjemisk grunnstoff.",
+   "lines": 1
+  },
+  {
+   "id": "r279",
+   "section": "no-03",
+   "text": "Akslingen er utstyrt med kulelager.",
+   "lines": 1
+  },
+  {
+   "id": "r280",
+   "section": "no-03",
+   "text": "Skoleåret begynner den 10. april.",
+   "lines": 1
+  },
+  {
+   "id": "r281",
+   "section": "no-03",
+   "text": "Spørsmålet kan bare tolkes på en måte.",
+   "lines": 1
+  },
+  {
+   "id": "r282",
+   "section": "no-03",
+   "text": "Vi drikker drue- og bananjuice.",
+   "lines": 1
+  },
+  {
+   "id": "r283",
+   "section": "no-03",
+   "text": "Michael gav den til Dora.",
+   "lines": 1
+  },
+  {
+   "id": "r284",
+   "section": "no-03",
+   "text": "Kunne jeg få telefonnummeret ditt?",
+   "lines": 1
+  },
+  {
+   "id": "r285",
+   "section": "no-03",
+   "text": "Irland er berømt for kniplinger.",
+   "lines": 1
+  },
+  {
+   "id": "r286",
+   "section": "no-03",
+   "text": "Jeg er født og oppvokst i Trondheim.",
+   "lines": 1
+  },
+  {
+   "id": "r287",
+   "section": "no-03",
+   "text": "Ta denne medisinen regelmessig!",
+   "lines": 1
+  },
+  {
+   "id": "r288",
+   "section": "no-03",
+   "text": "Det er moskito selv i Hellas.",
+   "lines": 1
+  },
+  {
+   "id": "r289",
+   "section": "no-03",
+   "text": "Forvarm ovnen til 130 grader.",
+   "lines": 1
+  },
+  {
+   "id": "r290",
+   "section": "no-03",
+   "text": "Mine damer og herrer, vær tålmodige!",
+   "lines": 1
+  },
+  {
+   "id": "r291",
+   "section": "no-03",
+   "text": "Toms eldstedatter er fortsatt ugift.",
+   "lines": 1
+  },
+  {
+   "id": "r292",
+   "section": "no-03",
+   "text": "Texas grenser til Mexico.",
+   "lines": 1
+  },
+  {
+   "id": "r293",
+   "section": "no-03",
+   "text": "Små fisker svømmer i akvariet.",
+   "lines": 1
+  },
+  {
+   "id": "r294",
+   "section": "no-03",
+   "text": "Ulykkesårsaken er ennå ikke klar.",
+   "lines": 1
+  },
+  {
+   "id": "r295",
+   "section": "no-03",
+   "text": "Hvordan sier du XXX på nederlandsk?",
+   "lines": 1
+  },
+  {
+   "id": "r296",
+   "section": "no-03",
+   "text": "Miks eggehvitene på middels hastighet.",
+   "lines": 1
+  },
+  {
+   "id": "r297",
+   "section": "no-03",
+   "text": "Tur-retur? Bare en vei.",
+   "lines": 1
+  },
+  {
+   "id": "r298",
+   "section": "no-03",
+   "text": "Får jeg låne hårføneren?",
+   "lines": 1
+  },
+  {
+   "id": "r299",
+   "section": "no-03",
+   "text": "Nara er like gammel som Kyoto.",
+   "lines": 1
+  },
+  {
+   "id": "r300",
+   "section": "no-03",
+   "text": "Hvem er din favoritt familiemedlem?",
+   "lines": 1
+  },
+  {
+   "id": "r301",
+   "section": "en-04",
+   "text": "A 737 MAX crashed in Ethiopia.",
+   "lines": 1
+  },
+  {
+   "id": "r302",
+   "section": "en-04",
+   "text": "Elijah planted a vegetable garden.",
+   "lines": 1
+  },
+  {
+   "id": "r303",
+   "section": "en-04",
+   "text": "Yitzhak studied Arabic in Haifa.",
+   "lines": 1
+  },
+  {
+   "id": "r304",
+   "section": "en-04",
+   "text": "Me? Encourage you to work? Blasphemy!",
+   "lines": 1
+  },
+  {
+   "id": "r305",
+   "section": "en-04",
+   "text": "Edinburgh is twinned with Kyiv.",
+   "lines": 1
+  },
+  {
+   "id": "r306",
+   "section": "en-04",
+   "text": "Who knows Hu Jintao's birthday?",
+   "lines": 1
+  },
+  {
+   "id": "r307",
+   "section": "en-04",
+   "text": "Technology is advancing rapidly.",
+   "lines": 1
+  },
+  {
+   "id": "r308",
+   "section": "en-04",
+   "text": "I'm significantly less jet-lagged now.",
+   "lines": 1
+  },
+  {
+   "id": "r309",
+   "section": "en-04",
+   "text": "My phone number is: 692-267-752.",
+   "lines": 1
+  },
+  {
+   "id": "r310",
+   "section": "en-04",
+   "text": "A googol is 1 followed by 100 zeros.",
+   "lines": 1
+  },
+  {
+   "id": "r311",
+   "section": "en-04",
+   "text": "I had a hypoglycemic episode.",
+   "lines": 1
+  },
+  {
+   "id": "r312",
+   "section": "en-04",
+   "text": "Ezra, will y'all come over tonight?",
+   "lines": 1
+  },
+  {
+   "id": "r313",
+   "section": "en-04",
+   "text": "Atuqtuaq's father drives a snowmobile.",
+   "lines": 1
+  },
+  {
+   "id": "r314",
+   "section": "en-04",
+   "text": "Covid-19 affected Algeria's economy.",
+   "lines": 1
+  },
+  {
+   "id": "r315",
+   "section": "en-04",
+   "text": "I injured myself playing basketball.",
+   "lines": 1
+  },
+  {
+   "id": "r316",
+   "section": "en-04",
+   "text": "I like Czechoslovakian films.",
+   "lines": 1
+  },
+  {
+   "id": "r317",
+   "section": "en-04",
+   "text": "Flight 226 takes off at 10:30.",
+   "lines": 1
+  },
+  {
+   "id": "r318",
+   "section": "en-04",
+   "text": "Maximum length: 200 words.",
+   "lines": 1
+  },
+  {
+   "id": "r319",
+   "section": "en-04",
+   "text": "The B4 and D-sharp-5 strings snapped.",
+   "lines": 1
+  },
+  {
+   "id": "r320",
+   "section": "en-04",
+   "text": "Do you watch BBC or CNN?",
+   "lines": 1
+  },
+  {
+   "id": "r321",
+   "section": "en-04",
+   "text": "It seems absolutely ridiculous.",
+   "lines": 1
+  },
+  {
+   "id": "r322",
+   "section": "en-04",
+   "text": "Lakshmibai was the queen of Jhansi.",
+   "lines": 1
+  },
+  {
+   "id": "r323",
+   "section": "en-04",
+   "text": "Does sci-fi, you think, insult JC?",
+   "lines": 1
+  },
+  {
+   "id": "r324",
+   "section": "en-04",
+   "text": "To walk is a healthy form of exercise.",
+   "lines": 1
+  },
+  {
+   "id": "r325",
+   "section": "en-04",
+   "text": "Zoe kneaded pizza dough.",
+   "lines": 1
+  },
+  {
+   "id": "r326",
+   "section": "en-04",
+   "text": "Abkhazia and Samachablo are Georgia!",
+   "lines": 1
+  },
+  {
+   "id": "r327",
+   "section": "en-04",
+   "text": "Diplomatic protocol prohibits this.",
+   "lines": 1
+  },
+  {
+   "id": "r328",
+   "section": "en-04",
+   "text": "Try our new 5-in-1 toothpaste.",
+   "lines": 1
+  },
+  {
+   "id": "r329",
+   "section": "en-04",
+   "text": "Yanni's shift is 4:00 PM to 2:00 AM.",
+   "lines": 1
+  },
+  {
+   "id": "r330",
+   "section": "en-04",
+   "text": "Volodymyr became a refugee.",
+   "lines": 1
+  },
+  {
+   "id": "r331",
+   "section": "en-04",
+   "text": "We glorify your resurrection, O Lord.",
+   "lines": 1
+  },
+  {
+   "id": "r332",
+   "section": "en-04",
+   "text": "Dwarf tossing is not an Olympic sport.",
+   "lines": 1
+  },
+  {
+   "id": "r333",
+   "section": "en-04",
+   "text": "Ms. Earth 2013 is Ms. Venezuela.",
+   "lines": 1
+  },
+  {
+   "id": "r334",
+   "section": "en-04",
+   "text": "Galileo died on January 8, 1642.",
+   "lines": 1
+  },
+  {
+   "id": "r335",
+   "section": "en-04",
+   "text": "Antonio simply bid goodbye and left.",
+   "lines": 1
+  },
+  {
+   "id": "r336",
+   "section": "en-04",
+   "text": "Aydar is a Kazakhstani citizen.",
+   "lines": 1
+  },
+  {
+   "id": "r337",
+   "section": "en-04",
+   "text": "Will Erdogan give up on Putin?",
+   "lines": 1
+  },
+  {
+   "id": "r338",
+   "section": "en-04",
+   "text": "Felix downloaded TikTok himself.",
+   "lines": 1
+  },
+  {
+   "id": "r339",
+   "section": "en-04",
+   "text": "Who is Ekrem Imamoglu?",
+   "lines": 1
+  },
+  {
+   "id": "r340",
+   "section": "en-04",
+   "text": "Can anxiety cause dyspepsia?",
+   "lines": 1
+  },
+  {
+   "id": "r341",
+   "section": "en-04",
+   "text": "They conduct a company-wide survey.",
+   "lines": 1
+  },
+  {
+   "id": "r342",
+   "section": "en-04",
+   "text": "Donald is on Kim Jung-Un's death list.",
+   "lines": 1
+  },
+  {
+   "id": "r343",
+   "section": "en-04",
+   "text": "This is a one-of-a-kind hand-knit rug.",
+   "lines": 1
+  },
+  {
+   "id": "r344",
+   "section": "en-04",
+   "text": "Gulab jamuns, jalebis, and kachoris.",
+   "lines": 1
+  },
+  {
+   "id": "r345",
+   "section": "en-04",
+   "text": "The square root of 609,961 is 781.",
+   "lines": 1
+  },
+  {
+   "id": "r346",
+   "section": "en-04",
+   "text": "Libya has two rival parliaments.",
+   "lines": 1
+  },
+  {
+   "id": "r347",
+   "section": "en-04",
+   "text": "Confucius's real name was Kong Qiu.",
+   "lines": 1
+  },
+  {
+   "id": "r348",
+   "section": "en-04",
+   "text": "Paul saw that silhouette again.",
+   "lines": 1
+  },
+  {
+   "id": "r349",
+   "section": "en-04",
+   "text": "Ozzy Osbourne's children are Jewish.",
+   "lines": 1
+  },
+  {
+   "id": "r350",
+   "section": "en-04",
+   "text": "Escape a toxic work environment.",
+   "lines": 1
+  },
+  {
+   "id": "r351",
+   "section": "no-04",
+   "text": "La barna gå av bussen først!",
+   "lines": 1
+  },
+  {
+   "id": "r352",
+   "section": "no-04",
+   "text": "Og jeg ønsker å nevne en detalj til.",
+   "lines": 1
+  },
+  {
+   "id": "r353",
+   "section": "no-04",
+   "text": "Hva er tyngre, bly eller gull?",
+   "lines": 1
+  },
+  {
+   "id": "r354",
+   "section": "no-04",
+   "text": "Toms tippoldefar var slave.",
+   "lines": 1
+  },
+  {
+   "id": "r355",
+   "section": "no-04",
+   "text": "Ring meg klokka syv om morgenen.",
+   "lines": 1
+  },
+  {
+   "id": "r356",
+   "section": "no-04",
+   "text": "Han vil ha peanøttsmør.",
+   "lines": 1
+  },
+  {
+   "id": "r357",
+   "section": "no-04",
+   "text": "Ken fyller 15 neste år.",
+   "lines": 1
+  },
+  {
+   "id": "r358",
+   "section": "no-04",
+   "text": "Vi har ødelagt fiendens flaggskip!",
+   "lines": 1
+  },
+  {
+   "id": "r359",
+   "section": "no-04",
+   "text": "Broren min går på colloege i Kobe.",
+   "lines": 1
+  },
+  {
+   "id": "r360",
+   "section": "no-04",
+   "text": "Lommetyven forsvant i folkemengden.",
+   "lines": 1
+  },
+  {
+   "id": "r361",
+   "section": "no-04",
+   "text": "Har du klatret opp på Mt. Fuji?",
+   "lines": 1
+  },
+  {
+   "id": "r362",
+   "section": "no-04",
+   "text": "Ziri serverte oss pizza og brus.",
+   "lines": 1
+  },
+  {
+   "id": "r363",
+   "section": "no-04",
+   "text": "Du er deprimert, innrøm det!",
+   "lines": 1
+  },
+  {
+   "id": "r364",
+   "section": "no-04",
+   "text": "Skrell og finriv pepperroten.",
+   "lines": 1
+  },
+  {
+   "id": "r365",
+   "section": "no-04",
+   "text": "Lyset sluknet av seg selv.",
+   "lines": 1
+  },
+  {
+   "id": "r366",
+   "section": "no-04",
+   "text": "Jeg vil bli naturfotograf.",
+   "lines": 1
+  },
+  {
+   "id": "r367",
+   "section": "no-04",
+   "text": "Åtte plus ti er atten.",
+   "lines": 1
+  },
+  {
+   "id": "r368",
+   "section": "no-04",
+   "text": "Hyggelig å treffe deg, fru Jones.",
+   "lines": 1
+  },
+  {
+   "id": "r369",
+   "section": "no-04",
+   "text": "Bonsaitrær har en viss sjarm.",
+   "lines": 1
+  },
+  {
+   "id": "r370",
+   "section": "no-04",
+   "text": "Portugal er en republikk.",
+   "lines": 1
+  },
+  {
+   "id": "r371",
+   "section": "no-04",
+   "text": "Vil du ha litt mer roastbiff?",
+   "lines": 1
+  },
+  {
+   "id": "r372",
+   "section": "no-04",
+   "text": "Tanakh er den jødiske Bibelen.",
+   "lines": 1
+  },
+  {
+   "id": "r373",
+   "section": "no-04",
+   "text": "Såpa gjorde vondt i øynene mine.",
+   "lines": 1
+  },
+  {
+   "id": "r374",
+   "section": "no-04",
+   "text": "Han tapte en formue på aksjemarkedet.",
+   "lines": 1
+  },
+  {
+   "id": "r375",
+   "section": "no-04",
+   "text": "Bør Skottland være et uavhengig land?",
+   "lines": 1
+  },
+  {
+   "id": "r376",
+   "section": "no-04",
+   "text": "Vi tilbyr ikke valutaveksling.",
+   "lines": 1
+  },
+  {
+   "id": "r377",
+   "section": "no-04",
+   "text": "Gni flekken inn med eddik.",
+   "lines": 1
+  },
+  {
+   "id": "r378",
+   "section": "no-04",
+   "text": "Hva studerer en sovjetolog?",
+   "lines": 1
+  },
+  {
+   "id": "r379",
+   "section": "no-04",
+   "text": "Italienerne spiser alltid spagetti.",
+   "lines": 1
+  },
+  {
+   "id": "r380",
+   "section": "no-04",
+   "text": "Jeg trådte forsiktig på gasspedalen.",
+   "lines": 1
+  },
+  {
+   "id": "r381",
+   "section": "no-04",
+   "text": "Vi så en baseball-kamp på TV.",
+   "lines": 1
+  },
+  {
+   "id": "r382",
+   "section": "no-04",
+   "text": "Afrika er menneskehetens vugge.",
+   "lines": 1
+  },
+  {
+   "id": "r383",
+   "section": "no-04",
+   "text": "Han skjærte ut en buddhafigur av tre.",
+   "lines": 1
+  },
+  {
+   "id": "r384",
+   "section": "no-04",
+   "text": "Les avsnittet på side 22, er du snill.",
+   "lines": 1
+  },
+  {
+   "id": "r385",
+   "section": "no-04",
+   "text": "Hun tok et dypt åndedrag.",
+   "lines": 1
+  },
+  {
+   "id": "r386",
+   "section": "no-04",
+   "text": "Universet er et mysterium.",
+   "lines": 1
+  },
+  {
+   "id": "r387",
+   "section": "no-04",
+   "text": "Han prøvde å avlede oppmerksomheten.",
+   "lines": 1
+  },
+  {
+   "id": "r388",
+   "section": "no-04",
+   "text": "Flyttingen gjør meg oppglødd.",
+   "lines": 1
+  },
+  {
+   "id": "r389",
+   "section": "no-04",
+   "text": "Han lyser av entusiasme.",
+   "lines": 1
+  },
+  {
+   "id": "r390",
+   "section": "no-04",
+   "text": "Mario og Luigi er brødre.",
+   "lines": 1
+  },
+  {
+   "id": "r391",
+   "section": "no-04",
+   "text": "Kostnaden kom på tolv pesos.",
+   "lines": 1
+  },
+  {
+   "id": "r392",
+   "section": "no-04",
+   "text": "Du blir urettferdig behandlet.",
+   "lines": 1
+  },
+  {
+   "id": "r393",
+   "section": "no-04",
+   "text": "Layla var Sami's gravide barn.",
+   "lines": 1
+  },
+  {
+   "id": "r394",
+   "section": "no-04",
+   "text": "Er det noen suvenirbutikker her?",
+   "lines": 1
+  },
+  {
+   "id": "r395",
+   "section": "no-04",
+   "text": "Vi har jordbær- og sjokoladekjeks.",
+   "lines": 1
+  },
+  {
+   "id": "r396",
+   "section": "no-04",
+   "text": "Hanako glemte paraplyen sin igjen.",
+   "lines": 1
+  },
+  {
+   "id": "r397",
+   "section": "no-04",
+   "text": "Admiralen er aldri fornøyd.",
+   "lines": 1
+  },
+  {
+   "id": "r398",
+   "section": "no-04",
+   "text": "Vennligst avstå fra å røyke.",
+   "lines": 1
+  },
+  {
+   "id": "r399",
+   "section": "no-04",
+   "text": "Skipet vil krysse ekvator i morgen.",
+   "lines": 1
+  },
+  {
+   "id": "r400",
+   "section": "no-04",
+   "text": "Tegn en linje fra A til B.",
+   "lines": 1
+  },
+  {
+   "id": "r401",
+   "section": "en-05",
+   "text": "Megduda is Yidir's wife.",
+   "lines": 1
+  },
+  {
+   "id": "r402",
+   "section": "en-05",
+   "text": "Water freezes at 0 degrees Centigrade.",
+   "lines": 1
+  },
+  {
+   "id": "r403",
+   "section": "en-05",
+   "text": "On August 9th, 1887, I got married.",
+   "lines": 1
+  },
+  {
+   "id": "r404",
+   "section": "en-05",
+   "text": "See you at Chizhik-Pyzhik monument.",
+   "lines": 1
+  },
+  {
+   "id": "r405",
+   "section": "en-05",
+   "text": "Fyodor saved enough to buy an RV.",
+   "lines": 1
+  },
+  {
+   "id": "r406",
+   "section": "en-05",
+   "text": "Vladimir immediately got goosebumps.",
+   "lines": 1
+  },
+  {
+   "id": "r407",
+   "section": "en-05",
+   "text": "Today is Tuesday, December 17th.",
+   "lines": 1
+  },
+  {
+   "id": "r408",
+   "section": "en-05",
+   "text": "Is the Tatoeba Corpus genre-balanced?",
+   "lines": 1
+  },
+  {
+   "id": "r409",
+   "section": "en-05",
+   "text": "Boys' club, girls OUT!",
+   "lines": 1
+  },
+  {
+   "id": "r410",
+   "section": "en-05",
+   "text": "Buzzing Magnets make a funny noise.",
+   "lines": 1
+  },
+  {
+   "id": "r411",
+   "section": "en-05",
+   "text": "Time violation warning, Mr Djokovic.",
+   "lines": 1
+  },
+  {
+   "id": "r412",
+   "section": "en-05",
+   "text": "Janos joined a new jiu-jitsu school.",
+   "lines": 1
+  },
+  {
+   "id": "r413",
+   "section": "en-05",
+   "text": "This adaptor converts USB to HDMI.",
+   "lines": 1
+  },
+  {
+   "id": "r414",
+   "section": "en-05",
+   "text": "O-oi!? Don't rip off my precious hair!",
+   "lines": 1
+  },
+  {
+   "id": "r415",
+   "section": "en-05",
+   "text": "Upsy-daisy! Up you go.",
+   "lines": 1
+  },
+  {
+   "id": "r416",
+   "section": "en-05",
+   "text": "Matthew had a 2014 Jeep Wrangler.",
+   "lines": 1
+  },
+  {
+   "id": "r417",
+   "section": "en-05",
+   "text": "Kirkuk is a multi-ethnic city.",
+   "lines": 1
+  },
+  {
+   "id": "r418",
+   "section": "en-05",
+   "text": "Boldi had an unusual overfatigue.",
+   "lines": 1
+  },
+  {
+   "id": "r419",
+   "section": "en-05",
+   "text": "April 12th is Yuri's Night.",
+   "lines": 1
+  },
+  {
+   "id": "r420",
+   "section": "en-05",
+   "text": "Chlorophyll was discovered in 1817.",
+   "lines": 1
+  },
+  {
+   "id": "r421",
+   "section": "en-05",
+   "text": "I've already begun studying French.",
+   "lines": 1
+  },
+  {
+   "id": "r422",
+   "section": "en-05",
+   "text": "Why did WTC 7 collapse?",
+   "lines": 1
+  },
+  {
+   "id": "r423",
+   "section": "en-05",
+   "text": "Most months have 30 or 31 days.",
+   "lines": 1
+  },
+  {
+   "id": "r424",
+   "section": "en-05",
+   "text": "Tsez has one hundred twenty-six cases.",
+   "lines": 1
+  },
+  {
+   "id": "r425",
+   "section": "en-05",
+   "text": "Food packaging reduces spoilage.",
+   "lines": 1
+  },
+  {
+   "id": "r426",
+   "section": "en-05",
+   "text": "Help Tom! Otherwise, he'll die.",
+   "lines": 1
+  },
+  {
+   "id": "r427",
+   "section": "en-05",
+   "text": "The Khwarazmians sacked Jerusalem.",
+   "lines": 1
+  },
+  {
+   "id": "r428",
+   "section": "en-05",
+   "text": "The frog croaks 'ribbit'.",
+   "lines": 1
+  },
+  {
+   "id": "r429",
+   "section": "en-05",
+   "text": "Mexico, you hurt so much!",
+   "lines": 1
+  },
+  {
+   "id": "r430",
+   "section": "en-05",
+   "text": "Haha, just kidding... unless?",
+   "lines": 1
+  },
+  {
+   "id": "r431",
+   "section": "en-05",
+   "text": "I saw Shin'ichi in Kakogawa yesterday.",
+   "lines": 1
+  },
+  {
+   "id": "r432",
+   "section": "en-05",
+   "text": "Tamagoyaki is a Japanese-style omelet.",
+   "lines": 1
+  },
+  {
+   "id": "r433",
+   "section": "en-05",
+   "text": "Tom passed the JLPT N3 exam.",
+   "lines": 1
+  },
+  {
+   "id": "r434",
+   "section": "en-05",
+   "text": "Lex Luthor is Superman's arch-villain.",
+   "lines": 1
+  },
+  {
+   "id": "r435",
+   "section": "en-05",
+   "text": "Which is better, an AK47 or an M16?",
+   "lines": 1
+  },
+  {
+   "id": "r436",
+   "section": "en-05",
+   "text": "Elephant tusks consist of ivory.",
+   "lines": 1
+  },
+  {
+   "id": "r437",
+   "section": "en-05",
+   "text": "The tuning note A4 is equal to 440 Hz.",
+   "lines": 1
+  },
+  {
+   "id": "r438",
+   "section": "en-05",
+   "text": "Cockroach eggs are minuscule.",
+   "lines": 1
+  },
+  {
+   "id": "r439",
+   "section": "en-05",
+   "text": "What a cute baby! Peek-a-boo!",
+   "lines": 1
+  },
+  {
+   "id": "r440",
+   "section": "en-05",
+   "text": "Gabriel quickly subdued Rima.",
+   "lines": 1
+  },
+  {
+   "id": "r441",
+   "section": "en-05",
+   "text": "Aren't you busy tomorrow afternoon?",
+   "lines": 1
+  },
+  {
+   "id": "r442",
+   "section": "en-05",
+   "text": "Ichiro hit an eye-popping double.",
+   "lines": 1
+  },
+  {
+   "id": "r443",
+   "section": "en-05",
+   "text": "He's a dyed-in-the-wool conservative.",
+   "lines": 1
+  },
+  {
+   "id": "r444",
+   "section": "en-05",
+   "text": "I am receiving unemployment benefits.",
+   "lines": 1
+  },
+  {
+   "id": "r445",
+   "section": "en-05",
+   "text": "Cryptocurrency is a pyramid scheme.",
+   "lines": 1
+  },
+  {
+   "id": "r446",
+   "section": "en-05",
+   "text": "Is Murphy's Law infallible?",
+   "lines": 1
+  },
+  {
+   "id": "r447",
+   "section": "en-05",
+   "text": "My luggage combination is 1-2-3-4-5.",
+   "lines": 1
+  },
+  {
+   "id": "r448",
+   "section": "en-05",
+   "text": "Slums develop as ghettos of poverty.",
+   "lines": 1
+  },
+  {
+   "id": "r449",
+   "section": "en-05",
+   "text": "Aaah!! My computer is broken!",
+   "lines": 1
+  },
+  {
+   "id": "r450",
+   "section": "en-05",
+   "text": "Daddy, buy me a vuvuzela!",
+   "lines": 1
+  },
+  {
+   "id": "r451",
+   "section": "no-05",
+   "text": "Fillippinene ligger i Asia.",
+   "lines": 1
+  },
+  {
+   "id": "r452",
+   "section": "no-05",
+   "text": "Jeg har lavt blodtrykk.",
+   "lines": 1
+  },
+  {
+   "id": "r453",
+   "section": "no-05",
+   "text": "Du har ei rift i buksa.",
+   "lines": 1
+  },
+  {
+   "id": "r454",
+   "section": "no-05",
+   "text": "Beklager, boken er utsolgt.",
+   "lines": 1
+  },
+  {
+   "id": "r455",
+   "section": "no-05",
+   "text": "Nick skylder meg ti dollar.",
+   "lines": 1
+  },
+  {
+   "id": "r456",
+   "section": "no-05",
+   "text": "Yumi er flink til å spille tennis.",
+   "lines": 1
+  },
+  {
+   "id": "r457",
+   "section": "no-05",
+   "text": "Ja, jeg tilhører sirkuset.",
+   "lines": 1
+  },
+  {
+   "id": "r458",
+   "section": "no-05",
+   "text": "Kjøp med deg tofu på veien hjem.",
+   "lines": 1
+  },
+  {
+   "id": "r459",
+   "section": "no-05",
+   "text": "Du ankom en halvtime for tidlig.",
+   "lines": 1
+  },
+  {
+   "id": "r460",
+   "section": "no-05",
+   "text": "Perfekt. Takk skal du ha.",
+   "lines": 1
+  },
+  {
+   "id": "r461",
+   "section": "no-05",
+   "text": "Mamma! Hector plager meg!",
+   "lines": 1
+  },
+  {
+   "id": "r462",
+   "section": "no-05",
+   "text": "Fransk utviklet fra latin.",
+   "lines": 1
+  },
+  {
+   "id": "r463",
+   "section": "no-05",
+   "text": "Trekkfugler flyr sørover om høsten.",
+   "lines": 1
+  },
+  {
+   "id": "r464",
+   "section": "no-05",
+   "text": "Festen ble holdt på 22. mai.",
+   "lines": 1
+  },
+  {
+   "id": "r465",
+   "section": "no-05",
+   "text": "Hun driver en skjønnhetssalong.",
+   "lines": 1
+  },
+  {
+   "id": "r466",
+   "section": "no-05",
+   "text": "Du er akkurat tidsnok.",
+   "lines": 1
+  },
+  {
+   "id": "r467",
+   "section": "no-05",
+   "text": "Hobbyen min er å besøke gamle templer.",
+   "lines": 1
+  },
+  {
+   "id": "r468",
+   "section": "no-05",
+   "text": "Møtet var forrige måned.",
+   "lines": 1
+  },
+  {
+   "id": "r469",
+   "section": "no-05",
+   "text": "Spådommen din har gått i oppfyllelse.",
+   "lines": 1
+  },
+  {
+   "id": "r470",
+   "section": "no-05",
+   "text": "Vann består av hydrogen og oksygen.",
+   "lines": 1
+  },
+  {
+   "id": "r471",
+   "section": "no-05",
+   "text": "Et leende barn åpnet døren.",
+   "lines": 1
+  },
+  {
+   "id": "r472",
+   "section": "no-05",
+   "text": "Ærlig talt: Jeg ikke liker alt dette.",
+   "lines": 1
+  },
+  {
+   "id": "r473",
+   "section": "no-05",
+   "text": "Det var en jevn økning av innbyggere.",
+   "lines": 1
+  },
+  {
+   "id": "r474",
+   "section": "no-05",
+   "text": "Når drar du til Europa?",
+   "lines": 1
+  },
+  {
+   "id": "r475",
+   "section": "no-05",
+   "text": "Suppen hadde en ufyselig smak.",
+   "lines": 1
+  },
+  {
+   "id": "r476",
+   "section": "no-05",
+   "text": "Naboen min totalrenoverte huset sitt.",
+   "lines": 1
+  },
+  {
+   "id": "r477",
+   "section": "no-05",
+   "text": "Jeg vil ha MP3-spiller!",
+   "lines": 1
+  },
+  {
+   "id": "r478",
+   "section": "no-05",
+   "text": "Falafel er en god proteinkilde.",
+   "lines": 1
+  },
+  {
+   "id": "r479",
+   "section": "no-05",
+   "text": "Du er fremdeles involvert.",
+   "lines": 1
+  },
+  {
+   "id": "r480",
+   "section": "no-05",
+   "text": "Intet Nytt fra Vestfronten.",
+   "lines": 1
+  },
+  {
+   "id": "r481",
+   "section": "no-05",
+   "text": "Ikke nøl med å spørre om råd.",
+   "lines": 1
+  },
+  {
+   "id": "r482",
+   "section": "no-05",
+   "text": "Klabaster og Gizmo er katter.",
+   "lines": 1
+  },
+  {
+   "id": "r483",
+   "section": "no-05",
+   "text": "Forhåpentligvis snart begynner å tine.",
+   "lines": 1
+  },
+  {
+   "id": "r484",
+   "section": "no-05",
+   "text": "Jeg kjøpte et kamera for 30 000 yen.",
+   "lines": 1
+  },
+  {
+   "id": "r485",
+   "section": "no-05",
+   "text": "Toms jobb er å selge bruktbiler.",
+   "lines": 1
+  },
+  {
+   "id": "r486",
+   "section": "no-05",
+   "text": "Yokohama er en koselig havneby.",
+   "lines": 1
+  },
+  {
+   "id": "r487",
+   "section": "no-05",
+   "text": "Jo flere kokker, dess mer søl.",
+   "lines": 1
+  },
+  {
+   "id": "r488",
+   "section": "no-05",
+   "text": "Jeg heter Ichiro Tanaka.",
+   "lines": 1
+  },
+  {
+   "id": "r489",
+   "section": "no-05",
+   "text": "De skal emigrere til USA.",
+   "lines": 1
+  },
+  {
+   "id": "r490",
+   "section": "no-05",
+   "text": "Hvilken CD vil du høre på?",
+   "lines": 1
+  },
+  {
+   "id": "r491",
+   "section": "no-05",
+   "text": "Har du sett oppskriftsboka jeg skrev?",
+   "lines": 1
+  },
+  {
+   "id": "r492",
+   "section": "no-05",
+   "text": "Jeg er en uavhengig journalist.",
+   "lines": 1
+  },
+  {
+   "id": "r493",
+   "section": "no-05",
+   "text": "Det er et ambisiøst prosjekt.",
+   "lines": 1
+  },
+  {
+   "id": "r494",
+   "section": "no-05",
+   "text": "Det er sju farger i regnbuen.",
+   "lines": 1
+  },
+  {
+   "id": "r495",
+   "section": "no-05",
+   "text": "Røyking er strengt forbudt.",
+   "lines": 1
+  },
+  {
+   "id": "r496",
+   "section": "no-05",
+   "text": "Kvalifiserte du deg til neste runde?",
+   "lines": 1
+  },
+  {
+   "id": "r497",
+   "section": "no-05",
+   "text": "Du gjør meg så jævla kåt!",
+   "lines": 1
+  },
+  {
+   "id": "r498",
+   "section": "no-05",
+   "text": "Jeg skal bygge slakterier i Ukraina.",
+   "lines": 1
+  },
+  {
+   "id": "r499",
+   "section": "no-05",
+   "text": "Milano er hovedstaden i Lombardia.",
+   "lines": 1
+  },
+  {
+   "id": "r500",
+   "section": "no-05",
+   "text": "Jeg har bodd i Paris siden 1977.",
+   "lines": 1
+  }
+ ]
+}
