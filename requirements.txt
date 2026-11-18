@@ -1,3 +1,4 @@
 pyserial>=3.5
 Pillow>=9.0        # raster -> pen-path SVG conversion (tools/image_to_svg.py)
 fonttools>=4.40    # SVG <text> -> outline paths for vector technical drawings
+shapely>=2.0      # optional: union/subtract/intersect/offset of bed objects (apt: python3-shapely)

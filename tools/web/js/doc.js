@@ -198,7 +198,7 @@ async function refreshNaturals() {
 
 // ------------------------------------------------------------------ adding and arranging
 // Put a library drawing on the bed at natural size (shrunk to fit the canvas), next to what is there.
-export async function addFile(id, { select: pick = true, at = null } = {}) {
+export async function addFile(id, { select: pick = true, at = null, replace = [] } = {}) {
   const entry = state.files.find((f) => f.id === id);
   if (!entry) { toast('That file is no longer in the library.', true); return null; }
   if (jobActive()) { toast('A job is running: add it to the bed when it ends.', true); return null; }
@@ -221,7 +221,11 @@ export async function addFile(id, { select: pick = true, at = null } = {}) {
   }
   if (at) { o.x = G.r2(at[0]); o.y = G.r2(at[1]); }
   edit((d) => {
-    d.objects.push(o);
+    if (replace.length) {          // a shape result takes the place (and plot order) of what it was made from
+      const at_ = d.objects.findIndex((x) => replace.includes(x.id));
+      d.objects = d.objects.filter((x) => !replace.includes(x.id));
+      d.objects.splice(Math.max(0, at_), 0, o);
+    } else d.objects.push(o);
     if (entry.pen) {
       // A test sheet belongs to one pen: preset it on the sheet's layers that have no pen yet.
       for (const ly of n.layers) {

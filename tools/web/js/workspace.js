@@ -89,6 +89,8 @@ function renderArrange() {
   xf.rot.disabled = locked || !one;
   xf.rot.placeholder = one ? '' : 'one only';
   $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to canvas';
+  $('shapeRow').hidden = !(state.me && state.me.features && state.me.features.shapes);
+  for (const k of ['union', 'subtract', 'intersect']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 2;
   for (const k of ['distx', 'disty']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
 }
 
@@ -132,6 +134,8 @@ function act(a) {
   else if (a === 'fit') D.fitCanvas();
   else if (a === 'dup') D.duplicateSel();
   else if (a === 'array') openArray();
+  else if (['union', 'subtract', 'intersect'].includes(a)) shapeOp(a);
+  else if (a === 'offset') openOffset();
   else if (a === 'del') D.removeSel();
   else D.align(a);
 }
@@ -153,6 +157,26 @@ function renderObjects() {
       el('span', { class: 'spacer' }),
       mv('down', '▲', 'Plot earlier (within each pen)'), mv('up', '▼', 'Plot later (within each pen)'));
   }));
+}
+
+// Union, subtract, intersect replace the selection with the result (Undo brings it back); offset adds an outline.
+async function shapeOp(op, extra = {}) {
+  const sel = D.selected();
+  try {
+    const r = await post('/api/shapes', { op, objects: sel, ...extra });
+    await refreshFiles();
+    await D.addFile(r.file.id, { at: [r.x, r.y], replace: op === 'offset' ? [] : sel.map((o) => o.id) });
+  } catch (e) { toast(e.message, true); }
+}
+
+function openOffset() {
+  const d = $('offsetDlg'), f = $('offsetForm');
+  d.returnValue = '';
+  d.onclose = () => {
+    if (d.returnValue !== 'ok') return;
+    shapeOp('offset', { distance: Number(f.distance.value), join: f.join.value });
+  };
+  d.showModal();
 }
 
 function openArray() {

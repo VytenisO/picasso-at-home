@@ -47,7 +47,7 @@ niche.
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
 6. **Canvas QoL** (done 2026-11-18). Rulers, snapping to objects and guides, non-plotting guide layer, context menu, status bar with
    selection bounds.
-7. **Image and text** (done 2026-11-18, except booleans and offset). Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
+7. **Image and text** (done 2026-11-18). Image adjust with side-by-side preview, centre-line trace, speck filter, crop/mask, and
    single-line fonts. Then a click-to-place text tool, booleans, offset and arrays.
 
 ---
@@ -216,8 +216,8 @@ niche.
 | Break apart into separate paths | TODO | P2 | |
 | Reverse path direction | TODO | P2 | |
 | Set start point of a closed path | TODO | P2 | seam placement |
-| Offset (in, out, both; round/miter/bevel corners) | TODO | P2 | needs polygon clipping; the plotter host has no shapely and nothing is installed there, so it waits for a vendored clipper |
-| Booleans: union/weld, subtract, intersect | TODO | P2 | same: polygon clipping first |
+| Offset (in, out, both; round/miter/bevel corners) | HAVE | | Arrange, Offset: outward or inward, round, sharp or cut corners; lines get a band (shapely; python3-shapely on robotlab) |
+| Booleans: union/weld, subtract, intersect | HAVE | | Arrange: union, subtract (others from the first), intersect; the result replaces the selection as a new library drawing |
 | Cut shapes with a closed shape | TODO | P3 | |
 | Fillet corners | TODO | P3 | |
 | Convex outline around a selection | TODO | P3 | |

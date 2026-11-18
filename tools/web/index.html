@@ -411,6 +411,13 @@
           <button type="button" data-act="distx" title="Equal gaps left to right (three or more)">Spread H</button>
           <button type="button" data-act="disty" title="Equal gaps top to bottom (three or more)">Spread V</button>
         </div>
+        <div class="tool-row" role="group" aria-label="Shapes" id="shapeRow" hidden>
+          <span class="muted">Shapes (closed outlines)</span>
+          <button type="button" data-act="union" title="Merge the selected shapes into one outline: overlapping lines go">Union</button>
+          <button type="button" data-act="subtract" title="Cut the others out of the first one in the list">Subtract</button>
+          <button type="button" data-act="intersect" title="Keep only where all the selected shapes overlap">Intersect</button>
+          <button type="button" data-act="offset" title="A new outline a set distance outside (or inside) the selection">Offset</button>
+        </div>
         <div class="tool-row" role="group" aria-label="Place">
           <button type="button" data-act="anchor" id="toAnchor" title="Put the reference point on the same point of the canvas">To canvas top-left</button>
           <button type="button" data-act="fit" title="Scale to fill the canvas and centre">Fit canvas</button>
@@ -594,6 +601,20 @@
     </div>
     <p class="hint" id="arrayNote"></p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Make copies</button></div>
+  </form>
+</dialog>
+
+<dialog id="offsetDlg" aria-labelledby="offsetDlgTitle">
+  <form method="dialog" class="dlg" id="offsetForm">
+    <h2 id="offsetDlgTitle">Offset</h2>
+    <p class="hint">A new outline this far outside the selection (negative: inside closed shapes). Lines get a band
+      around them. The selection stays.</p>
+    <div class="field-row">
+      <label class="field"><span>Distance (mm)</span><input name="distance" type="number" min="-50" max="50" step="0.5" value="2"></label>
+      <label class="field"><span>Corners</span><select name="join"><option value="round">Round</option>
+        <option value="mitre">Sharp</option><option value="bevel">Cut off</option></select></label>
+    </div>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Make outline</button></div>
   </form>
 </dialog>
 

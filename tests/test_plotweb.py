@@ -558,6 +558,38 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/text_single", {"text": "x", "font": "Comic Sans"})
         self.assertEqual(code, 400)
 
+    def test_04e_shape_operations(self):
+        sq = b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="20mm" viewBox="0 0 20 20"><rect x="0" y="0" width="20" height="20" stroke="#000"/></svg>'
+        code, d = self.call("POST", "/api/files/upload", raw=sq, headers={"X-Filename": "sq.svg", "X-Params": "{}"})
+        fid = d["file"]["id"]
+        a, b = self.obj(fid, 100, 50, 20, 20), self.obj(fid, 110, 60, 20, 20)
+        code, me = self.call("GET", "/api/me")
+        if not me["features"]["shapes"]:
+            self.skipTest("no shapely here")
+
+        def op(name, objs, **kw):
+            code, r = self.call("POST", "/api/shapes", dict({"op": name, "objects": objs}, **kw))
+            self.assertEqual(code, 200, r)
+            return r
+        r = op("union", [a, b])
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (100, 50, 30, 30))
+        code, n = self.call("GET", f"/api/files/natural?id={r['file']['id']}")
+        self.assertEqual(len(n["strokes"]), 1)                         # one outline, the overlap gone
+        r = op("intersect", [a, b])
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (110, 60, 10, 10))
+        r = op("subtract", [a, b])
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (100, 50, 20, 20))
+        r = op("offset", [a], distance=2, join="mitre")
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (98, 48, 24, 24))
+        r = op("offset", [a], distance=-3)
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (103, 53, 14, 14))
+        far = self.obj(fid, 200, 150, 20, 20)
+        code, r = self.call("POST", "/api/shapes", {"op": "intersect", "objects": [a, far]})
+        self.assertEqual(code, 400)
+        self.assertIn("empty", r["error"])
+        code, r = self.call("POST", "/api/shapes", {"op": "union", "objects": [a]})
+        self.assertEqual(code, 400)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

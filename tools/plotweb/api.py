@@ -16,7 +16,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import converters, document, hardware, machinecfg, plotjob, prepare, tools
+from . import converters, document, hardware, machinecfg, plotjob, prepare, shapes, tools
 from .auth import COOKIE, SESSION_AGE, Auth
 from .config import LIMITS, WEB
 from .events import EventLog
@@ -63,7 +63,8 @@ class App:
     def me(self, authed):
         bed = self.s.bed()
         return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
-                "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch}
+                "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch,
+                "features": {"shapes": shapes.available()}}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
@@ -282,6 +283,46 @@ class App:
                 new[ly["key"].split("|")[0]] = ly["pen"]
         if new != m:
             (self.s.cache / "pen_map.json").write_text(json.dumps(new, indent=1))
+
+    def shape_op(self, body):
+        """Union, subtract, intersect or offset of bed objects -> a new library drawing and where it sits."""
+        import collections
+        import plot_svg
+        known = {e["id"] for e in self.lib.list()}
+        try:
+            objs = document.clean_objects(body.get("objects") or [], known)
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        if not objs:
+            raise ApiError(400, "Select the objects first.")
+        op = body.get("op")
+        try:
+            distance = float(body.get("distance") or 0)
+        except (TypeError, ValueError):
+            raise ApiError(400, "The offset must be a number of mm.")
+        bed = self.s.bed()
+        per, colors = [], collections.Counter()
+        for o in objs:
+            e, p = self._entry(o["file"])
+            g = self.geometry(e, p)[0]
+            tmp = self.plan_dir / f"shape_{secrets.token_hex(4)}.svg"
+            try:
+                tmp.write_bytes(document.compose([o], {o["file"]: (p, g)}, bed))
+                polys, metas, _, _ = plot_svg.load_svg(str(tmp), True)
+            finally:
+                tmp.unlink(missing_ok=True)
+            per.append(polys)
+            colors.update(m.get("color") or "#000000" for m in metas)
+        try:
+            res = shapes.run(op, per, distance, body.get("join") or "round")
+        except shapes.ShapeError as ex:
+            raise ApiError(400, str(ex))
+        text, b = shapes.svg(res, colors.most_common(1)[0][0] if colors else "#000000")
+        names = sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs})
+        e = self.lib.add_svg_text(text, f"{op}-{'-'.join(names)[:40]}.svg", kind="shape")
+        self.ev.log("info", f"Shape {op} of {len(objs)} object(s) -> {e['name']}.")
+        return {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
+                "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3)}
 
     def preview_doc(self, body):
         raw = body["doc"]
@@ -1106,6 +1147,9 @@ class Handler(BaseHTTPRequestHandler):
         body = self.json_body()
         self.send(200, self.app.preview_doc(body) if isinstance(body.get("doc"), dict) else self.app.preview(body))
 
+    def r_shapes(self):
+        self.send(200, self.app.shape_op(self.json_body()))
+
     def r_natural(self):
         self.send(200, self.app.natural(self.query().get("id", "")))
 
@@ -1284,6 +1328,7 @@ ROUTES_POST = {
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),
     "/api/text_single": (Handler.r_text_single, True),
+    "/api/shapes": (Handler.r_shapes, True),
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
     "/api/machine/start": (Handler.r_machine_start, True),
