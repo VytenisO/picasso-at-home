@@ -59,4 +59,4 @@ def test_handwriting_data_is_git_ignored():
         r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=ROOT)
         assert r.returncode == 0, f"{rel} is not ignored by git"
     tracked = subprocess.run(["git", "ls-files", "handwriting"], cwd=ROOT, capture_output=True, text=True).stdout.split()
-    assert tracked in ([], ["handwriting/prompts.json"]), tracked      # only the shared prompt list may be tracked
+    assert set(tracked) <= {"handwriting/prompts.json", "handwriting/prompts-lines.json"}, tracked      # only the shared prompt lists may be tracked

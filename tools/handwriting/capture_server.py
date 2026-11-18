@@ -66,6 +66,15 @@ def validate(body, prompt):
     return None
 
 
+def clean_pressure(v):
+    """What the pen reported, kept small and typed: {real, type, min, max, levels} or None."""
+    if not isinstance(v, dict):
+        return None
+    num = lambda x: x if isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) else None
+    return {"real": bool(v.get("real")), "type": str(v.get("type", ""))[:16], "min": num(v.get("min")),
+            "max": num(v.get("max")), "levels": int(num(v.get("levels")) or 0)}
+
+
 class Store:
     def __init__(self, root, prompts_path):
         self.dir = pathlib.Path(root)
@@ -96,7 +105,7 @@ class Store:
         p = self.prompts[pid]
         rec = {"version": 1, "id": pid, "text": p["text"], "section": p["section"], "lines": p.get("lines", 1),
                "saved": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-               "pointer": str(body.get("pointer", ""))[:16], "canvas": body["canvas"], "guide": body["guide"],
+               "pointer": str(body.get("pointer", ""))[:16], "pressure_info": clean_pressure(body.get("pressure_info")), "canvas": body["canvas"], "guide": body["guide"],
                "strokes": body["strokes"]}
         f = self.dir / f"{pid}.json"
         with LOCK:

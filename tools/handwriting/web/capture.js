@@ -10,6 +10,7 @@ const GUIDE2 = () => getComputedStyle(document.documentElement).getPropertyValue
 let prompts = [], done = {}, order = [], cur = 0;
 let tBase = 0, strokes = [], live = null, t0 = null, dirty = false, sawPen = false, pointerKind = "";
 let xh = 48, guide = null;
+let pstat = { n: 0, min: 1, max: 0, levels: new Set(), type: "" };     // what the pen reported for the strokes on this prompt
 
 function store(k, v) { try { localStorage.setItem("hw." + k, String(v)); } catch (e) { /* private mode */ } }
 function recall(k) { try { return localStorage.getItem("hw." + k); } catch (e) { return null; } }
@@ -62,7 +63,7 @@ function drawStroke(s) {
     ctx.beginPath(); ctx.arc(s[0][0], s[0][1], 1.2 + 2.2 * s[0][3], 0, 6.2832); ctx.fill(); return;
   }
   for (let i = 1; i < s.length; i++) {
-    ctx.lineWidth = 1.2 + 3.2 * (s[i][3] + s[i - 1][3]) / 2;
+    ctx.lineWidth = 0.8 + 4.6 * (s[i][3] + s[i - 1][3]) / 2;
     ctx.beginPath(); ctx.moveTo(s[i - 1][0], s[i - 1][1]); ctx.lineTo(s[i][0], s[i][1]); ctx.stroke();
   }
 }
@@ -79,6 +80,10 @@ function addPoint(e) {
   if (t0 === null) t0 = e.timeStamp - tBase;
   const pr = e.pointerType === "mouse" ? 0.5 : (e.pressure > 0 ? e.pressure : 0.05);
   const pt = [+(e.clientX - r.left).toFixed(2), +(e.clientY - r.top).toFixed(2), +(e.timeStamp - t0).toFixed(1), +pr.toFixed(3)];
+  if (e.pointerType !== "mouse") {
+    pstat.n++; pstat.type = e.pointerType; pstat.min = Math.min(pstat.min, pr); pstat.max = Math.max(pstat.max, pr);
+    pstat.levels.add(Math.round(pr * 100));
+  }
   const last = live[live.length - 1];
   if (last && last[0] === pt[0] && last[1] === pt[1]) return;
   live.push(pt);
@@ -95,7 +100,19 @@ pad.addEventListener("pointerdown", (e) => {
   addPoint(e);
   if (live.length === 1) { ctx.beginPath(); ctx.arc(live[0][0], live[0][1], 1.2 + 2.2 * live[0][3], 0, 6.2832); ctx.fill(); }
 });
+// the pressure really arrives only when the browser sees the device as a pen (or reports more than one level)
+function pressureReal() { return pstat.n >= 10 && pstat.levels.size >= 4; }
+
+function meter(e) {
+  const mouse = e.pointerType === "mouse";
+  $("pentype").textContent = "pen: " + e.pointerType + (mouse ? " (no pressure)" : "");
+  const p = mouse ? 0 : e.pressure;
+  $("pmeter").value = p; $("pval").textContent = mouse ? "-" : p.toFixed(2);
+  $("penstat").classList.toggle("bad", mouse || (e.pointerType === "touch" && !pressureReal() && pstat.n >= 10));
+}
+
 pad.addEventListener("pointermove", (e) => {
+  meter(e);
   if (!live) return;
   e.preventDefault();
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
@@ -104,6 +121,11 @@ pad.addEventListener("pointermove", (e) => {
 function end(e) {
   if (!live) return;
   live = null;
+  if (pstat.n >= 30 && !pressureReal()) {
+    $("note").textContent = "Pressure is not arriving: the browser sees this device as '" + pstat.type + "' and reports one fixed level (" +
+      pstat.max.toFixed(2) + "). Strokes are still saved. For real pressure use Chrome or Edge, and in the tablet driver switch Windows Ink on " +
+      "(Wacom: Pen Settings, Huion/XP-Pen: Work Area, 'Use Windows Ink'), then reload.";
+  }
 }
 pad.addEventListener("pointerup", end);
 pad.addEventListener("pointercancel", end);
@@ -127,6 +149,7 @@ async function show(i) {
   cur = Math.max(0, Math.min(order.length - 1, i));
   const p = order[cur];
   strokes = []; live = null; t0 = null; tBase = 0; dirty = false;
+  pstat = { n: 0, min: 1, max: 0, levels: new Set(), type: "" };
   $("prompt").textContent = p.text;
   $("note").textContent = (done[p.id] ? "Already saved. Writing again replaces it. " : "") + (p.note || "");
   $("prev").disabled = cur === 0;
@@ -161,6 +184,8 @@ async function save() {
     const r = await fetch(BASE + "/api/sample/" + p.id, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pointer: pointerKind || (sawPen ? "pen" : ""), strokes, guide,
+                              pressure_info: { real: pressureReal(), type: pstat.type, min: pstat.n ? +pstat.min.toFixed(3) : null,
+                                               max: pstat.n ? +pstat.max.toFixed(3) : null, levels: pstat.levels.size },
                               canvas: { w: pad.clientWidth, h: pad.clientHeight, dpr: window.devicePixelRatio || 1 } }),
     });
     const j = await r.json();

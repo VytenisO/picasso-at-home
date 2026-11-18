@@ -15,6 +15,11 @@
     <span id="progress" aria-live="polite"></span>
     <span class="spacer"></span>
     <label>Size <input id="size" type="range" min="28" max="90" step="2" value="48"> <output id="sizeout"></output></label>
+    <span id="penstat" title="Hover or press with the pen: shows what the browser sees and how hard you press">
+      <span id="pentype">pen: waiting</span>
+      <meter id="pmeter" min="0" max="1" value="0"></meter>
+      <output id="pval">-</output>
+    </span>
     <label class="check" title="Ignore a finger on the screen. Leave off if your tablet reports its pen as touch."><input id="penonly" type="checkbox"> Ignore finger touch</label>
   </div>
   <div id="prompt" aria-live="polite"></div>
