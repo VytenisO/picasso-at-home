@@ -16,7 +16,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import converters, document, hardware, plotjob, prepare, tools
+from . import converters, document, hardware, machinecfg, plotjob, prepare, tools
 from .auth import COOKIE, SESSION_AGE, Auth
 from .config import LIMITS, WEB
 from .events import EventLog
@@ -450,6 +450,35 @@ class App:
                     raise ApiError(409, "Plotter not ready: " + msg)
                 self.ev.log("info", "Plotter answered: " + msg)
             launched, msg = self.runner.launch(job_id, argv, None if sim else "WRITE" + chr(10))
+            if not launched:
+                raise ApiError(409, msg)
+            return {"ok": True, "job": job_id}
+        except ApiError as ex:
+            self.runner.cancel(job_id, ex.msg)
+            raise
+        except Exception as ex:  # noqa: BLE001
+            self.runner.cancel(job_id, f"Server error before start: {ex!r}")
+            raise
+
+    def machine_start(self, body):
+        """Take manual control of the carriage (tools/jog.py --control). Same gates as a plot."""
+        sim = self.s.sim or body.get("mode") == "simulate"
+        if not sim and not (body.get("confirm") or {}).get("parked") is True:
+            raise ApiError(400, "Confirm that the carriage is parked by hand at the paper's top-left with the pen up.")
+        argv = [self.s.python, str(self.s.root / "tools" / "jog.py"), "--control", "--config", str(self.s.machine_path)]
+        if sim:
+            argv += ["--sim", "--sim-speed", f"{self.s.sim_speed:g}"]
+        ok, job_id = self.runner.reserve("machine", "machine", sim, {"name": "machine control"})
+        if not ok:
+            raise ApiError(409, job_id)
+        try:
+            if not sim:
+                with self.hw_lock:
+                    ready, msg = hardware.precheck(False)
+                if not ready:
+                    raise ApiError(409, "Plotter not ready: " + msg)
+                self.ev.log("info", "Plotter answered: " + msg)
+            launched, msg = self.runner.launch(job_id, argv, None if sim else "TAKE" + chr(10))
             if not launched:
                 raise ApiError(409, msg)
             return {"ok": True, "job": job_id}
@@ -1102,6 +1131,48 @@ class Handler(BaseHTTPRequestHandler):
         b = self.json_body()
         self._control(self.app.runner.live_send, b.get("job"), b.get("cmd"), b.get("text", ""), b.get("phase"), b.get("pts"), b.get("sid"))
 
+    def r_machine_start(self):
+        self.send(200, self.app.machine_start(self.json_body()))
+
+    def _config_edit(self, fn, *args):
+        if self.app.runner.busy():
+            raise ApiError(409, "A job is running. Change the machine or pen settings when it has ended.")
+        try:
+            out = fn(self.app.s, *args)
+        except machinecfg.ConfigError as ex:
+            raise ApiError(400, str(ex))
+        self.app.ev.emit("config")
+        return out
+
+    def r_calibrate(self):
+        b = self.json_body()
+        old, new = self._config_edit(machinecfg.calibrate, b.get("axis"), b.get("commanded"), b.get("measured"))
+        self.app.ev.log("warn", f"Calibration: {str(b.get('axis')).upper()} steps/mm {old:g} -> {new:g}. "
+                                "Every drawing must be previewed again.")
+        self.send(200, {"old": old, "new": new, "me": self.app.me(True)})
+
+    def r_paper(self):
+        paper = self._config_edit(machinecfg.set_paper, self.json_body().get("paper"))
+        self.app.ev.log("info", f"Paper set: {paper['width']:g} x {paper['height']:g} mm at ({paper['x0']:g}, "
+                                f"{paper['y0']:g}), margin {paper['margin_mm']:g} mm.")
+        self.send(200, {"me": self.app.me(True)})
+
+    def r_pen_save(self):
+        b = self.json_body()
+        self._config_edit(machinecfg.save_pen, b.get("name"), b.get("pen"), b.get("rename_from"))
+        self.app.ev.log("info", f"Pen profile {b.get('name')} saved.")
+        self.send(200, {"me": self.app.me(True)})
+
+    def r_pen_delete(self):
+        name = self.json_body().get("name")
+        self._config_edit(machinecfg.delete_pen, name)
+        self.app.ev.log("info", f"Pen profile {name} deleted.")
+        self.send(200, {"me": self.app.me(True)})
+
+    def r_machine_send(self):
+        b = self.json_body()
+        self._control(self.app.runner.machine_send, b.get("job"), b.get("cmd"), b.get("args"))
+
     def r_live_strokes(self):
         with self.app.runner.lock:
             strokes = list(self.app.runner.live_strokes)
@@ -1158,6 +1229,12 @@ ROUTES_POST = {
     "/api/text_page": (Handler.r_text_page, True),
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
+    "/api/machine/start": (Handler.r_machine_start, True),
+    "/api/machine/send": (Handler.r_machine_send, True),
+    "/api/machine/calibrate": (Handler.r_calibrate, True),
+    "/api/machine/paper": (Handler.r_paper, True),
+    "/api/pens/save": (Handler.r_pen_save, True),
+    "/api/pens/delete": (Handler.r_pen_delete, True),
     "/api/preview": (Handler.r_preview, True),
     "/api/doc": (Handler.r_doc_put, True),
     "/api/projects/save": (Handler.r_project_save, True),

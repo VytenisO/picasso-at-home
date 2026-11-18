@@ -14,6 +14,7 @@ import { initLive } from './live.js';
 import { initConsole, addEvents, resetConsole } from './console.js';
 import { initWs, showWs } from './ws.js';
 import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
+import { initMachine, reloadConfig } from './machine.js';
 
 let stream = null;
 
@@ -58,6 +59,7 @@ function initOnce() {
   initTabs();
   initWs();
   initPrepare();
+  initMachine();
   initTheme();
   initKeys();
   on('job', followJob);
@@ -116,6 +118,7 @@ function onEvent(ev) {
     case 'pos': set({ pos: { x: ev.x, y: ev.y, pen: ev.pen } }); break;
     case 'files': refreshFiles(); break;
     case 'doc': D.onDocEvent(ev); break;
+    case 'config': reloadConfig().then(() => { if (state.doc && state.doc.objects.length) { set({ previewStale: true }); runPreview(); } }); break;
     case 'reset': syncState().catch((e) => toast(e.message, true)); break;
     default: set({ lastEventAt: Date.now() });
   }
@@ -149,7 +152,7 @@ $('logoutBtn') && ($('logoutBtn').onclick = async () => { await post('/api/logou
 
 // ------------------------------------------------------------- tabs, view
 function initTabs() {
-  const tabs = ['library', 'layers', 'tools'];
+  const tabs = ['library', 'layers', 'tools', 'machine'];
   const show = (name) => {
     for (const t of tabs) {
       $('tab-' + t).hidden = t !== name;
@@ -170,7 +173,7 @@ function initTabs() {
       const v = b.dataset.view;
       document.body.dataset.view = v;
       document.querySelectorAll('.mobile-tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-      if (v === 'library' || v === 'layers' || v === 'tools') show(v);
+      if (tabs.includes(v)) show(v);
       if (v === 'bed') requestAnimationFrame(fit);
     };
   });

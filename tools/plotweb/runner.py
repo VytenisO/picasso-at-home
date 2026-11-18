@@ -9,6 +9,7 @@ The carriage position the server reports is the commanded (estimated) one: firmw
 readback. After a run the server records whether the carriage should be back at the start point S.
 """
 import json
+import math
 import os
 import queue
 import signal
@@ -135,7 +136,7 @@ class JobRunner:
                                                                  for i, a in enumerate(argv)])
             if stdin_text:
                 self._write(stdin_text)
-            if j["kind"] == "live":
+            if j["kind"] in ("live", "machine"):
                 self.live_wq = queue.Queue()      # bounded by hand in live_send (a stroke end is always accepted)
                 self.live_sid = None
                 threading.Thread(target=self._live_writer, args=(proc, self.live_wq), daemon=True).start()
@@ -420,6 +421,82 @@ class JobRunner:
                     j["last_error"] = text
         self._emit_state()
 
+    def _machine_event(self, j, line):
+        """JSON events from jog.py --control."""
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            self._log("debug", line, "machine")
+            return
+        kind = ev.get("event")
+        with self.lock:
+            m = j.setdefault("machine", {"ready": False})
+            if kind == "session":
+                m.update(area=ev.get("area_mm"), start=ev.get("start_mm"), speed=ev.get("speed"))
+            elif kind == "ready":
+                m["ready"] = True
+                j["message"] = "Machine control: jog, go to a point, or finish."
+            elif kind == "moved":
+                m["clamped"] = bool(ev.get("clamped"))
+            elif kind == "speed":
+                m["speed"] = ev.get("speed")
+            elif kind == "zeroed":
+                m["zeroed"] = True
+                j["message"] = "S is set here: plots start from this point."
+        text = {"zeroed": "S set here: the tracked position is S again.", "warning": ev.get("message", ""),
+                "error": ev.get("message", "")}.get(kind)
+        if text:
+            level = "error" if kind == "error" else "warn" if kind == "warning" else "info"
+            self._log(level, text, "machine")
+            if level == "error":
+                with self.lock:
+                    j["last_error"] = text
+        self._emit_state(force=kind not in ("moved",))
+
+    def machine_send(self, job_id, cmd, args=None):
+        """Commands for a running machine session (jog.py): move, goto, home, pen, tick, speed, sets, quit."""
+        args = args if isinstance(args, dict) else {}
+
+        def num(k, lo, hi):
+            v = args.get(k)
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(v) or not lo <= v <= hi:
+                raise ValueError(f"{k} must be a number between {lo:g} and {hi:g}")
+            return float(v)
+        with self.lock:
+            err = self._check(job_id)
+            if err:
+                return False, err
+            j = self.job
+            if j["kind"] != "machine" or j["state"] != "running" or not (j.get("machine") or {}).get("ready"):
+                return False, "Machine control is not running."
+            try:
+                if cmd == "move":
+                    word = f"MOVE {num('dx', -500, 500):.3f} {num('dy', -500, 500):.3f}"
+                elif cmd == "goto":
+                    word = f"GOTO {num('x', -10, 1000):.3f} {num('y', -10, 1000):.3f}"
+                elif cmd == "home":
+                    word = "HOME"
+                elif cmd == "pen":
+                    if args.get("pen") not in ("up", "down"):
+                        raise ValueError("pen must be up or down")
+                    word = "PEN " + args["pen"].upper()
+                elif cmd == "tick":
+                    word = f"TICK {num('dx', -20, 20):.3f} {num('dy', -20, 20):.3f}"
+                elif cmd == "speed":
+                    word = f"SPEED {num('speed', 1, 200):g}"
+                elif cmd == "sets":
+                    word = "SETS"
+                elif cmd == "quit":
+                    word = "QUIT HERE" if args.get("here") else "QUIT"
+                else:
+                    return False, "Unknown machine command."
+            except ValueError as ex:
+                return False, str(ex)
+            if self.live_wq is None or self.live_wq.qsize() >= 40:
+                return False, "Too many commands are waiting. Wait for the carriage, or stop."
+            self.live_wq.put_nowait(word + "\n")
+        return True, ""
+
     def live_send(self, job_id, cmd, text="", phase=None, pts=None, sid=None):
         """Commands for a running live session: text, newpage, quit. Refused while stopping."""
         with self.lock:
@@ -494,6 +571,9 @@ class JobRunner:
             return
         if j["kind"] == "live" and line.startswith('{"event"'):
             self._live_event(j, line)
+            return
+        if j["kind"] == "machine" and line.startswith('{"event"'):
+            self._machine_event(j, line)
             return
         self._log("debug", line, "plot")    # raw protocol lines stay visible under Debug
         if line.startswith("__LAYER__:"):
@@ -578,6 +658,10 @@ class JobRunner:
                     j.update(state="error", message="Cleanup failed: the pen may be down or the motors on. "
                                                     "Switch the plotter off, then check it.")
                     self.position = {"state": "unknown", "at": None, "note": "Unknown after a failed cleanup."}
+                elif status == "complete" and j["kind"] == "machine":
+                    j.update(state="complete", message="Machine control finished, motors off. " + (
+                        "The carriage is at S." if res.get("at_start") else
+                        f"The carriage was left at about ({res['end_mm'][0]:.0f}, {res['end_mm'][1]:.0f}) mm."))
                 elif status == "complete":
                     j.update(state="complete", message="Finished. The carriage is back at the start point.")
                 elif status.startswith("stopped"):

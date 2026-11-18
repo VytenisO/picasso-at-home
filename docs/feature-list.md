@@ -41,7 +41,7 @@ niche.
 3. **Path planning** (done 2026-11-18). Travel optimisation (nearest neighbour, path reversal, best start point on closed paths) and
    duplicate-line removal, with a before/after time readout. A preview scrubber that shows travel moves and order,
    and start from stroke N.
-4. **Machine panel.** Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
+4. **Machine panel** (done 2026-11-18, simulator only). Jog pad, go to X/Y, pen up/down, set start here, a "position known / unknown" indicator, and
    a calibration wizard. Then a pen and paper library editor.
 5. **Layer modes.** Line / hatch fill / contour fill per layer, with angle, spacing, crosshatch and back-and-forth
    options, and passes. SVG fills stop being ignored. Import colour -> pen mapping. Layer reorder and rename.
@@ -315,17 +315,17 @@ niche.
 | Plotter connection doctor (list ports, test `V`, likely causes) | TODO | P2 | |
 | Port auto-detect / picker | PART | P3 | auto-detect in `ebb_check.py`; no UI |
 | Position record: at start / moved / unknown | HAVE | | |
-| Jog pad: step size, speed, pen up, clamped to travel | TODO | P1 | updates the tracked position; refuses when position is unknown |
-| Go to X/Y | TODO | P1 | |
-| Click on the bed to move there (arms for a few seconds) | TODO | P2 | |
+| Jog pad: step size, speed, pen up, clamped to travel | HAVE | | Machine tab, Control: a machine job (`jog.py`); steps 0.1/1/10/50 mm, speed, arrow keys on the bed; clamped to the travel minus its edge margin |
+| Go to X/Y | HAVE | |  |
+| Click on the bed to move there (arms for a few seconds) | HAVE | | Click to go arms one click (no timeout) |
 | Move to selection anchor (check placement) | TODO | P2 | |
-| Pen up / pen down buttons | PART | P1 | only inside the pen-height test |
+| Pen up / pen down buttons | HAVE | | in machine control |
 | Short "pen touch" at layer pressure | TODO | P3 | time-limited |
-| Motors off (release to park by hand) | PART | P1 | done at the end of each job; add a button |
-| Set start here / re-zero here | TODO | P1 | after a jog, or after parking by hand |
+| Motors off (release to park by hand) | HAVE | | Finish here / Finish at S switch the motors off; Stop too |
+| Set start here / re-zero here | HAVE | | Set S here: the carriage becomes S (pen over the paper corner) |
 | Saved positions (pen-swap spot, parking, paper corner) | TODO | P3 | |
 | Start-from options: S, current position, saved origin, with 9-point job anchor | TODO | P2 | |
-| Live position shown on the bed during jogs | PART | P1 | the carriage dot exists for jobs |
+| Live position shown on the bed during jogs | HAVE | | the carriage marker and the position pill follow every move |
 | Macros: saved command sequences as buttons | TODO | P3 | must mark position unknown if they move |
 | Raw EBB command line in the console | TODO | P3 | warn; mark position unknown after motion commands |
 | Live writing (font or own handwriting), new page, finish | HAVE | | `live.js`, `live_plot.py` |
@@ -344,10 +344,10 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | TODO | P1 | today only `config/machine.json` |
+| Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | PART | P2 | paper corner, size and margin, and steps/mm through calibration; travel and axis signs read-only; servo never (set by hand) |
 | Units mm / inch for display | TODO | P3 | mm is the native unit |
-| Calibration wizard: plot a known length, type the measured one, store steps/mm | TODO | P1 | CLI `wcb_setup.py` only |
-| Paper edge calibration in the UI | TODO | P2 | `calibrate_paper.py` CLI only |
+| Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Machine tab: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
+| Paper edge calibration in the UI | PART | P2 | paper corner typed in, or jog to the corner and Set S here; no guided measurement |
 | Squareness and backlash test patterns | TODO | P3 | |
 | Lost-steps test in the UI | TODO | P3 | `lost_steps_test.py` CLI only |
 | Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
@@ -365,8 +365,8 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Pen profiles (name, colour, speed, pressure) | HAVE | | read-only, `config/pens.json` |
-| Pen library editor: create, edit, duplicate, delete | TODO | P1 | |
-| Pen fields: line width, best hatch spacing, dwell, notes | PART | P1 | test results are recorded; make them editable fields |
+| Pen library editor: create, edit, duplicate, delete | PART | P3 | create, edit, rename, delete; no duplicate |
+| Pen fields: line width, best hatch spacing, dwell, notes | PART | P3 | line width, colour, speed, pressure, notes; hatch spacing and dwell are not fields |
 | Paper profiles (size, type, notes), paired with pens | TODO | P2 | today one paper plus a per-job size override |
 | Link a layer to a pen profile (retune updates the job) vs copy values | PART | P2 | choosing a pen copies its values today |
 | Export / import pen library | TODO | P3 | |

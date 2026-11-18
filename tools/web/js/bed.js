@@ -21,6 +21,10 @@ let raf = 0;
 let hover = null;
 const HANDLE = 9, ROT_PX = 26;
 let playing = 0;
+let bedClick = () => false;        // the Machine tab's "click to go"
+
+export function setBedClick(fn, jog) { bedClick = fn; if (jog) jogHook = jog; }
+let jogHook = () => false;
 let sub = { pv: null, k: -1, obj: null };    // the first k strokes of the plan, for the scrubber
 
 export function initBed() {
@@ -400,6 +404,7 @@ function down(e) {
     return;
   }
   const [mx, my] = toMm(px, py);
+  if (e.button === 0 && bedClick(mx, my)) return;
   const pan = { mode: 'pan', start: [px, py], o: [view.ox, view.oy] };
   if (e.button === 1 || e.button === 2 || !editable()) { drag = pan; cv.classList.add('dragging'); return; }
   const h = hitHandle(px, py);
@@ -545,7 +550,13 @@ function wheel(e) {
 }
 
 function key(e) {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || !editable() || !state.sel.length) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  if (state.job && state.job.kind === 'machine' && jobActive()) {      // machine control: the arrows jog
+    e.preventDefault();
+    jogHook(e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0, e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0);
+    return;
+  }
+  if (!editable() || !state.sel.length) return;
   e.preventDefault();
   const d = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
   D.nudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);

@@ -192,7 +192,7 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
   .workspace { display: block; height: auto; padding-bottom: 60px; }
   .panel, .center, .console { display: none; border: none; }
   body[data-view="bed"] .center { display: flex; height: calc(100vh - 48px - 60px); }
-  body[data-view="library"] .left, body[data-view="layers"] .left, body[data-view="tools"] .left { display: block; }
+  body[data-view="library"] .left, body[data-view="layers"] .left, body[data-view="tools"] .left, body[data-view="machine"] .left { display: block; }
   body[data-view="run"] .right { display: block; }
   body[data-view="console"] .console { display: flex; height: calc(100vh - 48px - 60px); }
   body[data-view="console"] .console.collapsed .console-body { display: block; }
@@ -346,3 +346,21 @@ button.danger-text { color: var(--err); }
 .scrub .muted { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .scrub button.icon { min-height: 26px; padding: 2px 8px; font-size: 12px; }
 .scrub button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* Machine tab: jog pad, step choice, pen list */
+.jog { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.jog-pad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; }
+.jog-pad button { min-height: 0; padding: 0; font-size: 16px; }
+.jog-pad #mcHome { font-weight: 700; color: var(--ok); }
+.jog-side { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
+#mcSteps { align-self: flex-start; }
+#mcSteps button { font-size: 12px; padding: 3px 8px; }
+.go-row { grid-template-columns: 1fr 1fr auto auto; align-items: end; margin-top: 8px; }
+.pens { list-style: none; margin: 0 0 8px; padding: 0; }
+.pens li { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+.pen-head { display: flex; gap: 8px; align-items: center; }
+.pen-head .spacer { flex: 1; }
+.pen-head button.icon { min-height: 24px; padding: 0 8px; font-size: 12px; }
+.pens .swatch { border: 1px solid var(--line); }
+.pen-form { border: 1px solid var(--accent); border-radius: 8px; padding: 8px; }
+.pen-form input[type=color] { width: 44px; height: 30px; padding: 0 2px; }

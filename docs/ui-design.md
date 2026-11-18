@@ -82,6 +82,22 @@ takes the new proportions instead of stretching it.
   corner handles keep proportions (Shift: free), the round handle turns in 15 degree steps (Shift: free). Right or
   middle drag pans; a finger on empty bed pans.
 
+## Machine tab (built 2026-11-18, simulator only so far)
+
+- **Control** is a job of kind `machine`: `tools/jog.py --control` keeps the motors on and takes `MOVE`, `GOTO`,
+  `HOME`, `PEN UP|DOWN`, `TICK`, `SPEED`, `SETS`, `QUIT [HERE]` and `STOP` on stdin. It starts like a plot (parked
+  at S, pen up, confirmed, `TAKE` as the first line on hardware), one job at a time, and Stop works as for any job.
+  Moves are clamped to the travel minus the edge margin (S itself always counts as reachable). Set S here makes
+  the tracked position S again, for putting the pen exactly on the paper corner by jogging. The position stays
+  counted, never read back.
+- **Calibrate** draws two ticks a test length apart (through the same session); the operator measures them and
+  saves; steps/mm scale by commanded / measured, refused when more than 20% off.
+- **Paper** sets the corner, size and margin. **Pens** creates, edits, renames and deletes profiles; recorded
+  test results are kept. The servo values are shown, never written: they are tuned by hand with a pen mounted.
+- `machinecfg.py` writes `machine.json` and `pens.json` atomically, keeps the previous file under
+  `results/web/backups/`, refuses while a job runs, and emits a `config` event; pages reload `/api/me` and preview
+  again (a calibration changes every plan id).
+
 ## Layout
 
 ```
@@ -164,6 +180,7 @@ time estimates in plot order, and an end of input at the confirmation prompt cou
 | `library.py` | manifest, uploads and conversion, per-file saved settings and geometry |
 | `converters.py` | registry of upload converters (svg, raster, mesh) with a parameter schema; the Library's direct SVG upload |
 | `prepare.py` | Prepare: step plugins (`STEPS`), recipe checks, the per-stage cache (`Workshop`) |
+| `machinecfg.py` | calibration, paper and pen-profile edits of the config files, with backups |
 | `document.py` | the bed document: object validation and transforms, composing one SVG, the working copy and projects (`DocStore`) |
 | `tools.py` | registry of tools: stroke/fill/pressure sheets, result recording, pen height test |
 | `hardware.py` | the only direct EBB access: read-only `V` check, last-resort pen-up/motors-off |
@@ -204,6 +221,11 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | GET `/api/files/natural?id=` | | `{geom: {raw_x, raw_y, raw_w, raw_h, svg_hash}, layers, strokes}`: the drawing at natural size in its own mm |
 | GET `/api/doc` | | `{doc: {rev, name, objects, settings}, projects}` |
 | POST `/api/doc` | `{name, objects, settings, client}` | `{doc}`: replaces the working bed |
+| POST `/api/machine/start` | `{mode: plot|simulate, confirm: {parked}}` | `{job}`: manual control (`jog.py`) |
+| POST `/api/machine/send` | `{job, cmd: move|goto|home|pen|tick|speed|sets|quit, args}` | refused unless control is running and ready |
+| POST `/api/machine/calibrate` | `{axis, commanded, measured}` | `{old, new, me}` |
+| POST `/api/machine/paper` | `{paper: {x0, y0, width, height, margin_mm}}` | `{me}` |
+| POST `/api/pens/save`, `/api/pens/delete` | `{name, pen, rename_from?}` / `{name}` | `{me}` |
 | POST `/api/projects/save`, `open`, `delete` | `{name}` / `{slug}` | `{projects, doc}`; open also says how many drawings were missing |
 | GET `/api/job/preview` | | strokes and order of the current/last plot job (for a reloaded page) |
 | POST `/api/job/pause`, `/api/job/return` | `{job}` | refused for traces and stale job ids |
@@ -225,6 +247,7 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | `pos` | `x, y, pen` (commanded) | no |
 | `files` | `rev` | no |
 | `doc` | `rev, client` (the page that changed the bed) | no |
+| `config` | | no: the page reloads `/api/me` |
 | `reset` | `epoch, seq` | client re-reads `/api/state` and `/api/log` |
 | `ping` | every 15 s without other events | no |
 
@@ -243,7 +266,7 @@ align/scale/turn/mirror maths, the canvas rectangle), `doc.js` (the bed document
 clipboard, add/arrange, projects, server sync and previews), `ink.js` (the ink renderer both workspaces use: pen colour, pen width
 `width_mm` in `pens.json` or 0.5 mm, Ink/Lines toggle), `ws.js` (the two workspaces), `prepare.js` (source, recipe
 editor, preview views, pens, save), `workspace.js` (the Arrange panel, objects list, job settings, layers,
-projects), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
+projects), `machine.js` (the Machine tab: control, calibration, paper, pens), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
 `console.js`, `app.js` (boot, login, events, tabs, theme, shortcuts). Styles: `tools/web/app.css`.
 
 Keyboard: `?` help, `1`/`2` Prepare/Plot, `Ctrl+Enter` send to Plot (Prepare), `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge

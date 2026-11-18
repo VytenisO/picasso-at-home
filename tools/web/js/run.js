@@ -43,7 +43,10 @@ export function initRun() {
 
 const hasBed = () => !!(state.doc && state.doc.objects.length);
 
-export function title(job) { return job ? TITLES[job.state] || job.state : 'Idle'; }
+export function title(job) {
+  if (job && job.kind === 'machine' && job.state === 'running') return 'In control';
+  return job ? TITLES[job.state] || job.state : 'Idle';
+}
 export function dotClass(job) { return job ? DOT[job.state] || '' : ''; }
 
 function nextStep(job) {
@@ -55,6 +58,7 @@ function nextStep(job) {
     if (!state.preview.ok) return 'Fix the problems listed under Run, then preview again.';
     return 'Ready. Start plot when the carriage is parked at S with the pen up.';
   }
+  if (job.kind === 'machine' && job.state === 'running') return 'Jog under Machine, Control. Finish there; Stop lifts the pen and releases the motors.';
   if (job.kind === 'live' && job.state === 'running') return 'Type a line under Tools, Live writing, and press Write. Finish returns to S; Stop finishes the move already sent, then lifts the pen.';
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
@@ -70,7 +74,7 @@ function nextStep(job) {
 function renderStatus() {
   const job = state.job;
   const active = jobActive();
-  $('stTitle').textContent = job ? (job.kind === 'pentest' ? 'Pen test: ' : job.kind === 'live' ? 'Live writing: ' : '') + title(job) : 'Idle';
+  $('stTitle').textContent = job ? ({ pentest: 'Pen test: ', live: 'Live writing: ', machine: 'Machine control: ' }[job.kind] || '') + title(job) : 'Idle';
   $('stDot').className = 'state-dot ' + dotClass(job);
   $('stMsg').textContent = job ? job.message || '' : '';
   $('stNext').textContent = nextStep(job);
@@ -102,7 +106,7 @@ function renderStatus() {
   const p = state.position;
   const pn = $('stPos');
   pn.className = 'note ' + (p && p.state === 'at_start' ? 'ok' : p && p.state === 'unknown' ? 'err' : 'warn');
-  if (active && (job.kind === 'plot' || job.kind === 'live')) {
+  if (active && ['plot', 'live', 'machine'].includes(job.kind)) {
     pn.className = 'note';
     pn.textContent = 'Carriage: under the job\'s control. The position above is the commanded one (no readback).';
   } else pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
@@ -150,7 +154,7 @@ function renderRun() {
   $('previewBtn').textContent = state.previewing ? 'Checking...' : 'Preview';
   for (const b of ['simBtn', 'traceBtn', 'plotBtn']) $(b).disabled = !ready;
   if (active && !isPentest) {
-    const live = job.kind === 'live';   // a live session has no pause or return: finish it or stop it
+    const live = job.kind === 'live' || job.kind === 'machine';   // no pause or return: finish it or stop it
     $('pauseBtn').disabled = job.state !== 'running' || live;
     $('continueBtn').disabled = job.state !== 'paused' || (job.pause && job.pause.resuming);
     $('returnBtn').disabled = live || !['running', 'pausing', 'paused'].includes(job.state);

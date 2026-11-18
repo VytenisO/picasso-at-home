@@ -64,5 +64,5 @@ class Settings:
         m = max(0.0, float(p.get("margin_mm", 0.0)))
         return {"bed": [bx, by], "paper": [x0, y0, w, h], "margin": m,
                 "canvas": [x0 + m, y0 + m, x0 + w - m, y0 + h - m], "start": [x0, y0],
-                "edge_margin": plot_svg.EDGE_MARGIN, "servo": cfg.get("servo"),
+                "edge_margin": plot_svg.EDGE_MARGIN, "servo": cfg.get("servo"), "steps_per_mm": cfg.get("steps_per_mm"),
                 "calibrated": cfg.get("measured")}
