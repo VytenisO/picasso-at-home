@@ -46,7 +46,7 @@ async function run(t, form, btn) {
     } else if (t.kind === 'record') {
       toast(`Recorded for pen ${params.pen} only.`);
     } else {
-      toast('Pen test running: use the buttons under Run.');
+      toast(t.id === 'home' ? 'Homing: watch the carriage. Stop is in the top bar.' : 'Pen test running: use the buttons under Run.');
     }
   } catch (e) { toast(e.message, true); }
   finally { btn.disabled = jobActive(); }

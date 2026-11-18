@@ -325,9 +325,9 @@ niche.
 | Live writing: pause and return | TODO | P3 | |
 | Replot a saved live session | TODO | P3 | |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
-| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | TODO | P0 | works on 2.0.1 (plain `SM`). Solid stops on all ends; keep it slow (about 5-10 mm/s). Measure repeatability first: ten homes from random spots, dot at a fixed point, spread of the dots. Expect about +/-0.5 mm (one full step is about 0.45 mm) |
-| Home button and "position unknown -> home" prompt | TODO | P0 | home offset (machine corner -> S) in `machine.json` |
-| Home one axis at a time | TODO | P1 | for testing and recovery |
+| Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | PART | P0 | `tools/home.py` (sim-tested, not yet run on hardware). Works on 2.0.1 (plain `SM`). Solid stops on all ends; keep it slow (about 5-10 mm/s). Measure repeatability first: ten homes from random spots, dot at a fixed point, spread of the dots. Expect about +/-0.5 mm (one full step is about 0.45 mm) |
+| Home button and "position unknown -> home" prompt | PART | P0 | Status panel button and Tools entry (axes, speed, repeatability dot); position becomes `at_start`. The stop corner is machine (0, 0), so `paper.x0/y0` must be measured from the stops; the first homed dot shows whether they are |
+| Home one axis at a time | HAVE | | `--axis x` or `--axis y`, Tools entry; leaves the position unknown |
 | Keep motors powered after a job (option) | TODO | P2 | tracked position stays valid; cost is warm motors |
 | Switch homing (two microswitches on spare EBB inputs) | TODO | P3 | no grinding; check `PI` on 2.0.1; RB2 is taken by the pen-depth pot patch |
 | Limit switches during plots, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |

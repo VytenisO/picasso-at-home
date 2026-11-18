@@ -6,6 +6,7 @@ are written under that pen only (the scripts enforce this too). To add a tool, a
   kind "sheet"   argv builder writes an SVG; the server adds it to the library tagged with the pen
   kind "record"  argv builder records results into pens.json; output is shown to the operator
   kind "machine" a job that moves hardware; needs the operator's confirmation, runs through the job runner
+                 as job kind `job_kind` ("pentest" or "home")
 
 Schema entries are the same as for converters, plus type "pen" (a profile name from pens.json).
 """
@@ -16,9 +17,9 @@ from .converters import clamp_params
 
 
 class Tool:
-    def __init__(self, tid, title, kind, params, argv, help="", confirm=None, record_for=None):
+    def __init__(self, tid, title, kind, params, argv, help="", confirm=None, record_for=None, job_kind="pentest"):
         self.id, self.title, self.kind, self.params, self.argv = tid, title, kind, params, argv
-        self.help, self.confirm, self.record_for = help, confirm, record_for
+        self.help, self.confirm, self.record_for, self.job_kind = help, confirm, record_for, job_kind
 
     def public(self):
         return {"id": self.id, "title": self.title, "kind": self.kind, "params": self.params, "help": self.help,
@@ -48,7 +49,26 @@ def _num(key, label, unit, lo, hi, step, integer=False):
             "unit": unit, "optional": True, "integer": integer}
 
 
+HOME_CONFIRM = ("The carriage drives slowly, pen up, into the upper-left end stops (a buzz at the stops is "
+                "expected), then travels to S, the paper's top-left. Keep hands and cables clear of the path.")
+
+
+def _home_argv(s, p):
+    argv = _script(s, "home.py") + ["--config", str(s.machine_path), "--axis", p["axis"],
+                                    "--speed", f"{p['speed']:g}", "--yes", "--control", "--track"]
+    return argv + (["--dot"] if p.get("dot") and p["axis"] == "both" else [])
+
+
 REGISTRY = {t.id: t for t in [
+    Tool("home", "Home the carriage", "machine", [
+        {"key": "axis", "label": "Axes", "type": "select", "default": "both",
+         "options": [["both", "X then Y, then go to S"], ["x", "X only (test)"], ["y", "Y only (test)"]]},
+        {"key": "speed", "label": "Speed into the stops", "type": "number", "default": 8, "min": 2, "max": 15,
+         "step": 1, "unit": "mm/s"},
+        {"key": "dot", "label": "Tap a dot 10 mm from S (repeatability test)", "type": "bool", "default": False},
+    ], _home_argv, confirm=HOME_CONFIRM, job_kind="home",
+        help="Finds the carriage without parking it by hand: slow moves into the end stops, then to S. Takes up to "
+             "about 80 s at 8 mm/s. One axis alone leaves the position unknown."),
     Tool("stroke_sheet", "Short-stroke and circle sheet", "sheet", [
         PEN,
         {"key": "sheet", "label": "Part", "type": "select", "default": "both",

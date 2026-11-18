@@ -327,12 +327,14 @@ class App:
         if tool.kind == "machine":
             if not (body.get("confirm") or {}).get("ok") is True:
                 raise ApiError(400, "Confirm the safety note before starting this tool.")
-            ok, job_id = self.runner.reserve("pentest", "pentest", self.s.sim, {"tool": tool.id})
+            ok, job_id = self.runner.reserve(tool.job_kind, tool.job_kind, self.s.sim, {"tool": tool.id})
             if not ok:
                 raise ApiError(409, job_id)
             try:
                 if self.s.sim:
                     argv = argv + ["--sim"]
+                    if tool.job_kind == "home" and self.s.sim_speed:
+                        argv += ["--sim-speed", f"{self.s.sim_speed:g}"]
                 else:
                     with self.hw_lock:
                         ready, msg = hardware.precheck(False)
