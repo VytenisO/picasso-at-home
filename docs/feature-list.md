@@ -394,7 +394,7 @@ niche.
 | Crop region | PART | P3 | Prepare crop step by edge percentages; no drag-a-box crop yet |
 | Rotate and mirror the image | HAVE | | Prepare adjust step |
 | Mask by a vector shape | TODO | P3 | |
-| Centre-line trace (single stroke down a line) | TODO | P1 | one pass per drawn line instead of a double outline |
+| Centre-line trace (single stroke down a line) | HAVE | | Prepare method "Line art (centre lines)": Zhang-Suen thinning in `image_to_svg.py` |
 | Edge/sketch trace for photos of drawings | TODO | P2 | |
 | Ignore specks under N px | HAVE | | trace setting, plus the "Remove short strokes" clean-up step in mm |
 | Smoothness / simplify tolerance | HAVE | | trace setting and trace resolution, plus the "Simplify" clean-up step in mm |
@@ -448,7 +448,7 @@ niche.
 | UI preferences in local storage (theme, tab, console) | HAVE | | |
 | Preferences page (units, grid, nudge, snapping, defaults) | TODO | P2 | |
 | Shortcuts: `?` `P` Space `Shift+S` `+ - 0` arrows Esc | HAVE | | |
-| Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | TODO | P1 | with the document model |
+| Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | PART | P2 | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc on the bed; no rotate or flip keys, no groups |
 | Shortcut list in the help dialog kept in sync | PART | P2 | written by hand; generate from one table |
 | Rebind shortcuts | TODO | P3 | |
 | First-run setup wizard (connect, park, calibrate, pen height) | TODO | P3 | |
