@@ -484,11 +484,14 @@ class App:
                 raise ApiError(400, f"Unknown font {font!r}. Pick one from the list.")
             argv += ["--font", font]
         else:
-            from handwriting import writers
+            try:
+                from handwriting import writers
+            except RuntimeError as ex:
+                raise ApiError(400, str(ex))
             if not writers.valid(writer):
                 raise ApiError(400, "Unknown writer.")
             if not writers.count(writer):
-                raise ApiError(400, f"{writer!r} has no handwriting samples yet. Write some with tools/handwriting/capture_server.py, "
+                raise ApiError(400, f"{writer!r} has no handwriting samples yet. Write some with the handwriting-synth capture page, "
                                     "or choose a font.")
             argv += ["--writer", writer]
         try:
@@ -1043,8 +1046,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_fonts(self):
         import fonts
-        from handwriting import writers
-        ws = writers.list_writers()
+        try:
+            from handwriting import writers
+            ws = writers.list_writers()
+        except RuntimeError:                      # no handwriting-synth project on this machine: fonts only
+            ws = []
         self.send(200, {"fonts": fonts.families(), "bundled": sorted({f["family"] for f in fonts.bundled()}),
                         "writers": ws, "hand_samples": sum(w["samples"] for w in ws)})
 

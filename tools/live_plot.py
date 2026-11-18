@@ -42,7 +42,6 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "handwriting"))
 import plot_svg as ps  # noqa: E402
-from engine import ReplayEngine  # noqa: E402
 from mirror import Mirror  # noqa: E402
 
 
@@ -276,9 +275,9 @@ def main():
     ap.add_argument("--sim", action="store_true", help="virtual machine and clock, no hardware")
     ap.add_argument("--port")
     ap.add_argument("--config", default=str(ROOT / "config" / "machine.json"))
-    ap.add_argument("--writer", default="default", help="whose handwriting to write in (see tools/handwriting/writers.py list)")
+    ap.add_argument("--writer", default="default", help="whose handwriting to write in (the handwriting-synth project: src/handwriting_synth/writers.py list)")
     ap.add_argument("--samples", help="samples directory (default: the writer's own)")
-    ap.add_argument("--prompts", default=str(ROOT / "handwriting" / "prompts.json"))
+    ap.add_argument("--prompts", help="prompt list the samples belong to (default: the handwriting-synth project's)")
     ap.add_argument("--font", help="write in a standard font (family name such as 'Comic Neue', or a .ttf/.otf path) "
                                    "instead of your handwriting; outlines are drawn as contours")
     ap.add_argument("--list-fonts", action="store_true", help="print the available font families and exit")
@@ -298,11 +297,12 @@ def main():
                     help="mirror mode follows the speed of the hand, up to 100 mm/s: above the tested ceiling, steps may be lost")
     a = ap.parse_args()
     if not a.samples:
-        import writers
-        try:
-            a.samples = str(writers.samples_dir(a.writer))
-        except ValueError as ex:
-            sys.exit(str(ex))
+        if not a.font:
+            try:
+                import writers
+                a.samples = str(writers.samples_dir(a.writer))
+            except (RuntimeError, ValueError) as ex:
+                sys.exit(str(ex))
     if a.control:
         a.json = a.track = True
     if a.sport and not a.control:
@@ -337,7 +337,12 @@ def main():
         except ValueError as ex:
             sys.exit(str(ex))
     else:
-        engine = ReplayEngine(a.samples, a.prompts, sample_pressure=a.sample_pressure, fixed_pressure=fixed)
+        try:
+            import synth
+            from engine import ReplayEngine
+        except RuntimeError as ex:
+            sys.exit(str(ex))
+        engine = ReplayEngine(a.samples, a.prompts or str(synth.prompts_path()), sample_pressure=a.sample_pressure, fixed_pressure=fixed)
     s = Session(a, cfg, engine)
     s.emit("session", sim=a.sim, canvas_mm=[s.cx0, s.cy0, s.cx1, s.cy1], start_mm=[s.sx, s.sy],
            xheight_mm=s.xh, font=a.font,

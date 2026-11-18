@@ -3,6 +3,8 @@ import pathlib
 import subprocess
 import sys
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIVE = ROOT / "tools" / "live_plot.py"
 GUIDE = {"x_height": 40, "ascender": 40, "descender": 32, "pitch": 150, "baselines": [120], "left": 24}
@@ -28,6 +30,10 @@ def make_samples(d):
 
 
 def run(tmp_path, *args):
+    sys.path.insert(0, str(ROOT / "tools" / "handwriting"))
+    import synth
+    if not (synth.home() / "src" / "handwriting_synth").is_dir():
+        pytest.skip("writing in a hand needs the handwriting-synth project, which is not on this machine")
     make_samples(tmp_path / "samples")
     return subprocess.run([sys.executable, str(LIVE), "--sim", "--json", "--samples", str(tmp_path / "samples"),
                            "--prompts", str(tmp_path / "none.json"), *args],

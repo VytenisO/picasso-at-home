@@ -135,3 +135,11 @@ MIT, see `LICENSE`.
 ## Text in standard fonts
 
 The web UI's Library tab has a **Text in a font** panel: paragraphs wrapped to the paper, any installed font plus the bundled Comic Neue (`fonts/`, SIL OFL; Comic Sans itself is proprietary and not included). Letters are drawn as outlines. The same engine writes live: `python3 tools/live_plot.py --font "Comic Neue"` (add `--sim` to try it, `--list-fonts` to list fonts). Without `--font`, `live_plot.py` writes in your own handwriting from the captured samples.
+
+## Own handwriting (separate project)
+
+Capturing, training and generating handwriting lives in its own repo, `handwriting-synth` (a sibling directory,
+`../handwriting-synth`, or wherever `HANDWRITING_SYNTH` points). The plotter uses only its writers and its replay engine,
+through `tools/handwriting/synth.py` and two small shims, so live writing in a person's hand and the writer list in the web UI
+work when the project is present. Without it (the plotter host, for instance) everything else still works: fonts, the
+mirror, fills, text pages. The samples and models are private and stay in that project's git-ignored `data/` directory.
