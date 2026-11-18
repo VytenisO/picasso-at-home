@@ -132,3 +132,16 @@ survive between lines. Design:
 - Language mix: English, Norwegian, or both? The word lists and letters include both (æ, ø, å).
 - Which pen will draw the result? The BIC's play limits the smallest loops, so the x-height you write at on the tablet
   should be the size you will plot at; the page sets that with its Size control (stored with each sample).
+
+
+## Training a model on your own hand: existing work (researched 2026-11-18)
+
+Correction to the table above: the Cursive Transformer does have released code.
+
+| Project | What | Data needed | Fit |
+|---|---|---|---|
+| [greydanus/cursivetransformer](https://github.com/greydanus/cursivetransformer) (paper arXiv 2504.00051) | GPT-style model over tokenised pen offsets (polar tokens), 442k parameters, trained from scratch on one writer's words. Includes `collect.html` for recording and a 3,500-word example set. | 3,500 words from one writer (about an hour per 100 words on a trackpad); augmentation: shear, scale, point dropping | Best match. Data is `(x, y, pen_down)` points plus the word, which our capture samples already contain. No licence in the repo, so private use only. Training took a few hours on an A100 (Colab or Paperspace), a few dollars. |
+| [X-rayLaser/pytorch-handwriting-synthesis-toolkit](https://github.com/X-rayLaser/pytorch-handwriting-synthesis-toolkit) | Graves 2013 (LSTM + attention + mixture density) in PyTorch, MIT, pretrained checkpoints (IAM, English), custom data through a provider class | Strokes plus transcripts; no documented fine-tuning or style priming | Fallback. Pretrained weights are English only (no æ, ø, å). |
+| [awei669/DiffInk](https://github.com/awei669/DiffInk) (ICLR 2026) | Latent diffusion over whole lines, style from a short reference | Trained on Chinese CASIA data | Not a fit for Latin or Norwegian text. |
+
+Privacy: training in a cloud notebook uploads the handwriting. Train on a machine you control (a local GPU), or accept the upload knowingly. The model and samples stay under `handwriting/writers/<name>/` and out of git.
