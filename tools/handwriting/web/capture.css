@@ -32,3 +32,6 @@ main { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; }
 #msg { color: var(--ok); }
 #msg.err { color: #c0392b; }
 output { color: var(--fg); min-width: 2.5em; }
+
+/* the buttons sit right under the writing line, not at the bottom of the screen */
+main footer { background: none; border: 0; padding: 12px 0 0; }
