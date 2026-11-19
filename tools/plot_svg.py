@@ -260,6 +260,28 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     return True
 
 
+def pause_for_paper(copy, copies, a, ctl=None):
+    """Between copies: the carriage is at S, pen up, motors on. Wait for new paper and CONTINUE.
+    -> False if the operator asked to return (it is already at S) instead."""
+    log("")
+    log(f"*** PAPER CHANGE: copy {copy - 1} of {copies} done; put in fresh paper for copy {copy} ***")
+    if ctl:
+        ctl.drain()
+    print("__PAUSE__:" + json.dumps({"kind": "paper", "copy": copy, "copies": copies}), flush=True)
+    if ctl:
+        go = ctl.wait_continue()
+        if go:
+            print("__RESUMED__:{}", flush=True)
+        return go
+    if a.sim:
+        return True
+    try:
+        input("New paper in? Type CONTINUE to plot the next copy: ")
+    except EOFError:
+        raise SystemExit("input closed while waiting for a paper change")
+    return True
+
+
 # --------------------------------------------------------------- SVG transforms
 IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
@@ -866,6 +888,12 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--copies", type=int, default=1, metavar="N",
+                    help="plot the drawing N times (1-50), back at S with a paper-change pause between copies; "
+                         "--start-at applies to the first copy only")
+    ap.add_argument("--finish", choices=("start", "stay", "clear"), default="start",
+                    help="where the carriage ends: back at S (default), where the last stroke ended, or at the bed's "
+                         "right edge level with S, clear of the paper")
     ap.add_argument("--absolute", action="store_true",
                     help="the SVG's own millimetres are machine millimetres: no anchoring, --x0/--y0/--width ignored "
                          "(the web UI composes a bed-sized document)")
@@ -1118,6 +1146,9 @@ def main():
                 expanded.append(len(strokes) - 1)
         order = expanded
     total_in_order = len(order)
+    full_order = list(order)
+    if not 1 <= a.copies <= 50:
+        sys.exit("--copies must be 1 to 50")
     if a.start_at:
         if not 0 < a.start_at < len(order):
             sys.exit(f"--start-at {a.start_at}: the plot has {len(order)} strokes")
@@ -1126,6 +1157,12 @@ def main():
     per_stroke = []
     dd, dt, lifts, secs = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
                                    a.travel_speed, pen_s, speeds=[speed_of[i] for i in order], per_stroke=per_stroke)
+    per_full, secs_full = per_stroke, secs
+    if a.copies > 1 and a.start_at:
+        per_full = []
+        secs_full = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in full_order], spmm, a.speed,
+                             a.travel_speed, pen_s, speeds=[speed_of[i] for i in full_order], per_stroke=per_full)[3]
+    secs_all = secs + (a.copies - 1) * secs_full       # each copy ends with the trip back to S
     if file_order:
         log(f"Path planning  : pen-up travel {file_order['travel_mm'] / 1000:.2f} m -> {dt / 1000:.2f} m, "
             f"time {fmt(file_order['est_seconds'])} -> {fmt(secs)}" + (" (whole plot)" if a.start_at else ""))
@@ -1198,7 +1235,8 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                "drawing_mm": dd, "travel_mm": dt, "lifts": lifts, "doc_mm": [w_mm, h_mm], "scale": scale,
                "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed,
                "optimized": bool(file_order), "file_order": file_order, "duplicates_dropped": n_dup,
-               "start_at": a.start_at, "total_in_order": total_in_order, "fill_inks": list(fill_inks.values())}
+               "start_at": a.start_at, "total_in_order": total_in_order, "fill_inks": list(fill_inks.values()),
+               "copies": a.copies, "est_seconds_all": secs_all, "finish": a.finish}
     summary["args"] = {k: v for k, v in vars(a).items() if k != "ctl"}
 
     if a.mode == "dry":
@@ -1239,7 +1277,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 p.move_to(*to_steps((cx, cy), spmm), a.travel_speed)
             p.idle()
         else:
-            n = len(order)
+            n = len(order) + (a.copies - 1) * len(full_order)
             next_report = 0.05
             drawn = 0
             est_done = 0.0
@@ -1256,7 +1294,8 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 el = now - t_start - (0.0 if a.sim or not ctl else ctl.paused_s)
                 print("__PROGRESS__:" + json.dumps({
                     "done": drawn, "strokes": n, "layer": gi, "est_done_s": round(est_done, 2),
-                    "est_total_s": round(secs, 2), "elapsed_s": round(el, 2)}), flush=True)
+                    "est_total_s": round(secs_all, 2), "elapsed_s": round(el, 2), "copy": copy_no[0],
+                    "copies": a.copies}), flush=True)
 
             def draw_one(i):
                 nonlocal drawn, next_report, est_done
@@ -1269,7 +1308,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 for tx, ty in pts_s[1:]:
                     p.move_to(tx, ty, speed_of[i])
                 p.pen(True, a.pen_delay)
-                est_done += per_stroke[drawn]
+                est_done += per_stroke[drawn] if drawn < len(per_stroke) else per_full[(drawn - len(order)) % len(per_full)]
                 drawn += 1
                 progress(gi, force=drawn == n)
                 if drawn / n >= next_report:
@@ -1280,7 +1319,17 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
 
             returned = False
             cur_layer = None
-            for i in order:
+            copy_no = [1]
+            plan = [(c, i) for c in range(a.copies) for i in (order if c == 0 else full_order)]
+            for c, i in plan:
+                if c + 1 != copy_no[0]:
+                    # a new copy: back to S, then wait for fresh paper (the pen stays the last layer's)
+                    p.move_to(0, 0, a.travel_speed)
+                    p.idle()
+                    copy_no[0] = c + 1
+                    if not pause_for_paper(c + 1, a.copies, a, ctl):
+                        returned = True
+                        break
                 gi = stroke_group[i]
                 if gi != cur_layer:
                     key = groups[gi][0]
@@ -1311,7 +1360,13 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
             if returned:
                 log("Return requested: pen up, travelling back to the start point S.")
                 status = "stopped, returned to start"
-            p.move_to(0, 0, a.travel_speed)
+            if returned or a.finish == "start":
+                p.move_to(0, 0, a.travel_speed)
+            elif a.finish == "clear":
+                p.move_to(*to_steps((mx - EDGE_MARGIN - a.start_x, 0.0), spmm), a.travel_speed)
+                log(f"Finish: parked at the bed's right edge ({mx - EDGE_MARGIN:.0f}, {a.start_y:.0f}) mm, clear of the paper.")
+            else:
+                log("Finish: staying where the last stroke ended.")
             p.idle()
     except KeyboardInterrupt:
         status = "interrupted"

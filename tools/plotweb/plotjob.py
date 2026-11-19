@@ -59,6 +59,15 @@ def validate(raw, bed, pens, layer_keys):
     if not isinstance(sa, int) or isinstance(sa, bool) or not 0 <= sa <= 1_000_000:
         raise SettingsError("start_at must be a whole number of strokes, 0 or more")
     out["start_at"] = sa
+    cp = raw.get("copies")
+    cp = 1 if cp is None else cp
+    if not isinstance(cp, int) or isinstance(cp, bool) or not 1 <= cp <= 50:
+        raise SettingsError("Copies must be a whole number from 1 to 50")
+    out["copies"] = cp
+    fin = raw.get("finish") or "start"
+    if fin not in ("start", "stay", "clear"):
+        raise SettingsError("finish must be start, stay or clear")
+    out["finish"] = fin
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -181,6 +190,10 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv.append("--dedupe")
     if v.get("start_at"):
         argv += ["--start-at", str(int(v["start_at"]))]
+    if (v.get("copies") or 1) > 1:
+        argv += ["--copies", str(int(v["copies"]))]
+    if v.get("finish") and v["finish"] != "start":
+        argv += ["--finish", v["finish"]]
     if v.get("fill"):
         argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]
     if layers_json:

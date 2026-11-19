@@ -66,6 +66,7 @@ class JobRunner:
         self.position = {"state": "unknown", "at": None,
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
         self._last_state_emit = 0.0
+        self.notify = lambda title, text: None      # set by the app: a push message (ntfy) when configured
 
     # ------------------------------------------------------------------ state
     def snapshot(self):
@@ -593,6 +594,9 @@ class JobRunner:
                 if info.get("kind") == "swap":
                     msg = f"Pen change: put in the pen for {info.get('label', 'the next layer')}"
                     msg += f" ({info['pen']})." if info.get("pen") else "."
+                elif info.get("kind") == "paper":
+                    msg = (f"Paper change: copy {info['copy'] - 1} of {info['copies']} is done. Put in fresh paper "
+                           "in the same place, then Continue.")
                 else:
                     msg = "Paused. Pen is up; motors stay on, so do not push the carriage."
                 stopping = j["state"] in ("stopping", "returning")
@@ -600,6 +604,8 @@ class JobRunner:
                 if not stopping:
                     j.update(state="paused", message=msg)
             self._log("warn", msg)
+            if info.get("kind") in ("swap", "paper") and not j.get("sim"):
+                self.notify("Plotter waiting", msg)
             self._emit_state()
         elif line.startswith("__RESUMED__"):
             with self.lock:
@@ -712,4 +718,41 @@ class JobRunner:
             final = j["state"]
             msg = j["message"]
         self._log({"complete": "info", "stopped": "warn"}.get(final, "error"), f"Job {job_id}: {final}. {msg}")
+        self._history(j)
+        if not j.get("sim"):
+            self.notify(f"{j['meta'].get('name') or j['kind']}: {final}", msg)
         self._emit_state()
+
+    # ------------------------------------------------------------ history
+    def _history(self, j):
+        """One line per finished job in results/web/history.jsonl (the newest 500 kept)."""
+        prog = j.get("progress") or {}
+        rec = {"id": j["id"], "kind": j["kind"], "mode": j.get("mode"), "sim": bool(j.get("sim")),
+               "name": j["meta"].get("name") or j["meta"].get("tool") or "", "state": j["state"],
+               "message": j.get("message"), "started": round(j["started"], 1), "finished": round(j["finished"], 1),
+               "seconds": round((j["finished"] or time.time()) - j["started"], 1),
+               "done": prog.get("done"), "total": prog.get("strokes")}
+        p = self.s.cache / "history.jsonl"
+        try:
+            lines = p.read_text().splitlines()[-499:] if p.exists() else []
+            lines.append(json.dumps(rec))
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text("\n".join(lines) + "\n")
+            tmp.replace(p)
+        except OSError as ex:
+            self._log("warn", f"Could not record the job history: {ex}")
+
+    def history(self, limit=100):
+        p = self.s.cache / "history.jsonl"
+        out = []
+        try:
+            for ln in reversed(p.read_text().splitlines()):
+                try:
+                    out.append(json.loads(ln))
+                except ValueError:
+                    continue
+                if len(out) >= limit:
+                    break
+        except OSError:
+            pass
+        return out

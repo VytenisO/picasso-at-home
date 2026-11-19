@@ -298,12 +298,12 @@ niche.
 | Stale-connection warning | HAVE | | |
 | Start from stroke N (resume an interrupted or stopped job) | HAVE | | Start here on the scrubber; after a stopped plot of the same bed, Run offers Resume there (the stroke cut short is drawn whole) |
 | Plot only selected objects or layers | HAVE | | layers via enable; Run: Plot only the selection (the rest fade on the bed, Plot all objects returns) |
-| Repeat job N times with a paper-change hold between | TODO | P2 | cards, batches |
+| Repeat job N times with a paper-change hold between | HAVE |  | Job, Copies (1-50): back at S after each copy, a paper-change pause, the pen swapped back when it differs; the time shows all copies; a resume point applies to the first copy only |
 | Live speed override during a run | TODO | P3 | applies from the next chunk |
-| Finish position: S, a named spot, or stay | PART | P2 | always returns to S |
-| Job history (what ran, when, result, duration) | TODO | P2 | results/ has logs; surface them |
+| Finish position: S, a named spot, or stay | HAVE |  | Job, When done: back to S, clear of the paper (the bed's right edge, level with S), or stay at the last stroke; no named spots yet |
+| Job history (what ran, when, result, duration) | HAVE |  | Run, Recent jobs: the last 100 jobs (results/web/history.jsonl keeps 500) with result, time, duration, strokes done |
 | Job queue | SKIP | | one machine, one operator; repeat N covers batches |
-| Done / pen-swap notifications (browser, sound, ntfy push) | TODO | P2 | long plots run unattended between swaps |
+| Done / pen-swap notifications (browser, sound, ntfy push) | HAVE |  | Run: Notify me (browser notification) and Sound, per browser, at pen changes, paper changes and the end; ntfy push when config/web.json has "ntfy": "<topic URL>" (real jobs only) |
 | Delays before the first stroke and after the last | TODO | P3 | |
 
 ## 12. Machine control

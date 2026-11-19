@@ -43,6 +43,9 @@ class App:
         self.auth = Auth(web_cfg)
         self.lib = Library(settings, self.ev)
         self.runner = JobRunner(settings, self.ev)
+        self.ntfy = str(web_cfg.get("ntfy") or "").strip()
+        if self.ntfy:
+            self.runner.notify = self._push
         self.prep = prepare.Workshop(settings)
         self.docs = document.DocStore(settings, self.lib, self.ev)
         self.plans = {}
@@ -291,6 +294,19 @@ class App:
                 new[ly["key"].split("|")[0]] = ly["pen"]
         if new != m:
             (self.s.cache / "pen_map.json").write_text(json.dumps(new, indent=1))
+
+    def _push(self, title, text):
+        """POST a message to the ntfy topic URL in web.json ("ntfy"). Best effort, off the job's thread."""
+        import urllib.request
+
+        def send():
+            try:
+                req = urllib.request.Request(self.ntfy, data=str(text).encode()[:3000], method="POST",
+                                             headers={"Title": str(title).encode("ascii", "replace").decode()[:200]})
+                urllib.request.urlopen(req, timeout=8).close()
+            except Exception as ex:  # noqa: BLE001
+                self.ev.log("warn", f"Push message to ntfy failed: {ex}")
+        threading.Thread(target=send, daemon=True).start()
 
     def export_doc(self, body):
         """-> SVG text of exactly what the bed plots: every stroke after fills, layer order and the plot's start
@@ -884,7 +900,8 @@ def _thin(strokes):
 def _public_summary(sm):
     keep = ("strokes", "points", "est_seconds", "bbox_machine_mm", "paper_mm", "canvas_mm", "layers", "swaps",
             "optimized", "file_order", "duplicates_dropped", "start_at", "total_in_order", "fill_inks",
-            "drawing_mm", "travel_mm", "lifts", "doc_mm", "scale", "start_mm", "speed", "travel_speed", "problems")
+            "drawing_mm", "travel_mm", "lifts", "doc_mm", "scale", "start_mm", "speed", "travel_speed", "problems",
+            "copies", "est_seconds_all", "finish")
     return {k: sm.get(k) for k in keep}
 
 
@@ -1437,6 +1454,9 @@ class Handler(BaseHTTPRequestHandler):
         b = self.json_body()
         self._control(self.app.runner.pentest, b.get("job"), b.get("cmd"))
 
+    def r_history(self):
+        self.send(200, {"jobs": self.app.runner.history()})
+
     def r_plotter(self):
         if not self.app.hw_lock.acquire(timeout=5):
             raise ApiError(409, "Another plotter check is running.")
@@ -1469,6 +1489,7 @@ ROUTES_GET = {
     "/api/doc": (Handler.r_doc, True),
     "/api/plotter": (Handler.r_plotter, True),
     "/api/files/trash": (Handler.r_trash, True),
+    "/api/history": (Handler.r_history, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
 }

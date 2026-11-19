@@ -498,6 +498,22 @@ class TestDocument(SimServer):
         self.assertTrue(pv["doc"])
         st = self.wait_state(("complete",), timeout=120)
         self.assertEqual(st["job"]["meta"]["name"], "many_strokes.svg x2")
+        code, h = self.call("GET", "/api/history")
+        self.assertEqual(h["jobs"][0]["name"], "many_strokes.svg x2")
+        self.assertEqual(h["jobs"][0]["state"], "complete")
+        self.assertTrue(h["jobs"][0]["sim"])
+
+    def test_04h_copies_and_finish(self):
+        fid = self.upload("two_layers.svg")
+        objs = [self.obj(fid, 80, 30, 40, 40)]
+        one = self.doc_preview(objs)
+        three = self.doc_preview(objs, {"copies": 3, "finish": "clear"})
+        self.assertEqual(three["summary"]["copies"], 3)
+        self.assertEqual(three["summary"]["finish"], "clear")
+        self.assertAlmostEqual(three["summary"]["est_seconds_all"], 3 * one["summary"]["est_seconds"], delta=1)
+        for bad in ({"copies": 0}, {"copies": 51}, {"copies": 2.5}, {"finish": "away"}):
+            code, d = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": bad}})
+            self.assertEqual(code, 400, bad)
 
     def test_04b_planning_and_resume_point(self):
         fid = self.upload("many_strokes.svg")

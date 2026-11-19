@@ -408,6 +408,14 @@
         <button id="ptSweep">Sweep range</button>
         <button id="ptQuit" class="wide">Finish (pen up)</button>
       </div>
+      <div class="row notify-row">
+        <label class="check inline" title="A browser notification at pen changes, paper changes and the end"><input type="checkbox" id="notifyOn"> Notify me</label>
+        <label class="check inline" title="A short tone with each notification"><input type="checkbox" id="soundOn"> Sound</label>
+      </div>
+      <details id="histBox" class="hist">
+        <summary>Recent jobs</summary>
+        <ul id="histList" class="hist-list" aria-label="Recent jobs"></ul>
+      </details>
       <p class="note" id="stopNote"><b>Stop</b> lifts the pen and releases the motors. On firmware 3.x it cuts the move
         in flight short at once and reads the position back; on older firmware that move finishes first (within 3 s).
         <b>To cut everything at once, switch the plotter off.</b></p>
@@ -482,6 +490,15 @@
         <label class="check"><input type="checkbox" name="optimize" checked> Shorter pen-up travel: draw the nearest
           stroke next, reverse strokes, start closed shapes at the nearest point. Pen changes stay where they are.</label>
         <label class="check"><input type="checkbox" name="dedupe"> Skip strokes that exactly repeat an earlier one of the same pen</label>
+        <h3>Copies and finish</h3>
+        <div class="field-row">
+          <label class="field" title="Plot the bed this many times; the plot waits at S for fresh paper between copies"><span>Copies (1-50)</span><input name="copies" type="number" min="1" max="50" step="1"></label>
+          <label class="field"><span>When done</span><select name="finish">
+            <option value="start">Back to S</option><option value="clear">Clear of the paper</option>
+            <option value="stay">Stay at the last stroke</option></select></label>
+        </div>
+        <p class="hint">Back to S is ready for the next run. Clear of the paper parks at the bed's right edge so the
+          sheet can come out; slide the carriage back to S before the next run.</p>
         <h3>Fill (default)</h3>
         <div class="field-row">
           <label class="field"><span>Hatch spacing (mm, 0 = off)</span><input name="fill" type="number" step="0.1" min="0" max="50"></label>

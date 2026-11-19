@@ -1,6 +1,6 @@
 // Status panel, run controls, the start confirmation and the pen-swap prompt.
-import { post, ApiError } from './api.js';
-import { state, set, on, jobActive } from './store.js';
+import { api, post, ApiError } from './api.js';
+import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
 import { fileName, setStartAt, setSettings } from './doc.js';
@@ -15,6 +15,9 @@ const DOT = { running: 'busy', starting: 'busy', returning: 'busy', pausing: 'wa
 
 export function initRun() {
   $('previewBtn').onclick = previewNow;
+  initNotify();
+  $('histBox').addEventListener('toggle', loadHistory);
+  on('job', () => { const j = state.job; if (j && !jobActive() && $('histBox').open) loadHistory(); });
   $('onlySelBtn').onclick = () => {
     const ids = state.sel.filter((id) => state.doc.objects.some((o) => o.id === id));
     if (!ids.length) { toast('Select the objects to plot first.', true); return; }
@@ -70,7 +73,9 @@ function nextStep(job) {
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
       ? 'Change the pen, check it is up and seated, then press Continue.'
-      : 'Press Continue to carry on, Return to start, or Stop.';
+      : job.pause && job.pause.kind === 'paper'
+        ? 'Put in fresh paper exactly where the last sheet was, then press Continue.'
+        : 'Press Continue to carry on, Return to start, or Stop.';
     case 'stopping': return 'Wait: the move already sent is finishing. Switch the plotter off for an instant stop.';
     case 'pausing': return 'The plotter finishes the current stroke and lifts the pen.';
     case 'returning': return 'Finishing the stroke, then travelling back to S.';
@@ -127,6 +132,10 @@ function renderStatus() {
       $('swapText').textContent = (pz.pen ? `Put in the ${pz.pen} pen` : 'Put in the pen') +
         ` for layer ${pz.layer_index + 1} (${pz.label}). The pen is up and the motors are on: do not push the carriage. ` +
         'Change only the pen, then press Continue.';
+    } else if (pz.kind === 'paper') {
+      $('swapTitle').textContent = `Paper change: copy ${pz.copy} of ${pz.copies}`;
+      $('swapText').textContent = `Copy ${pz.copy - 1} is done and the carriage is back at S, pen up, motors on: do not push it. ` +
+        'Take the sheet out, put fresh paper in exactly the same place, then press Continue.';
     } else {
       $('swapTitle').textContent = 'Paused';
       $('swapText').textContent = 'The pen is up and the motors stay on. Do not push the carriage. Continue, return to S, or stop.';
@@ -201,7 +210,8 @@ function renderRun() {
     const fo = s.optimized && !s.start_at ? s.file_order : null;
     const rows = [
       ['Size', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])})`],
-      ['Time', `about ${fmtTime(s.est_seconds)}` + (fo && fo.est_seconds - s.est_seconds > 1 ? ` (${fmtTime(fo.est_seconds)} in file order)` : '')],
+      ['Time', `about ${fmtTime(s.est_seconds)}` + (fo && fo.est_seconds - s.est_seconds > 1 ? ` (${fmtTime(fo.est_seconds)} in file order)` : '') +
+        (s.copies > 1 ? `; ${s.copies} copies, about ${fmtTime(s.est_seconds_all)} with no time for paper changes` : '')],
       ['Pen up', `${mm(s.travel_mm / 1000, 2)} m` + (fo ? ` (${mm(fo.travel_mm / 1000, 2)} m in file order)` : '') + `, ${s.lifts} lifts`],
       ['Strokes', `${s.start_at ? `${s.total_in_order - s.start_at} of ${s.total_in_order}` : s.strokes}, ${mm(s.drawing_mm / 1000, 2)} m of line` +
         (s.duplicates_dropped ? `; ${s.duplicates_dropped} repeated stroke${s.duplicates_dropped > 1 ? 's' : ''} skipped` : '')],
@@ -219,6 +229,65 @@ function resumePoint() {
   const done = j.progress ? j.progress.done : 0;
   if (!done || !pv || !pv.bed_key || !j.meta || j.meta.bed_key !== pv.bed_key) return 0;
   return (j.meta.start_at || 0) + done;
+}
+
+// ----------------------------------------------------------- notifications and history
+// A browser notification (and a short tone) when a job needs a hand or ends. Off until asked for here.
+let lastJobState = null;
+function initNotify() {
+  const n = $('notifyOn'), snd = $('soundOn');
+  const can = 'Notification' in window;
+  n.disabled = !can;
+  if (!can) n.parentElement.title = 'This browser cannot show notifications (they need https or localhost).';
+  n.checked = can && !!prefs('notify') && Notification.permission === 'granted';
+  snd.checked = !!prefs('sound');
+  n.onchange = async () => {
+    if (n.checked && Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission().catch(() => 'denied');
+      if (p !== 'granted') { n.checked = false; toast('Notifications were not allowed by the browser.', true); }
+    }
+    prefs('notify', n.checked);
+  };
+  snd.onchange = () => { prefs('sound', snd.checked); if (snd.checked) tone(); };
+  on('job', () => {
+    const j = state.job;
+    const key = j ? `${j.id}:${j.state}:${j.pause ? j.pause.id : ''}` : null;
+    if (key === lastJobState) return;
+    const first = lastJobState === null;
+    lastJobState = key;
+    if (first || !j) return;
+    let msg = null;
+    if (j.state === 'paused' && j.pause && j.pause.kind === 'swap') msg = `Pen change: ${j.pause.label}${j.pause.pen ? ` (${j.pause.pen})` : ''}`;
+    else if (j.state === 'paused' && j.pause && j.pause.kind === 'paper') msg = `Paper change: copy ${j.pause.copy} of ${j.pause.copies}`;
+    else if (['complete', 'stopped', 'error', 'interrupted'].includes(j.state)) msg = `${title(j)}: ${j.meta && j.meta.name ? j.meta.name : j.kind}`;
+    if (!msg) return;
+    if (prefs('sound')) tone();
+    if (prefs('notify') && 'Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('Pen plotter', { body: msg, tag: 'plotter-job' }); } catch (e) { /* not allowed here */ }
+    }
+  });
+}
+
+function tone() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = 880; g.gain.value = 0.08;
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + 0.25);
+    o.onended = () => ac.close();
+  } catch (e) { /* no audio */ }
+}
+
+async function loadHistory() {
+  if (!$('histBox').open) return;
+  let r;
+  try { r = await api('/api/history'); } catch (e) { return; }
+  const fmtDate = (t) => new Date(t * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  $('histList').replaceChildren(...(r.jobs.length ? r.jobs.map((h) => el('li', {},
+    el('b', { text: h.name || h.kind }), el('span', { class: `st-${h.state}`, text: h.state }),
+    el('small', { class: 'muted', text: `${fmtDate(h.started)}, ${fmtTime(h.seconds)}${h.sim ? ', simulated' : ''}${h.kind !== 'plot' ? `, ${h.kind}` : ''}` }),
+    el('small', { class: 'muted', text: h.total ? `${h.done} of ${h.total} strokes` : '' }))) : [el('li', { text: 'No jobs yet.' })]));
 }
 
 // Download exactly what will be plotted, as the server plans it now.
