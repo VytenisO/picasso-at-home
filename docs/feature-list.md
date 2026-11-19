@@ -396,14 +396,14 @@ niche.
 | Rotate and mirror the image | HAVE | | Prepare adjust step |
 | Mask by a vector shape | TODO | P3 | |
 | Centre-line trace (single stroke down a line) | HAVE | | Prepare method "Line art (centre lines)": Zhang-Suen thinning in `image_to_svg.py` |
-| Edge/sketch trace for photos of drawings | TODO | P2 | |
+| Edge/sketch trace for photos of drawings | HAVE |  | Prepare method Photo of a drawing (centre lines): ink is what is darker than its neighbourhood by a set sensitivity, so uneven light drops out; then thinned to one stroke per line |
 | Ignore specks under N px | HAVE | | trace setting, plus the "Remove short strokes" clean-up step in mm |
 | Smoothness / simplify tolerance | HAVE | | trace setting and trace resolution, plus the "Simplify" clean-up step in mm |
 | Brightness window (lower and upper cutoff) | TODO | P3 | |
 | Transparent PNG handled as background | HAVE | | Prepare flattens transparency onto white paper |
-| Dither styles drawn as stipple dots (error diffusion, ordered) | TODO | P2 | the image research names stipple/TSP as a tone option |
+| Dither styles drawn as stipple dots (error diffusion, ordered) | HAVE |  | Prepare method Stipple dots: Floyd-Steinberg (scattered) or 4x4 Bayer (regular), one pen tick per dot; density sets the cell size |
 | Variable pressure by tone | TODO | P3 | servo is coarse; hatch density is the main tone tool |
-| Hatch angle per tone level / crosshatch for darks | PART | P2 | in halftone; expose angles |
+| Hatch angle per tone level / crosshatch for darks | HAVE |  | Shading by hatching: Hatch angle turns all passes (45 degrees plus it for the lightest, the darker ones cross); tone levels set the passes |
 | Image presets (named parameter sets) | HAVE |  | the Prepare presets: an image recipe saved with its adjustments, method and clean-up |
 | Save the processed (pre-vector) image | TODO | P3 | debugging the pipeline |
 | Batch convert many images | TODO | P3 | |

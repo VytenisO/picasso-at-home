@@ -142,7 +142,7 @@ def _raster(style, extra_keys):
         kw = {k: p[k] for k in extra_keys if k in p}
         if "levels" in kw and kw["levels"] == 1:
             kw["levels"] = 0
-        stats = convert(src, dst, width_mm=min(p["width_mm"], c[2] - c[0]), threshold=p["threshold"], blur=p["blur"],
+        stats = convert(src, dst, width_mm=min(p["width_mm"], c[2] - c[0]), threshold=p.get("threshold", 150), blur=p["blur"],
                         style=style, inks=p["inks"], single_pen=p.get("single_pen", False), mask=ctx.get("mask"),
                         max_width_mm=c[2] - c[0], max_height_mm=c[3] - c[1], **kw)
         return stats
@@ -302,9 +302,27 @@ STEPS = {s.id: s for s in [
          _raster("lineart", ("simplify_px", "min_len_px")),
          "One stroke down the middle of each drawn line, instead of two outlines. For drawings and sketches.",
          "Trace an image"),
-    Step("hatch", "Shading by hatching", "method", ["image"], [WIDTH, THRESHOLD, LEVELS, DENSITY, INKS, ONE_PEN, BLUR],
-         _raster("hatch", ("levels", "density")),
+    Step("hatch", "Shading by hatching", "method", ["image"], [WIDTH, THRESHOLD, LEVELS, DENSITY,
+        {"key": "angle", "label": "Hatch angle", "type": "number", "default": 0, "min": 0, "max": 180, "step": 5,
+         "unit": "deg", "slider": True, "help": "Turns every pass: the lightest is at 45 degrees plus this, the darker "
+                                                 "ones cross it."}, INKS, ONE_PEN, BLUR],
+         _raster("hatch", ("levels", "density", "angle")),
          "Parallel lines where the picture is dark, crossed in the shadows.", "Trace an image"),
+    Step("stipple", "Stipple dots", "method", ["image"], [WIDTH, THRESHOLD, DENSITY,
+        {"key": "pattern", "label": "Pattern", "type": "select", "default": "diffusion",
+         "options": [["diffusion", "Scattered (error diffusion)"], ["ordered", "Regular (ordered)"]]},
+        INKS, ONE_PEN, BLUR],
+         _raster("stipple", ("density", "pattern")),
+         "One pen dot per cell where the picture is dark enough: scattered or in a regular pattern. Many pen lifts: "
+         "slow but fine for small pictures.", "Trace an image"),
+    Step("sketch", "Photo of a drawing (centre lines)", "method", ["image"], [WIDTH,
+        {"key": "sensitivity", "label": "Sensitivity", "type": "number", "default": 18, "min": 4, "max": 80, "step": 1,
+         "integer": True, "slider": True, "help": "How much darker than its surroundings a line must be. Lower picks up "
+                                                  "fainter lines and more paper grain."},
+        INKS, BLUR, SMOOTH, SPECKS],
+         _raster("sketch", ("simplify_px", "min_len_px", "sensitivity")),
+         "For a photo or scan of a pencil or pen drawing: uneven light and paper shadow drop out, each line becomes one "
+         "stroke down its middle.", "Trace an image"),
     Step("halftone", "Halftone dots", "method", ["image"], [WIDTH, THRESHOLD, DENSITY, INKS, ONE_PEN, BLUR],
          _raster("halftone", ("density",)), "A grid of dots that grow with the darkness.", "Trace an image"),
     Step("one-line", "One continuous line", "method", ["image"], [WIDTH, THRESHOLD, DENSITY, INKS, BLUR],

@@ -43,7 +43,7 @@ INKS = {
     3: [("Black", "#111111"), ("Blue", "#2463a6"), ("Red", "#c0392b")],
     4: [("Key", "#111111"), ("Magenta", "#c2187e"), ("Cyan", "#00a0b0"), ("Yellow", "#d9a400")],
 }
-STYLES = ("contour", "halftone", "one-line", "lineart", "hatch")
+STYLES = ("contour", "halftone", "one-line", "lineart", "hatch", "stipple", "sketch")
 
 
 def read_pixels(path, width_px, blur, levels=0):
@@ -184,43 +184,35 @@ def rdp(pts, eps):
 
 
 def skeletonize(w, h, mask):
-    """Zhang-Suen thinning of a binary mask. -> set of (x, y) skeleton pixels."""
+    """Guo-Hall thinning of a binary mask. -> set of (x, y) skeleton pixels, 8-connected, one pixel wide.
+    (Zhang-Suen, used before, erases diagonal lines two pixels thick completely.)"""
     rows = [bytearray(1 if mask[y][x] else 0 for x in range(w)) for y in range(h)]
-
-    def nb(x, y):
-        if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
-            return None
-        r0, r1, r2 = rows[y - 1], rows[y], rows[y + 1]
-        return (r1[x], r0[x], r0[x + 1], r1[x + 1], r2[x + 1], r2[x],
-                r2[x - 1], r1[x - 1], r0[x - 1])  # p1..p9 (p1 = centre)
-
+    live = {(x, y) for y in range(1, h - 1) for x in range(1, w - 1) if rows[y][x]}
     changed = True
     while changed:
         changed = False
         for sub in (0, 1):
             drop = []
-            for y in range(1, h - 1):
-                for x in range(1, w - 1):
-                    n = nb(x, y)
-                    if not n or not n[0]:
-                        continue
-                    p = n[1:] + (n[1],)
-                    b = sum(p[:8])
-                    if b < 2 or b > 6:
-                        continue
-                    trans = sum(1 for k in range(8) if p[k] == 0 and p[k + 1] == 1)
-                    if trans != 1:
-                        continue
-                    if sub == 0:
-                        ok = p[1] * p[3] * p[5] == 0 and p[3] * p[5] * p[7] == 0
-                    else:
-                        ok = p[1] * p[3] * p[7] == 0 and p[1] * p[5] * p[7] == 0
-                    if ok:
-                        drop.append((x, y))
+            for x, y in live:
+                r0, r1, r2 = rows[y - 1], rows[y], rows[y + 1]
+                p2, p3, p4, p5 = r0[x], r0[x + 1], r1[x + 1], r2[x + 1]
+                p6, p7, p8, p9 = r2[x], r2[x - 1], r1[x - 1], r0[x - 1]
+                c = ((not p2) and (p3 or p4)) + ((not p4) and (p5 or p6)) +                     ((not p6) and (p7 or p8)) + ((not p8) and (p9 or p2))
+                if c != 1:
+                    continue
+                n1 = (p9 or p2) + (p3 or p4) + (p5 or p6) + (p7 or p8)
+                n2 = (p2 or p3) + (p4 or p5) + (p6 or p7) + (p8 or p9)
+                n = min(n1, n2)
+                if n < 2 or n > 3:
+                    continue
+                m = ((p6 or p7 or not p9) and p8) if sub == 0 else ((p2 or p3 or not p5) and p4)
+                if not m:
+                    drop.append((x, y))
             if drop:
                 changed = True
                 for x, y in drop:
                     rows[y][x] = 0
+                live.difference_update(drop)
     return {(x, y) for y in range(h) for x in range(w) if rows[y][x]}
 
 
@@ -232,7 +224,9 @@ def trace_skeleton(points):
             for dy in (-1, 0, 1):
                 if dx or dy:
                     q = (x + dx, y + dy)
-                    if q in adj:
+                    # a diagonal step is left out where a pixel beside it already links the two: thinning leaves
+                    # such staircase corners, and keeping both makes every corner look like a three-way junction
+                    if q in adj and not (dx and dy and ((x + dx, y) in adj or (x, y + dy) in adj)):
                         adj[(x, y)].add(q)
 
     def take(a, b):
@@ -266,6 +260,26 @@ def trace_skeleton(points):
         if adj[p]:
             walk(p)
     return paths
+
+
+def smooth_pixels(path, passes=2):
+    """Average each point with its neighbours: a traced pixel chain steps like a staircase, this takes the steps
+    out before simplifying. The ends stay put; a closed chain is smoothed all the way round."""
+    pts = [(float(x), float(y)) for x, y in path]
+    closed = len(pts) > 3 and pts[0] == pts[-1]
+    for _ in range(passes):
+        if len(pts) < 3:
+            break
+        if closed:
+            ring = pts[:-1]
+            n = len(ring)
+            ring = [((ring[i - 1][0] + 2 * ring[i][0] + ring[(i + 1) % n][0]) / 4,
+                     (ring[i - 1][1] + 2 * ring[i][1] + ring[(i + 1) % n][1]) / 4) for i in range(n)]
+            pts = ring + [ring[0]]
+        else:
+            pts = [pts[0]] + [((pts[i - 1][0] + 2 * pts[i][0] + pts[i + 1][0]) / 4,
+                               (pts[i - 1][1] + 2 * pts[i][1] + pts[i + 1][1]) / 4) for i in range(1, len(pts) - 1)] + [pts[-1]]
+    return pts
 
 
 def join_paths(paths, tol=1.5):
@@ -305,7 +319,7 @@ def lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px):
     skeleton = skeletonize(w, h, mask)
     bands = [[] for _ in range(inks)]
     for path in join_paths(trace_skeleton(skeleton)):
-        pts = rdp([(float(x), float(y)) for x, y in path], simplify_px)
+        pts = rdp(smooth_pixels(path), simplify_px)
         if len(pts) < 2:
             continue
         length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
@@ -383,7 +397,7 @@ HATCH_ANGLES = (45.0, 135.0, 0.0, 90.0)
 HATCH_TONES = (0.12, 0.35, 0.58, 0.8)      # a pass draws where the tone (0 paper .. 1 black) is above this
 
 
-def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0):
+def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0, angle=0.0):
     """Shading by hatching: one pass per tone step, each at its own angle, darker steps add more lines."""
     passes = levels - 1 if 2 <= levels <= 5 else len(HATCH_ANGLES)
     spacing_mm = 2.4 - 0.019 * density          # density 1..100 -> 2.4 .. 0.5 mm between lines
@@ -397,9 +411,64 @@ def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0):
     bands = [[] for _ in range(inks)]
     for k in range(passes):
         thr = HATCH_TONES[k] if passes == len(HATCH_ANGLES) else (k + 0.5) / passes * 0.9
-        lines = fill.tone_runs(tone, w, h, spacing, HATCH_ANGLES[k], thr, step=1.0, min_run=max(1.0, 0.6 / mm_per_px))
+        lines = fill.tone_runs(tone, w, h, spacing, (HATCH_ANGLES[k] + angle) % 180.0, thr, step=1.0,
+                               min_run=max(1.0, 0.6 / mm_per_px))
         mid = thr + (1.0 - thr) / 2
         bands[band_of(mid, inks)].extend(lines)
+    return bands
+
+
+BAYER4 = ((0, 8, 2, 10), (12, 4, 14, 6), (3, 11, 1, 9), (15, 7, 13, 5))
+
+
+def stipple_bands(w, h, pix, threshold, inks, density, pattern="diffusion"):
+    """Dots by dithering the tone on a cell grid: error diffusion (Floyd-Steinberg, organic) or ordered (4x4 Bayer,
+    regular). Each dot is a tick a quarter cell long: the pen goes down and up once."""
+    cell = max(2, round(10 - density * 0.08))          # density 1..100 -> 10 .. 2 px per cell
+    gw, gh = max(1, w // cell), max(1, h // cell)
+    cut = max(1, threshold)
+    tone = [[0.0] * gw for _ in range(gh)]
+    for gy in range(gh):
+        for gx in range(gw):
+            s = 0.0
+            for y in range(gy * cell, gy * cell + cell):
+                for x in range(gx * cell, gx * cell + cell):
+                    s += max(0.0, min(1.0, (cut - pix[min(w - 1, x), min(h - 1, y)]) / cut))
+            tone[gy][gx] = s / (cell * cell)
+    bands = [[] for _ in range(inks)]
+    tick = cell * 0.25
+    for gy in range(gh):
+        for gx in range(gw):
+            v = tone[gy][gx]
+            if pattern == "ordered":
+                on = v > (BAYER4[gy % 4][gx % 4] + 0.5) / 16
+            else:
+                on = v >= 0.5
+                err = v - (1.0 if on else 0.0)
+                for dx, dy, k in ((1, 0, 7), (-1, 1, 3), (0, 1, 5), (1, 1, 1)):
+                    if 0 <= gx + dx < gw and gy + dy < gh:
+                        tone[gy + dy][gx + dx] += err * k / 16
+            if on:
+                cx, cy = (gx + 0.5) * cell, (gy + 0.5) * cell
+                bands[band_of(max(0.0, min(1.0, tone[gy][gx] if pattern == "ordered" else v)), inks)].append(
+                    [(cx - tick / 2, cy), (cx + tick / 2, cy)])
+    return bands
+
+
+def sketch_bands(w, h, im, inks, simplify_px, min_len_px, sensitivity=18):
+    """Centre lines of a photographed drawing: a pixel is ink when it is darker than its neighbourhood by more than
+    sensitivity grey levels, so uneven light and paper shadows drop out. Then thinned like line art."""
+    radius = max(4, min(w, h) // 30)
+    local = im.filter(ImageFilter.BoxBlur(radius)).load()
+    pix = im.load()
+    mask = [[1 if local[x, y] - pix[x, y] > sensitivity else 0 for x in range(w)] for y in range(h)]
+    skeleton = skeletonize(w, h, mask)
+    bands = [[] for _ in range(inks)]
+    for path in join_paths(trace_skeleton(skeleton)):
+        pts = rdp(smooth_pixels(path), simplify_px)
+        if len(pts) < 2 or sum(math.dist(a, b) for a, b in zip(pts, pts[1:])) < min_len_px:
+            continue
+        bands[0].append(pts)
     return bands
 
 
@@ -495,7 +564,7 @@ def svg_text(width_mm, height_mm, bands, inks, mm_per_px):
 def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
             simplify_px=0.6, min_len_px=2.0, style="contour", density=40,
             inks=1, mask=None, levels=0, max_width_mm=None, max_height_mm=None,
-            single_pen=False):
+            single_pen=False, pattern="diffusion", angle=0.0, sensitivity=18):
     """Convert raster file -> layered SVG file. Returns a stats dict.
 
     levels>=2 posterises the grayscale into that many discrete tones before
@@ -509,7 +578,7 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
     levels = int(levels)
     if levels not in (0, 1) and not 2 <= levels <= 6:
         raise ValueError("levels must be 0 (continuous) or 2..6")
-    if style == "lineart":
+    if style in ("lineart", "sketch"):
         width_px = min(width_px, 300)   # thinning is O(pixels) in pure Python
     w, h, pix, im = read_pixels(pathlib.Path(src), width_px, blur, levels)
     if max_width_mm and width_mm > max_width_mm:
@@ -528,7 +597,11 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
     elif style == "lineart":
         bands = lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px)
     elif style == "hatch":
-        bands = hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels)
+        bands = hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels, angle)
+    elif style == "stipple":
+        bands = stipple_bands(w, h, pix, threshold, inks, density, pattern)
+    elif style == "sketch":
+        bands = sketch_bands(w, h, im, inks, simplify_px, min_len_px, sensitivity)
     else:
         bands = one_line_bands(w, h, pix, threshold, inks, density)
 
