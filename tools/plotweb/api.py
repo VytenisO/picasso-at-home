@@ -48,6 +48,8 @@ class App:
         self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
         self.plans_lock = threading.Lock()
         self.hw_lock = threading.Lock()      # one read-only plotter check at a time, never during a job start
+        if not settings.sim:
+            hardware.ServoGuard(settings, self.runner, self.hw_lock, self.ev.log).start()
         self.plan_dir = settings.cache / "plans"
         self.plan_dir.mkdir(parents=True, exist_ok=True)
         for old in self.plan_dir.iterdir():          # staged plans are only needed for a day
