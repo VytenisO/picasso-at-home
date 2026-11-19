@@ -497,6 +497,9 @@
         <label class="check"><input type="checkbox" name="optimize" checked> Shorter pen-up travel: draw the nearest
           stroke next, reverse strokes, start closed shapes at the nearest point. Pen changes stay where they are.</label>
         <label class="check"><input type="checkbox" name="dedupe"> Skip strokes that exactly repeat an earlier one of the same pen</label>
+        <label class="field"><span>Sweep</span><select name="sweep" title="Work across the sheet in 20 mm bands so the hand and fresh ink stay behind the pen">
+          <option value="none">Nearest stroke next</option><option value="down">Top to bottom</option>
+          <option value="right">Left to right</option></select></label>
         <h3>Copies and finish</h3>
         <div class="field-row">
           <label class="field" title="Plot the bed this many times; the plot waits at S for fresh paper between copies"><span>Copies (1-50)</span><input name="copies" type="number" min="1" max="50" step="1"></label>

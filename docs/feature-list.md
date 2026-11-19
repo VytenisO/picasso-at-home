@@ -236,7 +236,7 @@ niche.
 | Reorder layers (pen order) | HAVE | | Layers: arrows change the pen order; pen changes follow it |
 | Rename, recolour layers | PART | P3 | rename (shown at the pen change and in Run); no recolour |
 | Move objects to another layer (colour palette) | HAVE | | Arrange, Colour: the bed's ink colours as swatches, or any colour; Own colours undoes it. The object's lines are recoloured when the bed is composed |
-| Merge layers that share a pen (one swap fewer) | TODO | P2 | |
+| Merge layers that share a pen (one swap fewer) | HAVE |  | layers set to the same pen plot one after the other with no pen-change pause, and the swap count says so; put them next to each other in the pen order |
 | Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
 | Non-plotting guide layer | PART | P3 | guide lines; no guide shapes |
 | Passes per layer (repeat strokes) | HAVE | | 1 to 5; each stroke again right away, an open one back over itself |
@@ -254,7 +254,7 @@ niche.
 | Dwell at stroke start/end | TODO | P3 | ink flow for dip pens; `--pen-delay` exists in the CLI |
 | Overdraw closed shapes past the start point | TODO | P3 | closes the seam on felt tips |
 | Lead-in/lead-out off the shape | TODO | P3 | |
-| Copy/paste layer settings | TODO | P2 | |
+| Copy/paste layer settings | HAVE |  | Layers: Copy and Paste on each card (pen, speed, pressure, passes), per browser |
 | Per-colour default settings for new layers | TODO | P3 | |
 | Speed units shown clearly (mm/s) | HAVE | | limits shown next to fields |
 | Laser-only settings (power min/max, PWM, air, frequency, Z focus) | SKIP | | no equivalent |
@@ -273,14 +273,14 @@ niche.
 | Order by group (finish one object before the next) | TODO | P2 | |
 | Order by priority, pin some objects first | TODO | P2 | |
 | Inner shapes first | TODO | P3 | |
-| Sweep direction (e.g. top to bottom so the hand never touches wet ink) | TODO | P2 | |
+| Sweep direction (e.g. top to bottom so the hand never touches wet ink) | HAVE |  | Job, Path planning, Sweep: top to bottom or left to right in 20 mm bands within each pen, nearest stroke next inside a band |
 | Same approach direction (hide backlash) | TODO | P3 | |
 | Ordering panel with before/after travel and time | HAVE | | Run shows pen-up metres and time against the file order |
 | Scrub through the plot with a slider; play at 0.1x to 40x | PART | P3 | slider over the plan order with Play (about 12 s for the whole plan); no speed choice |
 | Travel moves shown in preview | HAVE | | Travel toggle (T) and while scrubbing, dashed |
 | Pressure shown as line shade | TODO | P3 | |
-| Legend by pen | TODO | P2 | |
-| Estimates calibrated against real runs (time scale factor) | TODO | P2 | |
+| Legend by pen | HAVE |  | Layers: Add a pen legend, single-line text of each enabled layer with its pen and speed, at the canvas's bottom-left |
+| Estimates calibrated against real runs (time scale factor) | HAVE |  | the median of real over estimated time of the last 10 finished real plots (3 or more) shows next to the estimate when it is more than 5% off |
 
 ## 11. Run control
 

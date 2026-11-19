@@ -462,7 +462,7 @@ class App:
                 self.ev.log("debug", ln, "plot")
         res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "doc": True, "file": None,
                "bed_key": document.bed_key(objs, raw.get("settings")),
-               "file_layers": layers, "objects": objs}
+               "file_layers": layers, "objects": objs, "time_factor": self.runner.time_factor()}
         if pv:
             res.update(summary=_public_summary(pv["summary"]), placement=pv["placement"], order=pv["order"],
                        strokes=_thin(pv["strokes"]))

@@ -260,6 +260,11 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     return True
 
 
+def same_pen(la, lb):
+    """Two layers set to the same pen plot one after the other with no pen change."""
+    return bool(la.get("pen")) and la.get("pen") == lb.get("pen")
+
+
 def pause_for_paper(copy, copies, a, ctl=None):
     """Between copies: the carriage is at S, pen up, motors on. Wait for new paper and CONTINUE.
     -> False if the operator asked to return (it is already at S) instead."""
@@ -888,6 +893,9 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--sweep", choices=("none", "down", "right"), default="none",
+                    help="plot order within each pen in 20 mm bands, top to bottom (down) or left to right (right), "
+                         "nearest next inside a band: the hand and the drawn ink stay behind the pen")
     ap.add_argument("--copies", type=int, default=1, metavar="N",
                     help="plot the drawing N times (1-50), back at S with a paper-change pause between copies; "
                          "--start-at applies to the first copy only")
@@ -1115,7 +1123,7 @@ def main():
     speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     pen_s = a.pen_delay / 1000 + 0.15
     file_order = None
-    if a.optimize and order:
+    if (a.optimize or a.sweep != "none") and order:
         # Measured on the file order first, for the before/after readout. S is (-ox, -oy) in stroke coordinates.
         _, t_file, _, s_file = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
                                         a.travel_speed, pen_s, speeds=[speed_of[i] for i in order])
@@ -1127,8 +1135,17 @@ def main():
             blocks[-1][1].append(i)
         order = []
         for _, idxs in blocks:
-            o, cur = pathplan.order_block(strokes, idxs, cur)
-            order += o
+            if a.sweep == "none":
+                bands = [idxs]
+            else:       # 20 mm bands by each stroke's top (down) or left edge (right), in sweep order
+                ax_ = 1 if a.sweep == "down" else 0
+                by = {}
+                for i in idxs:
+                    by.setdefault(math.floor(min(p[ax_] for p in strokes[i]) / 20.0), []).append(i)
+                bands = [by[k] for k in sorted(by)]
+            for band in bands:
+                o, cur = pathplan.order_block(strokes, band, cur)
+                order += o
         file_order = {"travel_mm": t_file, "est_seconds": s_file}
     if any((ls.get("passes") or 1) > 1 for ls in lset):
         # Passes: each stroke is drawn again right away, an open one back over itself (no travel), so the
@@ -1147,6 +1164,9 @@ def main():
         order = expanded
     total_in_order = len(order)
     full_order = list(order)
+    # Pen changes: between consecutive enabled layers in plot order, unless both name the same pen.
+    on_ranked = sorted((gi for gi in range(len(groups)) if lset[gi].get("enabled", True)), key=lambda g: (rank_of[g], g))
+    swaps = sum(1 for p_, n_ in zip(on_ranked, on_ranked[1:]) if not same_pen(lset[p_], lset[n_]))
     if not 1 <= a.copies <= 50:
         sys.exit("--copies must be 1 to 50")
     if a.start_at:
@@ -1231,7 +1251,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                            "pressure": lset[gi].get("pressure"), "pen": lset[gi].get("pen"),
                            "title": lset[gi].get("name"), "passes": lset[gi].get("passes") or 1, "rank": rank_of[gi]}
                           for gi, (k, ix) in enumerate(groups)],
-               "swaps": max(0, sum(1 for ls in lset if ls.get("enabled", True)) - 1),
+               "swaps": swaps,
                "drawing_mm": dd, "travel_mm": dt, "lifts": lifts, "doc_mm": [w_mm, h_mm], "scale": scale,
                "start_mm": [a.start_x, a.start_y], "speed": a.speed, "travel_speed": a.travel_speed,
                "optimized": bool(file_order), "file_order": file_order, "duplicates_dropped": n_dup,
@@ -1335,7 +1355,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                     key = groups[gi][0]
                     info = {"index": gi, "label": lset[gi].get("name") or color_label(key), "color": key[0], "pen": lset[gi].get("pen"),
                             "speed": speed_of[i], "pressure": lset[gi].get("pressure"), "strokes": len(groups[gi][1])}
-                    if cur_layer is not None and by_layer:
+                    if cur_layer is not None and by_layer and not same_pen(lset[cur_layer], lset[gi]):
                         if not pause_for_swap(key, a, ctl, {"layer_index": gi, "pen": lset[gi].get("pen")}):
                             returned = True
                             break

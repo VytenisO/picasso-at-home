@@ -211,6 +211,7 @@ function renderRun() {
     const rows = [
       ['Size', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])})`],
       ['Time', `about ${fmtTime(s.est_seconds)}` + (fo && fo.est_seconds - s.est_seconds > 1 ? ` (${fmtTime(fo.est_seconds)} in file order)` : '') +
+        (pv.time_factor && Math.abs(pv.time_factor - 1) > 0.05 ? `; past plots ran ${Math.round(pv.time_factor * 100)}% of the estimate, so about ${fmtTime(s.est_seconds * pv.time_factor)}` : '') +
         (s.copies > 1 ? `; ${s.copies} copies, about ${fmtTime(s.est_seconds_all)} with no time for paper changes` : '')],
       ['Pen up', `${mm(s.travel_mm / 1000, 2)} m` + (fo ? ` (${mm(fo.travel_mm / 1000, 2)} m in file order)` : '') + `, ${s.lifts} lifts`],
       ['Strokes', `${s.start_at ? `${s.total_in_order - s.start_at} of ${s.total_in_order}` : s.strokes}, ${mm(s.drawing_mm / 1000, 2)} m of line` +

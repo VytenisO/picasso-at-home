@@ -356,6 +356,7 @@ function fillJobForm() {
   set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
   set_('copies', st.copies || 1);
   if (document.activeElement !== f.finish) f.finish.value = st.finish || 'start';
+  if (document.activeElement !== f.sweep) f.sweep.value = st.sweep || 'none';
   f.optimize.checked = st.optimize !== false;
   f.dedupe.checked = !!st.dedupe;
   f.paper_custom.checked = !!st.paper;
@@ -368,7 +369,8 @@ function fromJobForm(e) {
   const f = $('placeForm');
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
   const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
-    optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value };
+    optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
+    sweep: f.sweep.value === 'none' ? null : f.sweep.value };
   const st = state.doc.settings;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {
@@ -486,8 +488,29 @@ function renderLayers() {
         num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')),
       el('div', { class: 'layer-foot' }, passes, el('small', { class: 'muted', text: `${fl.strokes} strokes` }),
         el('button', { type: 'button', class: 'link', text: 'Select', title: 'Select the objects that draw in this layer',
-          onclick: () => selectLayer(fl) })));
+          onclick: () => selectLayer(fl) }),
+        el('button', { type: 'button', class: 'link', text: 'Copy', title: 'Copy pen, speed, pressure and passes', disabled: locked,
+          onclick: () => { prefs('layerClip', { pen: s.pen || null, speed: s.speed ?? null, pressure: s.pressure ?? null, passes: s.passes || 1 }); toast('Layer settings copied.'); renderLayers(); } }),
+        el('button', { type: 'button', class: 'link', text: 'Paste', title: 'Paste the copied pen, speed, pressure and passes', disabled: locked || !prefs('layerClip'),
+          onclick: () => { const c = prefs('layerClip'); if (c) upd(fl.key, { pen: c.pen && pens[c.pen] ? c.pen : null, speed: c.speed, pressure: c.pressure, passes: c.passes }); } })));
   }));
+  list.append(el('button', { type: 'button', id: 'legendBtn', text: 'Add a pen legend', disabled: locked,
+    title: 'Single-line text listing each layer and its pen, placed at the bottom-left of the canvas', onclick: () => addLegend(rows) }));
+}
+
+// A legend: one line per enabled layer in plot order, as single-line text at the bottom-left of the canvas.
+async function addLegend(rows) {
+  const lines = rows.filter(({ s }) => s.enabled !== false).map(({ fl, s }, n) =>
+    `${n + 1}. ${s.name || fl.name}: ${s.pen || 'pen not set'}${s.speed ? `, ${s.speed} mm/s` : ''}`);
+  if (!lines.length) return;
+  const xh = 3;
+  try {
+    const r = await post('/api/text_single', { text: lines.join('\n'), font: 'Hershey Sans', xheight: xh, align: 'left' });
+    await refreshFiles();
+    const c = G.canvasRect().canvas;
+    await D.addFile(r.file.id, { at: [c[0] + 2, Math.max(c[1], c[3] - lines.length * xh * 3 - 2)] });
+    toast('Legend added at the bottom-left of the canvas. Move it where it fits.');
+  } catch (e) { toast(e.message, true); }
 }
 
 // Objects with any line in this layer's colour (their own colour, or the one they were moved to).

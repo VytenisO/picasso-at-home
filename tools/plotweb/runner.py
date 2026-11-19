@@ -731,7 +731,8 @@ class JobRunner:
                "name": j["meta"].get("name") or j["meta"].get("tool") or "", "state": j["state"],
                "message": j.get("message"), "started": round(j["started"], 1), "finished": round(j["finished"], 1),
                "seconds": round((j["finished"] or time.time()) - j["started"], 1),
-               "done": prog.get("done"), "total": prog.get("strokes")}
+               "done": prog.get("done"), "total": prog.get("strokes"), "est_s": prog.get("est_total_s"),
+               "run_s": prog.get("elapsed_s")}
         p = self.s.cache / "history.jsonl"
         try:
             lines = p.read_text().splitlines()[-499:] if p.exists() else []
@@ -741,6 +742,16 @@ class JobRunner:
             tmp.replace(p)
         except OSError as ex:
             self._log("warn", f"Could not record the job history: {ex}")
+
+    def time_factor(self):
+        """Real time over estimate, the median of the last 10 real plots that finished (at least 3), or None."""
+        r = [h["run_s"] / h["est_s"] for h in self.history(200)
+             if h.get("kind") == "plot" and h.get("mode") == "plot" and not h.get("sim") and h.get("state") == "complete"
+             and h.get("est_s") and h.get("run_s") and h["est_s"] > 20][:10]
+        if len(r) < 3:
+            return None
+        r.sort()
+        return round(r[len(r) // 2], 3)
 
     def history(self, limit=100):
         p = self.s.cache / "history.jsonl"
