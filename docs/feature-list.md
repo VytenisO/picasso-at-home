@@ -407,6 +407,7 @@ niche.
 | Save the processed (pre-vector) image | TODO | P3 | debugging the pipeline |
 | Batch convert many images | TODO | P3 | |
 | Mesh view parameters (yaw, pitch, width) | HAVE | | add max height (CLI only) |
+| Turtletoy code (paste a turtletoy.net script, it draws) | HAVE | | Prepare, "Turtletoy code": runs in a worker with no network access (CSP plus removed globals), 30 s and 500k-point limits, slider comments become controls, clipped to the 200 x 200 canvas, size in mm; the result is an SVG source. Pen opacity ignored |
 | 3D model to depth map | SKIP | | depth engraving concept |
 | Rasterise vectors | SKIP | | output is vectors |
 

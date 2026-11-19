@@ -889,6 +889,8 @@ class Handler(BaseHTTPRequestHandler):
                  ".svg": "image/svg+xml"}[p.suffix] + "; charset=utf-8"
         csp = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; "
                "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        if p.name == "turtle-worker.js":     # runs pasted code: may evaluate it, may not reach the network
+            csp = "default-src 'none'; script-src 'unsafe-eval'"
         self.send(200, p.read_bytes(), ctype, {"Content-Security-Policy": csp})
 
     # ---- routes: session

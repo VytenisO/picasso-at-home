@@ -7,6 +7,7 @@ import { $, el, toast, schemaForm, formValues, fmtTime } from './ui.js';
 import { drawInk, inkMode, setInkMode } from './ink.js';
 import { openFile, refreshFiles } from './workspace.js';
 import { showWs } from './ws.js';
+import { SAMPLE, parseControls, applyValues, runTurtle, toSvg, titleOf } from './turtle.js';
 
 const STAGE = {
   adjust: { title: 'Adjust the image', add: 'Add an adjustment', hint: 'Applied in order, before tracing.' },
@@ -21,6 +22,7 @@ const P = {
   memo: {},             // method id -> last params, so switching back restores them
   settings: { fill: 0, fill_angle: 45, layers: [] },
   name: '', replace: null, replaceName: '',
+  turtle: null,         // {code, values, size, src}: turtletoy code that made the source (src = its source id)
   result: null, error: null, busy: false, stale: false,
 };
 let uid = 1, gen = 0, timer = null;
@@ -83,7 +85,7 @@ function restore() {
   if (saved && Array.isArray(saved.list)) {
     Object.assign(P, { source: saved.source || null, memo: saved.memo || {}, name: saved.name || '',
       replace: saved.replace || null, replaceName: saved.replaceName || '',
-      settings: { fill: 0, fill_angle: 45, layers: [], ...(saved.settings || {}) } });
+      settings: { fill: 0, fill_angle: 45, layers: [], ...(saved.settings || {}) }, turtle: saved.turtle || null });
     P.list = saved.list.filter((s) => byId[s.step]).map((s) => ({ ...s, uid: uid++ }));
   }
   renderAll();
@@ -92,13 +94,14 @@ function restore() {
 
 function save() {
   prefs('prep', { source: P.source, list: P.list.map(({ step, on: o, params }) => ({ step, on: o, params })),
-    memo: P.memo, settings: P.settings, name: P.name, replace: P.replace, replaceName: P.replaceName });
+    memo: P.memo, settings: P.settings, name: P.name, replace: P.replace, replaceName: P.replaceName, turtle: P.turtle });
 }
 
 // ------------------------------------------------------------------ public entry points
 export async function prepareFile(file) {
   if (file.size > maxBytes) { toast(`${file.name} is larger than ${Math.round(maxBytes / 1048576)} MB.`, true); return; }
   setBusy(`Reading ${file.name}...`);
+  P.turtle = null;
   try {
     const r = await api('/api/prepare/source', { method: 'POST', raw: file, headers: { 'X-Filename': encodeURIComponent(file.name) } });
     useSource(r.source, { name: file.name.replace(/\.[^.]+$/, '') });
@@ -109,6 +112,7 @@ export async function prepareFromLibrary(id) {
   setBusy('Opening...');
   try {
     const r = await post('/api/prepare/from_library', { file: id });
+    P.turtle = null;
     P.source = r.source;
     P.list = r.recipe.steps.filter((s) => byId[s.step]).map((s) => ({ uid: uid++, step: s.step, on: s.on !== false, params: s.params || {} }));
     P.settings = { fill: r.settings.fill || 0, fill_angle: r.settings.fill_angle ?? 45, layers: r.settings.layers || [] };
@@ -144,10 +148,122 @@ function startGenerator(id) {
 
 function reset() {
   Object.assign(P, { source: null, list: [], settings: { fill: 0, fill_angle: 45, layers: [] }, name: '',
-    replace: null, replaceName: '', result: null, error: null });
+    replace: null, replaceName: '', result: null, error: null, turtle: null });
+  if (turtleRun) turtleRun.stop();
+  turtleSig = '';
   gen++;
   setBusy('');
   renderAll(); save();
+}
+
+// ------------------------------------------------------------------ turtletoy code
+// The code runs in a worker without network access; the lines become an SVG source, so the method, clean-up, fill
+// and pens work on it as on any drawing. The editor is built once and kept, so redraws do not lose the cursor.
+let turtleBox = null, turtleRun = null, turtleSig = '';
+
+function startTurtle() {
+  P.turtle = P.turtle || { code: SAMPLE, values: {}, size: 180, src: null };
+  if (P.source && P.source.id !== P.turtle.src) P.turtle.src = null;
+  renderSource(); save();
+  $('turtleCode').focus();
+  if (!P.turtle.src) turtleDraw();
+}
+
+function turtleEditor() {
+  if (!turtleBox) {
+    const code = el('textarea', { id: 'turtleCode', class: 'code', rows: 16, spellcheck: 'false', wrap: 'off',
+      'aria-label': 'Turtletoy code', autocomplete: 'off' });
+    let t = null;
+    code.oninput = () => {
+      P.turtle.code = code.value; save();
+      clearTimeout(t);
+      t = setTimeout(() => turtleControls(), 400);
+    };
+    const size = el('input', { id: 'turtleSize', type: 'number', min: 20, max: 400, step: 1 });
+    size.onchange = () => {
+      P.turtle.size = Math.min(400, Math.max(20, Math.round(Number(size.value)) || 180));
+      size.value = P.turtle.size; save(); turtleDraw();
+    };
+    turtleBox = el('div', { class: 'turtle' },
+      el('div', { class: 'row turtle-head' }, el('b', { text: 'Turtletoy code' }), el('span', { class: 'spacer' }),
+        el('a', { href: 'https://turtletoy.net/syntax', target: '_blank', rel: 'noopener noreferrer', text: 'API' }),
+        el('button', { type: 'button', class: 'link', text: 'Remove', onclick: reset })),
+      code,
+      el('form', { id: 'turtleForm', class: 'step-form', onsubmit: (e) => e.preventDefault() }),
+      el('label', { class: 'field', for: 'turtleSize' }, el('span', { text: 'Size on paper (mm): the 200 x 200 canvas' }), size),
+      el('div', { class: 'row' },
+        el('button', { type: 'button', id: 'turtleDraw', class: 'primary', text: 'Draw', title: 'Run the code (Ctrl+Enter)', onclick: () => turtleDraw() }),
+        el('button', { type: 'button', id: 'turtleStop', text: 'Stop', hidden: true, onclick: () => turtleRun && turtleRun.stop() })),
+      el('p', { id: 'turtleStatus', class: 'hint', 'aria-live': 'polite' }),
+      el('p', { class: 'hint', text: 'Runs here in the browser, cut off from the network, for at most 30 s. Pen opacity is '
+        + 'ignored: every line is drawn at full ink, so scripts that build tone from many faint lines plot very dark.' }));
+  }
+  const code = turtleBox.querySelector('#turtleCode');
+  if (code.value !== P.turtle.code) code.value = P.turtle.code;
+  turtleBox.querySelector('#turtleSize').value = P.turtle.size;
+  turtleControls();
+  return turtleBox;
+}
+
+// Sliders from the code's "// min= max= step=" comments; rebuilt only when the set of controls changes.
+function turtleControls() {
+  if (!P.turtle) return;
+  const form = turtleBox.querySelector('#turtleForm');
+  const controls = parseControls(P.turtle.code);
+  const sig = JSON.stringify(controls.map(({ key, min, max, step, options }) => [key, min, max, step, options]));
+  if (sig === turtleSig) return;
+  turtleSig = sig;
+  const values = {};
+  for (const c of controls) values[c.key] = P.turtle.values[c.key] ?? c.default;
+  schemaForm(form, controls, null, values);
+  let t = null;
+  const take = (ms) => {
+    Object.assign(P.turtle.values, formValues(form, controls)); save();
+    clearTimeout(t); t = setTimeout(() => turtleDraw(), ms);
+  };
+  form.oninput = () => take(500);
+  form.onchange = () => take(150);
+}
+
+async function turtleDraw() {
+  if (!P.turtle) return;
+  if (turtleRun) turtleRun.stop();
+  const status = $('turtleStatus'), stopBtn = $('turtleStop');
+  const code = applyValues(P.turtle.code, parseControls(P.turtle.code), P.turtle.values);
+  const run = runTurtle(code, { seconds: 30, onProgress: (m) => {
+    status.textContent = `Running: ${m.iters} steps, ${m.points} points, ${(m.ms / 1000).toFixed(1)} s`;
+  } });
+  turtleRun = run;
+  stopBtn.hidden = false;
+  status.textContent = 'Running...';
+  let r;
+  try {
+    r = await run.promise;
+  } catch (e) {
+    if (turtleRun === run) { status.textContent = e.message; stopBtn.hidden = true; turtleRun = null; }
+    return;
+  }
+  if (turtleRun !== run) return;
+  turtleRun = null;
+  stopBtn.hidden = true;
+  if (!r.paths.length) { status.textContent = 'The code ran but drew nothing inside the canvas (-100 to 100).'; return; }
+  const notes = [r.timedOut && 'stopped at the 30 s limit', r.full && 'stopped at 500,000 points'].filter(Boolean);
+  status.textContent = `${r.paths.length} lines, ${r.points} points, ${(r.ms / 1000).toFixed(1)} s`
+    + (notes.length ? ` (${notes.join(', ')})` : '');
+  const name = titleOf(P.turtle.code);
+  try {
+    const up = await api('/api/prepare/source', { method: 'POST', raw: new Blob([toSvg(r.paths, P.turtle.size)], { type: 'image/svg+xml' }),
+      headers: { 'X-Filename': encodeURIComponent(`${name}.svg`) } });
+    if (!P.turtle) return;
+    const keep = P.source && P.source.id === P.turtle.src && methodOf();
+    P.turtle.src = up.source.id;
+    if (keep) {           // a redraw: same recipe, new lines; the name follows the code's title unless typed over
+      if (!P.name || P.name === P.turtle.title) P.name = name;
+      P.turtle.title = name;
+      P.source = up.source; P.result = null; P.error = null;
+      renderAll(); save(); schedule(0);
+    } else { P.turtle.title = name; useSource(up.source, { name }); }
+  } catch (e) { status.textContent = e.message; }
 }
 
 // ------------------------------------------------------------------ recipe model
@@ -207,6 +323,7 @@ function renderSource() {
   const box = $('prepSource');
   const generators = steps.filter((s) => s.stage === 'method' && !s.accepts.length);
   const m = methodOf();
+  if (P.turtle && (!P.source || P.source.id === P.turtle.src)) { box.replaceChildren(turtleEditor()); return; }
   if (!P.source) {
     const drop = el('div', { class: 'drop', tabindex: '0', role: 'button', 'aria-label': 'Choose a file to prepare',
       onclick: () => $('prepFile').click(),
@@ -215,7 +332,9 @@ function renderSource() {
     el('br'), el('small', { text: Object.values(kinds).flat().join(' ') }));
     const gen_ = el('div', { class: 'gen-row' }, el('span', { class: 'muted', text: 'or start from' }),
       ...generators.map((g) => el('button', { type: 'button', class: m && m.step === g.id ? 'chip on' : 'chip', text: g.title,
-        'aria-pressed': String(!!(m && m.step === g.id)), onclick: () => startGenerator(g.id) })));
+        'aria-pressed': String(!!(m && m.step === g.id)), onclick: () => startGenerator(g.id) })),
+      el('button', { type: 'button', class: 'chip', text: 'Turtletoy code', title: 'Paste a script from turtletoy.net',
+        onclick: startTurtle }));
     box.replaceChildren(drop, gen_);
     return;
   }
@@ -612,6 +731,9 @@ function jobDot() {
 }
 
 export function prepKey(e) {
+  if (e.target && e.target.id === 'turtleCode' && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault(); turtleDraw(); return true;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(true); return true; }
   return false;
 }

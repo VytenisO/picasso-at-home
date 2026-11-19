@@ -99,6 +99,8 @@ class TestApi(SimServer):
         with urllib.request.urlopen(self.base + "/") as r:
             self.assertIn("Content-Security-Policy", r.headers)
             self.assertIn(b"<html", r.read().lower())
+        with urllib.request.urlopen(self.base + "/js/turtle-worker.js") as r:   # runs pasted code: no network
+            self.assertEqual(r.headers["Content-Security-Policy"], "default-src 'none'; script-src 'unsafe-eval'")
         code, _ = self.call("GET", "/js/../../plot_svg.py")
         self.assertEqual(code, 404)
 

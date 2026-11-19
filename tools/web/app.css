@@ -271,6 +271,10 @@ button.icon[aria-pressed="true"] { background: var(--info-bg); border-color: var
 .gen-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; font-size: 13px; }
 .chip { border-radius: 999px; min-height: 28px; padding: 2px 12px; }
 .chip.on { background: var(--info-bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.turtle { display: grid; gap: 8px; }
+.turtle-head { align-items: center; gap: 10px; }
+.turtle textarea.code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.4; width: 100%;
+  min-height: 220px; resize: vertical; white-space: pre; tab-size: 2; }
 .source-card { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: center; }
 .source-card .thumb { width: 72px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
 .source-card .glyph { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--muted); background: var(--panel-2); }
