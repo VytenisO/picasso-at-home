@@ -273,6 +273,12 @@ button.icon[aria-pressed="true"] { background: var(--info-bg); border-color: var
 .chip.on { background: var(--info-bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .turtle { display: grid; gap: 8px; }
 .swatches { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.view-menu { position: absolute; right: 8px; top: 44px; z-index: 20; display: grid; gap: 8px; padding: 12px; width: 260px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .25); }
+.workspace.no-panels { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.workspace.no-panels > .panel { display: none; }
+.layer-head .eye { min-height: 24px; padding: 0 6px; font-size: 12px; }
+.layer.hidden-view .layer-grid, .layer.hidden-view .layer-foot { opacity: .55; }
 .swatch-btn { width: 24px; height: 24px; min-height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--line); }
 .swatch-btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .ink-pick input[type="color"] { width: 32px; height: 26px; padding: 0 2px; }

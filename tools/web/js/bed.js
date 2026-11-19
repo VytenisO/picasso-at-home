@@ -5,7 +5,7 @@
 // drag is instant. Once a preview is fresh the planner's exact strokes are drawn instead (fills, simplification).
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el } from './ui.js';
-import { drawInk, inkMode, setInkMode } from './ink.js';
+import { drawInk, inkMode, setInkMode, hiddenLayers } from './ink.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
 
@@ -49,6 +49,7 @@ export function initBed() {
   $('zoomIn').onclick = () => zoomBy(1.25);
   $('zoomOut').onclick = () => zoomBy(0.8);
   $('zoomFit').onclick = fit;
+  initViewMenu();
   const inkBtn = $('inkBtn');
   const showInk = () => { inkBtn.setAttribute('aria-pressed', String(inkMode())); inkBtn.textContent = inkMode() ? 'Ink' : 'Lines'; };
   inkBtn.onclick = () => { setInkMode(!inkMode()); showInk(); redraw(); };
@@ -123,14 +124,17 @@ function render() {
   ctx.clearRect(0, 0, W, H);
   ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * view.ox, dpr * view.oy);
   const px = 1 / view.s;
-  // bed with a 10 mm grid
+  // bed with the grid (View); a grid finer than 4 px on screen is skipped
   ctx.fillStyle = css('--bed');
   ctx.fillRect(0, 0, m.bed[0], m.bed[1]);
-  ctx.strokeStyle = css('--grid'); ctx.lineWidth = px;
-  ctx.beginPath();
-  for (let x = 10; x < m.bed[0]; x += 10) { ctx.moveTo(x, 0); ctx.lineTo(x, m.bed[1]); }
-  for (let y = 10; y < m.bed[1]; y += 10) { ctx.moveTo(0, y); ctx.lineTo(m.bed[0], y); }
-  ctx.stroke();
+  const gs = viewPrefs().grid;
+  if (gs > 0 && gs * view.s >= 4) {
+    ctx.strokeStyle = css('--grid'); ctx.lineWidth = px;
+    ctx.beginPath();
+    for (let x = gs; x < m.bed[0]; x += gs) { ctx.moveTo(x, 0); ctx.lineTo(x, m.bed[1]); }
+    for (let y = gs; y < m.bed[1]; y += gs) { ctx.moveTo(0, y); ctx.lineTo(m.bed[0], y); }
+    ctx.stroke();
+  }
   const { paper, canvas } = G.canvasRect();
   ctx.fillStyle = css('--paper');
   ctx.fillRect(paper[0], paper[1], paper[2], paper[3]);
@@ -147,6 +151,7 @@ function render() {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const pens = state.me.pens || {};
   const layers = state.doc && state.doc.settings.layers;
+  const hide = hiddenLayers();
   const liveOn = job && job.kind === 'live' && jobActive();
   if (showJob) {
     drawInk(ctx, jp, { px, layers: jp.settings && jp.settings.layers, pens, css, alpha: 0.28 });
@@ -160,12 +165,13 @@ function render() {
       const k = state.scrub === null ? order.length : state.scrub;
       if (state.scrub !== null || (pv.summary && pv.summary.start_at > 0)) {
         // the plan so far, over a faint whole (skipped strokes of a resume stay faint)
-        drawInk(ctx, pv, { px, layers, pens, css, alpha: 0.16 });
-        drawInk(ctx, subset(pv, k), { px, layers, pens, css });
-      } else drawInk(ctx, pv, { px, layers, pens, css });
+        drawInk(ctx, pv, { px, layers, pens, css, alpha: 0.16, hide });
+        drawInk(ctx, subset(pv, k), { px, layers, pens, css, hide });
+      } else drawInk(ctx, pv, { px, layers, pens, css, hide });
       if (travelOn() || state.scrub !== null) drawTravel(pv, k, px);
+      if (viewPrefs().dir) drawDirection(pv, k, px, hide);
     } else {
-      for (const o of objects()) drawObject(o, { px, layers, pens });
+      for (const o of objects()) drawObject(o, { px, layers, pens, hide });
     }
     if (editable()) overlays(px);
   }
@@ -475,7 +481,7 @@ function openMenu(clientX, clientY, mm) {
   menu.querySelector('button:not(:disabled)')?.focus();
 }
 
-function drawObject(o, { px, layers, pens }) {
+function drawObject(o, { px, layers, pens, hide }) {
   const n = state.naturals[o.file];
   if (!n) {           // geometry still loading: the box only
     ctx.setLineDash([2 * px, 2 * px]); ctx.strokeStyle = css('--muted'); ctx.lineWidth = px;
@@ -488,7 +494,7 @@ function drawObject(o, { px, layers, pens }) {
   const out = Array.isArray(only) && only.length && only.some((id) => state.doc.objects.some((x) => x.id === id)) && !only.includes(o.id);
   ctx.save();
   ctx.transform(...mt);
-  drawInk(ctx, o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css,
+  drawInk(ctx, o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css, hide,
     alpha: (state.previewStale || draft ? 0.75 : 1) * (out ? 0.4 : 1), lineScale: k });
   ctx.restore();
 }
@@ -703,7 +709,68 @@ function move(e) {
   redraw();
 }
 
-const snapHalf = (v) => Math.round(v * 2) / 2;
+// Free moves and resizes land on this step: the grid when View says so, else 0.5 mm.
+const snapStep = () => { const v = viewPrefs(); return v.snapGrid && v.grid > 0 ? v.grid : 0.5; };
+const snapHalf = (v) => { const s = snapStep(); return Math.round(v / s) * s; };
+
+// ------------------------------------------------------------------ view menu
+export const viewPrefs = () => ({ grid: 10, snapGrid: false, dir: false, ...(prefs('view') || {}) });
+
+function initViewMenu() {
+  const btn = $('viewBtn'), menu = $('viewMenu');
+  const v = viewPrefs();
+  $('vGrid').value = String(v.grid);
+  $('vSnapGrid').checked = v.snapGrid;
+  $('vDir').checked = v.dir;
+  const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked }); redraw(); };
+  for (const id of ['vGrid', 'vSnapGrid', 'vDir']) $(id).onchange = save;
+  const show = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+  btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };
+  document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { show(false); btn.focus(); } });
+  $('vPanels').onclick = () => { togglePanels(); show(false); };
+  setPanels(!!prefs('noPanels'));
+}
+
+function setPanels(off) {
+  $('plotWs').classList.toggle('no-panels', off);
+  $('vPanels').textContent = off ? 'Show side panels' : 'Hide side panels';
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+}
+
+export function togglePanels() {
+  const off = !$('plotWs').classList.contains('no-panels');
+  prefs('noPanels', off);
+  setPanels(off);
+}
+
+// Each stroke's start (dot) and direction (an arrowhead halfway along), in plot order, up to stroke k.
+function drawDirection(pv, k, px, hide) {
+  const order = (pv.order || []).slice(0, k);
+  if (order.length > 4000) return;
+  const sl = (pv.summary && pv.summary.layers) || [];
+  ctx.save();
+  ctx.fillStyle = ctx.strokeStyle = css('--accent');
+  ctx.lineWidth = 1.2 * px;
+  const a = 5 * px;
+  for (const i of order) {
+    const s = pv.strokes[i];
+    if (!s || s.pts.length < 2 || (hide.size && sl[s.l] && hide.has(sl[s.l].key))) continue;
+    const [x0, y0] = s.pts[0];
+    ctx.beginPath(); ctx.arc(x0, y0, 2 * px, 0, Math.PI * 2); ctx.fill();
+    const j = Math.max(1, Math.floor(s.pts.length / 2));
+    const [ax, ay] = s.pts[j - 1], [bx, by] = s.pts[j];
+    const L = Math.hypot(bx - ax, by - ay);
+    if (L < 1e-6) continue;
+    const ux = (bx - ax) / L, uy = (by - ay) / L, mx = (ax + bx) / 2, my = (ay + by) / 2;
+    ctx.beginPath();
+    ctx.moveTo(mx - a * ux + a * 0.6 * uy, my - a * uy - a * 0.6 * ux);
+    ctx.lineTo(mx, my);
+    ctx.lineTo(mx - a * ux - a * 0.6 * uy, my - a * uy + a * 0.6 * ux);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 function dragMove(sel, mx, my, e) {
   let dx = mx - drag.start[0], dy = my - drag.start[1];

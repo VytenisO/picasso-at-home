@@ -35,20 +35,28 @@ export function layerInk(pv, l, layers, pens, css) {
   const set = (layers || []).find((x) => x && x.key === ly.key) || (layers || [])[l] || {};
   const pen = set.pen && pens ? pens[set.pen] : null;
   const hex = (pen && pen.colour_hex) || ly.color;
-  return { color: readable(hex, css), raw: hex || '#111111', width: (pen && Number(pen.width_mm)) || DEFAULT_WIDTH_MM,
+  return { key: ly.key, color: readable(hex, css), raw: hex || '#111111', width: (pen && Number(pen.width_mm)) || DEFAULT_WIDTH_MM,
     off: set.enabled === false, pen: set.pen || null, name: set.name || ly.title || ly.name || `Layer ${l + 1}` };
 }
 
 export const inkMode = () => prefs('ink') !== false;
+// Layers hidden in the view (this browser only). They still plot.
+export const hiddenLayers = () => new Set(prefs('hiddenLayers') || []);
+export function toggleLayerHidden(key) {
+  const h = hiddenLayers();
+  if (h.has(key)) h.delete(key); else h.add(key);
+  prefs('hiddenLayers', [...h]);
+}
 export function setInkMode(on) { prefs('ink', !!on); }
 
 // px: one screen pixel in mm. alpha: overall opacity. dim(l): extra fade for a layer (switched off, etc).
-export function drawInk(ctx, pv, { px, layers, pens, css, alpha = 1, ink = inkMode(), lineScale = 1 }) {
+export function drawInk(ctx, pv, { px, layers, pens, css, alpha = 1, ink = inkMode(), lineScale = 1, hide = null }) {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const [l, path] of layerPaths(pv)) {
     const k = layerInk(pv, l, layers, pens, css);
+    if (hide && hide.has(k.key)) continue;           // hidden in the view only; it still plots
     ctx.globalAlpha = alpha * (k.off ? 0.15 : ink ? 0.92 : 1);
     ctx.strokeStyle = k.color;
     ctx.lineWidth = (ink ? Math.max(k.width, 0.8 * px) : Math.max(0.3, 1.2 * px)) / lineScale;

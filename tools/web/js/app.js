@@ -3,7 +3,7 @@
 import { api, post, connectEvents, setUnauthorizedHandler } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, toast } from './ui.js';
-import { initBed, fit, zoomIn, zoomOut, themeChanged, toggleTravel, zoomSelection } from './bed.js';
+import { initBed, fit, zoomIn, zoomOut, themeChanged, toggleTravel, zoomSelection, togglePanels } from './bed.js';
 import { initDoc } from './doc.js';
 import { initWorkspace, openFile, refreshFiles, runPreview, initTextTool } from './workspace.js';
 import * as D from './doc.js';
@@ -209,6 +209,7 @@ function initKeys() {
     else if ((e.key === 'p' || e.key === 'P') && !prep) { if (!jobActive()) runPreview(); }
     else if ((e.key === 't' || e.key === 'T') && !prep) toggleTravel();
     else if ((e.key === 'z' || e.key === 'Z') && !prep) zoomSelection();
+    else if (e.key === '\\' && !prep) togglePanels();
     else if (e.key === ' ' && !e.repeat && !(t && t.closest && t.closest('button, a, summary, [role=button], [role=tab]'))) {
       e.preventDefault();
       if (state.job && state.job.state === 'running') pause();

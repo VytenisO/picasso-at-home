@@ -66,7 +66,7 @@ niche.
 | Three-panel layout with console row | HAVE | | `index.html`, `app.css` |
 | Phone layout with bottom tab bar | HAVE | | below 900 px; Prepare stacks preview, recipe and result |
 | Dark/light/system theme | HAVE | | `app.js` |
-| Collapse side panels to maximise the bed | TODO | P2 | one key toggles all panels |
+| Collapse side panels to maximise the bed | HAVE |  | View, Hide side panels, or the backslash key; remembered in this browser |
 | Reset panel layout | TODO | P3 | only once panels can be resized or moved |
 | Resizable panels | TODO | P3 | |
 | Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | TODO | P2 | home for the commands below; the panels stay |
@@ -86,13 +86,13 @@ niche.
 | Zoom to selection | HAVE | | Z, or the context menu |
 | Pan with Space+drag or middle button | PART | P3 | middle or right drag, a finger on empty bed; Space stays pause/continue |
 | Cursor X/Y read-out | HAVE | | |
-| Grid | PART | P2 | fixed 10 mm; make spacing a setting and add a toggle |
+| Grid | HAVE |  | View: off, 1, 2, 5, 10 or 20 mm (skipped when finer than 4 px on screen) |
 | Rulers on the top and left edges | HAVE | | adaptive ticks, the pointer and the selection's extent marked |
 | Draggable guide lines from the rulers (never plotted, lockable, snappable) | PART | P3 | drag out of a ruler, move, drop back on a ruler to remove, right-click to add or clear; saved with the bed; not lockable |
 | Automatic alignment hints while dragging (edges/centres line up) | HAVE | | a line shows what the dragged edge or centre snapped to |
-| Wireframe vs filled view | TODO | P2 | matters once hatch fills exist |
-| Show pen width (stroke drawn at the pen's real width) | TODO | P2 | pen library has the width; good forecast of dark areas |
-| Show path direction and start points | PART | P2 | the scrubber shows the order stroke by stroke with the pen position; no arrows |
+| Wireframe vs filled view | HAVE |  | Ink (pen colour and width) or Lines (thin lines) on the bed and in Prepare |
+| Show pen width (stroke drawn at the pen's real width) | HAVE |  | Ink view draws each layer at its pen's width_mm |
+| Show path direction and start points | HAVE |  | View: a dot at each stroke's start and an arrowhead halfway along, in plot order, after a preview (up to 4000 strokes); the scrubber limits it to the strokes so far |
 | Show travel (pen-up) moves | HAVE | | Travel toggle on the scrubber bar, T |
 | Fast low-detail rendering for huge drawings | TODO | P3 | |
 | Camera image of the bed as background | SKIP | | no camera; see section 15 |
@@ -192,7 +192,7 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Grid snap while dragging (0.5 mm), Shift disables | HAVE | | |
-| Grid snap spacing and toggle as a setting | TODO | P2 | |
+| Grid snap spacing and toggle as a setting | HAVE |  | View: moves and resizes snap to the grid step instead of 0.5 mm |
 | Snap to object nodes, midpoints, centres, intersections | PART | P3 | object edges and centres while moving; no nodes, no snapping while resizing |
 | Snap to paper/canvas edges and centre | HAVE | | moving snaps edges and centre to canvas, paper, guides and other objects within 7 px; Alt: none |
 | Snap distance setting, modifier to disable | TODO | P3 | |
@@ -232,7 +232,7 @@ niche.
 | Layers from colour and Inkscape layer | HAVE | | `plot_svg.py` |
 | Per layer: enable, pen profile, speed, pressure | HAVE | | |
 | Pen-swap pause between layers naming the pen | HAVE | | |
-| Show/hide a layer in the view without dropping it from the plot | TODO | P2 | today "enabled" does both |
+| Show/hide a layer in the view without dropping it from the plot | HAVE |  | Layers: Hide/Show on each card, this browser only; enable still decides what plots |
 | Reorder layers (pen order) | HAVE | | Layers: arrows change the pen order; pen changes follow it |
 | Rename, recolour layers | PART | P3 | rename (shown at the pen change and in Run); no recolour |
 | Move objects to another layer (colour palette) | HAVE | | Arrange, Colour: the bed's ink colours as swatches, or any colour; Own colours undoes it. The object's lines are recoloured when the bed is composed |

@@ -312,10 +312,19 @@
       <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
       <button class="icon" id="textTool" aria-pressed="false" title="Text: click on the bed where it should go">Text</button>
       <span class="spacer"></span>
+      <button class="icon" id="viewBtn" aria-haspopup="true" aria-expanded="false" aria-controls="viewMenu" title="Grid, snapping, path direction, side panels">View</button>
       <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
       <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
       <button class="icon" id="zoomFit" title="Fit the bed (0)">Fit</button>
       <button class="icon" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
+    <div class="view-menu" id="viewMenu" role="group" aria-label="View" hidden>
+      <label class="field"><span>Grid</span><select id="vGrid">
+        <option value="0">Off</option><option value="1">1 mm</option><option value="2">2 mm</option>
+        <option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
+      <label class="check"><input type="checkbox" id="vSnapGrid"> Moves snap to the grid (else to 0.5 mm)</label>
+      <label class="check"><input type="checkbox" id="vDir"> Path direction and start points (after a preview)</label>
+      <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
     </div>
     <div class="scrub" id="scrubBar" hidden>
       <button class="icon" id="travelBtn" aria-pressed="false" title="Show the pen-up moves (T)">Travel</button>
@@ -574,6 +583,7 @@
       <dt>Shift while dragging</dt><dd>A corner: stretch freely. The turn handle: any angle (else 15 degree steps)</dd>
       <dt>Alt while dragging</dt><dd>No snapping: edges and centres snap to the canvas, paper, guides and other objects, else to the 0.5 mm grid</dd>
       <dt><kbd>Z</kbd></dt><dd>Zoom to the selection</dd>
+      <dt><kbd>\</kbd></dt><dd>Hide or show the side panels (Plot)</dd>
       <dt>Rulers</dt><dd>Drag a guide out of a ruler; drag it back onto the ruler to remove it. Right-click for more</dd>
       <dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
       <dt><kbd>Esc</kbd></dt><dd>Close a dialog (never stops a job)</dd>

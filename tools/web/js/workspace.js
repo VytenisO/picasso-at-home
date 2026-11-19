@@ -6,6 +6,7 @@ import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
+import { hiddenLayers, toggleLayerHidden } from './ink.js';
 
 export const runPreview = D.runPreview;
 
@@ -396,8 +397,12 @@ function renderLayers() {
     name.onchange = () => upd(fl.key, { name: name.value.trim() || null }, 'name-' + fl.key);
     const arrow = (dir, txt, title) => el('button', { class: 'icon', type: 'button', text: txt, title, disabled: locked || n + dir < 0 || n + dir >= rows.length,
       onclick: () => move(n, dir) });
-    return el('div', { class: 'layer' + (s.enabled === false ? ' off' : '') },
-      el('div', { class: 'layer-head' }, on_, swatch, el('b', { text: `${n + 1}.` }), name,
+    const hidden = hiddenLayers().has(fl.key);
+    const eye = el('button', { type: 'button', class: 'icon eye', text: hidden ? 'Show' : 'Hide', 'aria-pressed': String(hidden),
+      title: 'Hide or show this layer on the bed only: it still plots', 'aria-label': `${hidden ? 'Show' : 'Hide'} layer ${n + 1} in the view`,
+      onclick: () => { toggleLayerHidden(fl.key); set({ naturals: state.naturals }); renderLayers(); } });
+    return el('div', { class: 'layer' + (s.enabled === false ? ' off' : '') + (hidden ? ' hidden-view' : '') },
+      el('div', { class: 'layer-head' }, on_, swatch, el('b', { text: `${n + 1}.` }), name, eye,
         arrow(-1, '▲', 'Plot this pen earlier'), arrow(1, '▼', 'Plot this pen later')),
       el('div', { class: 'layer-grid' }, el('label', { class: 'field' }, el('span', { text: 'Pen' }), pen),
         num('speed', L.speed, String(state.doc.settings.speed ?? L.speed.default), 'Speed (mm/s)'),
