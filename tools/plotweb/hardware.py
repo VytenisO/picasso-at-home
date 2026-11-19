@@ -55,6 +55,64 @@ def precheck(sim):
                                  "(dialout or uucp); log out and in again after adding it."), port)
 
 
+def doctor(sim, busy):
+    """What the server sees of the plotter connection, with the likely cause when something is wrong."""
+    rep = {"sim": sim, "pyserial": serial is not None, "ports": [], "user": None, "groups": [], "ebb": None,
+           "answer": None, "advice": []}
+    try:
+        import getpass
+        rep["user"] = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        pass
+    if os.name == "posix":
+        try:
+            import grp
+            rep["groups"] = sorted({grp.getgrgid(g).gr_name for g in os.getgroups()})
+        except Exception:  # noqa: BLE001
+            pass
+    if sim:
+        rep["advice"].append("The server runs in simulator mode: it never touches the plotter.")
+        return rep
+    if serial is None:
+        rep["advice"].append("pyserial is missing for the server's Python: install python3-serial (python-pyserial).")
+        return rep
+    try:
+        ports = list(list_ports.comports())
+    except Exception as ex:  # noqa: BLE001
+        rep["advice"].append(f"Listing serial ports failed: {ex}")
+        return rep
+    for p in ports:
+        vp = f"{p.vid:04x}:{p.pid:04x}" if p.vid is not None else None
+        rep["ports"].append({"device": p.device, "id": vp, "description": p.description, "ebb": (p.vid, p.pid) == EBB})
+    ebb = next((p for p in rep["ports"] if p["ebb"]), None)
+    if not ebb:
+        boot = any(p["id"] == "04d8:003c" for p in rep["ports"])
+        rep["advice"].append("The board is in bootloader mode (04d8:003c): press its reset button or power-cycle it."
+                             if boot else
+                             "No EBB (04d8:fd92) on USB. Check the USB cable, then switch the plotter off and on. "
+                             "A charge-only cable shows nothing at all.")
+        return rep
+    rep["ebb"] = ebb["device"]
+    if os.name == "posix" and not os.access(ebb["device"], os.R_OK | os.W_OK):
+        rep["advice"].append(f"The server user cannot open {ebb['device']}: add it to the serial group (dialout or uucp), "
+                             "then log out and in (or restart the service).")
+    if busy:
+        rep["answer"] = "not asked: a job is using the plotter"
+        return rep
+    ok, msg = precheck(False)
+    rep["answer"] = msg
+    if ok and LAST and LAST.get("firmware"):
+        fw = tuple(int(x) for x in LAST["firmware"].split("."))
+        if fw < (3, 0, 0):
+            rep["advice"].append(f"Firmware {LAST['firmware']}: works, but Stop waits for the move in flight and "
+                                 "positions are not read back. 3.x adds both.")
+    elif not ok:
+        rep["advice"].append(msg)
+    if not rep["advice"]:
+        rep["advice"].append("All good: the board answers.")
+    return rep
+
+
 def last_resort_safe(sim, servo=None):
     """Raise the pen and release the motors directly. Only after the job process is gone.
 

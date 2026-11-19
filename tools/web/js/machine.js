@@ -6,6 +6,7 @@ import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask } from './ui.js';
 import { confirmDialog } from './run.js';
 import { setBedClick } from './bed.js';
+import { selectionAnchor } from './workspace.js';
 
 const STEPS = [0.1, 1, 10, 50];
 let step = prefs('jogStep') || 10;
@@ -24,6 +25,45 @@ function showHw(h) {
 
 export function initMachine() {
   on('me', () => showHw(state.me && state.me.plotter));
+  $('mcToSel').onclick = () => {
+    const p = selectionAnchor();
+    if (!p) { toast('Select an object on the bed first.', true); return; }
+    send('goto', { x: p[0], y: p[1] });
+  };
+  $('hwDoctor').onclick = async () => {
+    $('hwDoctor').disabled = true;
+    try {
+      const r = await api('/api/plotter/doctor');
+      const items = [...r.advice.map((a) => el('li', { text: a })),
+        el('li', { class: 'muted', text: `Server user ${r.user || '?'}${r.groups.length ? ` in ${r.groups.join(', ')}` : ''}.` }),
+        el('li', { class: 'muted', text: r.ports.length ? 'Serial ports: ' + r.ports.map((p) => `${p.device} (${p.id || 'no USB id'}${p.ebb ? ', the plotter' : ''})`).join('; ') : 'No serial ports.' })];
+      if (r.answer) items.push(el('li', { class: 'muted', text: `Board answered: ${r.answer}` }));
+      $('hwReport').replaceChildren(...items);
+      $('hwReport').hidden = false;
+      if (state.me) set({ me: { ...state.me, plotter: (await api('/api/me')).plotter } });
+    } catch (e) { toast(e.message, true); } finally { $('hwDoctor').disabled = false; }
+  };
+  $('bkRestore').onclick = () => $('bkFile').click();
+  $('bkFile').onchange = async () => {
+    const f = $('bkFile').files[0];
+    $('bkFile').value = '';
+    if (!f) return;
+    let b;
+    try { b = JSON.parse(await f.text()); } catch (e) { toast('That file is not JSON.', true); return; }
+    if (!b || b.kind !== 'pen-plotter-settings') { toast('That is not a settings backup from this plotter.', true); return; }
+    const m = b.machine || {}, cur = state.me && state.me.machine;
+    const parts = [];
+    if (m.steps_per_mm) parts.push(`machine: ${m.steps_per_mm.x} / ${m.steps_per_mm.y} steps/mm, servo up ${m.servo && m.servo.pen_up}, down ${m.servo && m.servo.pen_down}` +
+      (cur && cur.steps_per_mm ? ` (now ${cur.steps_per_mm.x} / ${cur.steps_per_mm.y})` : ''));
+    parts.push(`${Object.keys(b.pens || {}).length} pens`, `${Object.keys(b.projects || {}).length} projects`);
+    if (!(await ask('Restore settings', `From ${b.saved || 'an unknown date'}: ${parts.join('; ')}. The current files are kept as backups. ` +
+      'Wrong servo values can strain the pen lift: check the pen height afterwards.', 'Restore'))) return;
+    try {
+      const r = await post('/api/restore', { bundle: b, parts: ['machine', 'pens', 'pen_map', 'projects'] });
+      set({ me: r.me });
+      toast(`Restored: ${r.restored.join(', ')}.`);
+    } catch (e) { toast(e.message, true); }
+  };
   $('hwCheck').onclick = async () => {
     $('hwCheck').disabled = true;
     try { showHw(await api('/api/plotter')); } catch (e) { toast(e.message, true); } finally { $('hwCheck').disabled = false; }

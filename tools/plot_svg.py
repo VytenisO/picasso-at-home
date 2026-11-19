@@ -760,7 +760,10 @@ class Plotter:
             self.sleep(max(0.0, self.t_end - self.now()) + 0.4, interruptible=False)
             if "QS" in self.caps and not self.sim:
                 self.read_position()
-            self.cmd("EM,0,0")
+            if getattr(self, "keep_motors", False):
+                log("Motors left on: they hold the carriage where it is (and get warm). Switch them off from Machine.")
+            else:
+                self.cmd("EM,0,0")
             return True
         except Exception as ex:   # noqa: BLE001
             log(f"shutdown problem: {ex!r}")
@@ -897,6 +900,8 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--keep-motors", action="store_true",
+                    help="after a plot that ends normally, leave the motors on: they hold the position (and get warm)")
     ap.add_argument("--by-object", action="store_true",
                     help="within each pen, finish one object before the next, in the document's object order "
                          "(data-obj on the web UI's composed document); nearest stroke next inside an object")
@@ -1408,6 +1413,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 signal.signal(sig, signal.SIG_IGN)   # a second Ctrl-C/SIGTERM must not cut the cleanup short
             except (ValueError, OSError):
                 pass
+        p.keep_motors = bool(getattr(a, "keep_motors", False)) and status == "complete"
         if not p.shutdown(abort=status.startswith(("interrupted", "error"))):
             status += " (cleanup FAILED: pen may be down or motors still on, check the machine and cut power if needed)"
         el = p.now() - t_start

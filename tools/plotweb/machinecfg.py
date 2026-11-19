@@ -122,6 +122,72 @@ def save_pen(settings, name, fields, rename_from=None):
     return new
 
 
+BUNDLE_KIND = "pen-plotter-settings"
+
+
+def backup_bundle(settings, projects_dir):
+    """Machine, pens, colour-to-pen memory and saved projects as one JSON document."""
+    def read(p, default):
+        try:
+            return json.loads(p.read_text())
+        except (OSError, ValueError):
+            return default
+    projects = {}
+    for p in sorted(projects_dir.glob("*.json")):
+        d = read(p, None)
+        if isinstance(d, dict):
+            projects[p.stem] = d
+    return {"kind": BUNDLE_KIND, "version": 1, "saved": datetime.datetime.now().isoformat(timespec="seconds"),
+            "machine": read(settings.machine_path, {}), "pens": read(settings.pens_path, {}),
+            "pen_map": read(settings.cache / "pen_map.json", {}), "projects": projects}
+
+
+def check_machine(cfg):
+    """A machine.json from a backup: the fields every run depends on, in sane ranges. Raises ConfigError."""
+    if not isinstance(cfg, dict):
+        raise ConfigError("The backup has no machine settings.")
+    try:
+        for ax in ("x", "y"):
+            _num(cfg["steps_per_mm"][ax], 5, 200, f"Steps/mm {ax.upper()}")
+            _num(cfg["travel_mm"][ax], 50, 2000, f"Travel {ax.upper()}")
+            if cfg["axis"][ax].get("sign") not in (1, -1) or cfg["axis"][ax].get("ebb_axis") not in (1, 2):
+                raise ConfigError(f"Axis {ax.upper()} mapping is not valid.")
+        _num(cfg["servo"]["pen_up"], 5000, 30000, "Servo pen-up")
+        _num(cfg["servo"]["pen_down"], 5000, 30000, "Servo pen-down")
+    except (KeyError, TypeError, AttributeError):
+        raise ConfigError("The machine settings in the backup are incomplete (steps_per_mm, travel_mm, axis, servo).")
+
+
+def restore_bundle(settings, projects_dir, b, parts):
+    """Write the chosen parts of a backup (machine, pens, pen_map, projects); each old file is kept as a backup.
+    -> what was restored."""
+    if not isinstance(b, dict) or b.get("kind") != BUNDLE_KIND:
+        raise ConfigError("This is not a settings backup from this plotter.")
+    done = []
+    if "machine" in parts:
+        check_machine(b.get("machine"))
+        _write(settings, settings.machine_path, b["machine"])
+        done.append("machine")
+    if "pens" in parts:
+        pens = b.get("pens")
+        if not isinstance(pens, dict) or not all(isinstance(k, str) and PEN_NAME.match(k) and isinstance(v, dict)
+                                                 for k, v in pens.items()):
+            raise ConfigError("The pens in the backup are not valid.")
+        _write(settings, settings.pens_path, pens)
+        done.append("pens")
+    if "pen_map" in parts and isinstance(b.get("pen_map"), dict):
+        _write(settings, settings.cache / "pen_map.json", b["pen_map"])
+        done.append("pen memory")
+    if "projects" in parts and isinstance(b.get("projects"), dict):
+        n = 0
+        for slug, d in b["projects"].items():
+            if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,79}", str(slug)) and isinstance(d, dict) and isinstance(d.get("objects"), list):
+                (projects_dir / f"{slug}.json").write_text(json.dumps(d, indent=1))
+                n += 1
+        done.append(f"{n} project{'s' if n != 1 else ''}")
+    return done
+
+
 def delete_pen(settings, name):
     pens = settings.pens()
     if name not in pens:

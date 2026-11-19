@@ -93,6 +93,14 @@ class DriverStop(unittest.TestCase):
         self.assertNotIn("ES", ebb.sent)
         self.assertIn("QS", ebb.sent)
 
+    def test_keep_motors_skips_release(self):
+        ebb = FakeEBB((3, 1, 7))
+        p = plotter(ebb, Ctl())
+        p.keep_motors = True
+        ebb.sent.clear()
+        self.assertTrue(p.shutdown())
+        self.assertNotIn("EM,0,0", ebb.sent)
+
     def test_old_firmware_unchanged(self):
         ebb = FakeEBB((2, 0, 1))
         ctl = Ctl()

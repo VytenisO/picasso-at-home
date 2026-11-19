@@ -1422,6 +1422,31 @@ class Handler(BaseHTTPRequestHandler):
         self.app.ev.emit("config")
         return out
 
+    def r_doctor(self):
+        if not self.app.hw_lock.acquire(timeout=5):
+            raise ApiError(409, "Another plotter check is running.")
+        try:
+            rep = hardware.doctor(self.app.s.sim, self.app.runner.busy())
+        finally:
+            self.app.hw_lock.release()
+        self.send(200, rep)
+
+    def r_backup(self):
+        b = machinecfg.backup_bundle(self.app.s, self.app.docs.proj_dir)
+        name = f"plotter-settings-{time.strftime('%Y%m%d')}.json"
+        self.send(200, json.dumps(b, indent=1), "application/json; charset=utf-8",
+                  {"Content-Disposition": f'attachment; filename="{name}"'})
+
+    def r_settings_restore(self):
+        body = self.json_body()
+        parts = [p for p in (body.get("parts") or []) if p in ("machine", "pens", "pen_map", "projects")]
+        if not parts:
+            raise ApiError(400, "Choose what to restore.")
+        done = self._config_edit(machinecfg.restore_bundle, self.app.docs.proj_dir, body.get("bundle"), parts)
+        self.app.ev.log("warn", "Restored from a settings backup: " + ", ".join(done) + ". The previous files are in "
+                                "results/web/backups/. Preview again before plotting.")
+        self.send(200, {"ok": True, "restored": done, "me": self.app.me(True)})
+
     def r_calibrate(self):
         b = self.json_body()
         old, new = self._config_edit(machinecfg.calibrate, b.get("axis"), b.get("commanded"), b.get("measured"))
@@ -1499,6 +1524,8 @@ ROUTES_GET = {
     "/api/plotter": (Handler.r_plotter, True),
     "/api/files/trash": (Handler.r_trash, True),
     "/api/history": (Handler.r_history, True),
+    "/api/plotter/doctor": (Handler.r_doctor, True),
+    "/api/backup": (Handler.r_backup, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
 }
@@ -1510,6 +1537,7 @@ ROUTES_POST = {
     "/api/files/convert_preview": (Handler.r_convert_preview, True),
     "/api/files/delete": (Handler.r_delete, True),
     "/api/files/rename": (Handler.r_rename, True),
+    "/api/restore": (Handler.r_settings_restore, True),
     "/api/files/restore": (Handler.r_restore, True),
     "/api/files/purge": (Handler.r_purge, True),
     "/api/files/replace": (Handler.r_replace, True),

@@ -73,6 +73,7 @@ def validate(raw, bed, pens, layer_keys):
         raise SettingsError("sweep must be none, down or right")
     out["sweep"] = sw
     out["by_object"] = raw.get("by_object") is True
+    out["keep_motors"] = raw.get("keep_motors") is True
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -203,6 +204,8 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--sweep", v["sweep"]]
     if v.get("by_object"):
         argv.append("--by-object")
+    if v.get("keep_motors") and mode == "plot":
+        argv.append("--keep-motors")
     if v.get("fill"):
         argv += ["--fill", f"{v['fill']:g}", "--fill-angle", f"{v.get('fill_angle', 45.0):g}"]
     if layers_json:

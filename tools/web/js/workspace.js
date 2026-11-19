@@ -45,6 +45,13 @@ export function initWorkspace() {
 }
 
 // The Library's "open": select the drawing if it is on the bed already, else put it there. ("Add" always adds.)
+// The selection's reference point (Arrange's anchor), for Machine's "To the selection". -> [x, y] or null.
+export function selectionAnchor() {
+  const sel = D.selected();
+  if (!sel.length) return null;
+  return G.anchorPoint(G.bounds(sel), anchor).map(G.r2);
+}
+
 export async function openFile(id) {
   const there = state.doc ? state.doc.objects.filter((o) => o.file === id) : [];
   if (there.length) { D.select(there.map((o) => o.id)); return there[0]; }
@@ -360,6 +367,7 @@ function fillJobForm() {
   f.optimize.checked = st.optimize !== false;
   f.dedupe.checked = !!st.dedupe;
   f.by_object.checked = !!st.by_object;
+  f.keep_motors.checked = !!st.keep_motors;
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -371,7 +379,8 @@ function fromJobForm(e) {
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
   const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
     optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
-    sweep: f.sweep.value === 'none' ? null : f.sweep.value, by_object: f.by_object.checked || null };
+    sweep: f.sweep.value === 'none' ? null : f.sweep.value, by_object: f.by_object.checked || null,
+    keep_motors: f.keep_motors.checked || null };
   const st = state.doc.settings;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {

@@ -312,13 +312,13 @@ niche.
 |---|---|---|---|
 | Read-only plotter check (`V`) before hardware starts | HAVE | | `/api/plotter` also exists but the UI never calls it; show it |
 | Connection status in the top bar (simulator/hardware, link) | HAVE | | |
-| Plotter connection doctor (list ports, test `V`, likely causes) | TODO | P2 | |
+| Plotter connection doctor (list ports, test `V`, likely causes) | HAVE |  | Machine, Diagnose the connection: serial ports with USB ids, the board (or its bootloader mode), the server user's groups and port access, the board's answer, and what to do |
 | Port auto-detect / picker | PART | P3 | auto-detect in `ebb_check.py`; no UI |
 | Position record: at start / moved / unknown | HAVE | | |
 | Jog pad: step size, speed, pen up, clamped to travel | HAVE | | Machine tab, Control: a machine job (`jog.py`); steps 0.1/1/10/50 mm, speed, arrow keys on the bed; clamped to the travel minus its edge margin |
 | Go to X/Y | HAVE | |  |
 | Click on the bed to move there (arms for a few seconds) | HAVE | | Click to go arms one click (no timeout) |
-| Move to selection anchor (check placement) | TODO | P2 | |
+| Move to selection anchor (check placement) | HAVE |  | Machine control: To the selection moves pen up to the selection's reference point (Arrange's 9-point anchor) |
 | Pen up / pen down buttons | HAVE | | in machine control |
 | Short "pen touch" at layer pressure | TODO | P3 | time-limited |
 | Motors off (release to park by hand) | HAVE | | Finish here / Finish at S switch the motors off; Stop too |
@@ -336,7 +336,7 @@ niche.
 | Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | SKIP | | dropped 2026-11-18 after a supervised run on the machine (X, Y, then a full home with a dot): driving into the stops with the motor skipping for up to 30 s puts undue stress on the motors and the assembly. Code was in d80fe69, reverted |
 | Home button and "position unknown -> home" prompt | SKIP | | goes with crash homing |
 | Home one axis at a time | SKIP | | goes with crash homing |
-| Keep motors powered after a job (option) | TODO | P2 | tracked position stays valid; cost is warm motors |
+| Keep motors powered after a job (option) | HAVE |  | Job: Keep the motors on after a plot that ends normally; Machine control's Finish switches them off |
 | Switch homing (two microswitches on spare EBB inputs) | TODO | P3 | no grinding; check `PI` on 2.0.1; RB2 is taken by the pen-depth pot patch |
 | Limit switches during plots, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |
 
@@ -352,7 +352,7 @@ niche.
 | Lost-steps test in the UI | TODO | P3 | `lost_steps_test.py` CLI only |
 | Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
 | Simulator time scale and estimate tuning | PART | P3 | `--sim-speed` flag only |
-| Backup / restore all settings (machine, pens, macros, positions) as one file | TODO | P2 | |
+| Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
 | Firmware version shown | HAVE | | Machine tab, Plotter: version, port and time of the last answer; Check the plotter asks again (nothing moves) |
 | EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |

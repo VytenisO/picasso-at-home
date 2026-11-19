@@ -250,7 +250,8 @@ class DocStore:
                                  or not all(isinstance(x, str) and len(x) <= 40 for x in only)):
             raise DocError("only must be a list of object ids")
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
-                                       "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object")}
+                                       "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
+                                       "keep_motors")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

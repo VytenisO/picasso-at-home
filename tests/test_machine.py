@@ -5,6 +5,7 @@ import shutil
 import sys
 import time
 import unittest
+import urllib.request
 
 sys.path.insert(0, __import__("os").path.dirname(__file__))
 from test_plotweb import ROOT, SimServer  # noqa: E402
@@ -129,6 +130,29 @@ class TestConfig(MachineServer):
                                                                      "margin_mm": 12}})
         self.assertEqual(code, 400)
         self.assertIn("past the bed", r["error"])
+
+
+    def test_04_backup_restore_and_doctor(self):
+        with urllib.request.urlopen(self.base + "/api/backup") as r:
+            self.assertIn("plotter-settings-", r.headers["Content-Disposition"])
+            b = json.loads(r.read())
+        self.assertEqual(b["kind"], "pen-plotter-settings")
+        sx = b["machine"]["steps_per_mm"]["x"]
+        # change the machine, then restore the backup over it
+        self.call("POST", "/api/machine/calibrate", {"axis": "x", "commanded": 100, "measured": 98})
+        code, r = self.call("POST", "/api/restore", {"bundle": b, "parts": ["machine", "pens"]})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(json.loads((self.tmp / "machine.json").read_text())["steps_per_mm"]["x"], sx)
+        bad = json.loads(json.dumps(b))
+        bad["machine"]["servo"]["pen_up"] = 99999
+        code, r = self.call("POST", "/api/restore", {"bundle": bad, "parts": ["machine"]})
+        self.assertEqual(code, 400)
+        self.assertIn("Servo", r["error"])
+        code, r = self.call("POST", "/api/restore", {"bundle": {"kind": "other"}, "parts": ["machine"]})
+        self.assertEqual(code, 400)
+        code, rep = self.call("GET", "/api/plotter/doctor")
+        self.assertEqual(code, 200)
+        self.assertTrue(rep["sim"])
 
     def test_03_pens(self):
         code, r = self.call("POST", "/api/pens/save", {"name": "fineliner", "pen": {
