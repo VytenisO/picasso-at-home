@@ -592,6 +592,54 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/shapes", {"op": "union", "objects": [a]})
         self.assertEqual(code, 400)
 
+    def test_04f_join_rename_only_ink_export(self):
+        line = lambda x0, x1: (f'<svg xmlns="http://www.w3.org/2000/svg" width="{x1 - x0}mm" height="1mm" '
+                               f'viewBox="{x0} 0 {x1 - x0} 1"><path d="M{x0} 0.5 L{x1} 0.5" stroke="#000"/></svg>').encode()
+        ids = []
+        for n, (x0, x1) in enumerate(((0, 10), (10, 20))):
+            code, d = self.call("POST", "/api/files/upload", raw=line(x0, x1),
+                                headers={"X-Filename": f"seg{n}.svg", "X-Params": "{}"})
+            self.assertEqual(code, 200, d)
+            ids.append(d["file"]["id"])
+        a, b = self.obj(ids[0], 100, 50, 10, 1), self.obj(ids[1], 110, 50, 10, 1)
+        # join: two touching segments become one stroke
+        code, r = self.call("POST", "/api/shapes", {"op": "join", "objects": [a, b]})
+        self.assertEqual(code, 200, r)
+        self.assertEqual((r["before"], r["after"]), (2, 1))
+        self.assertEqual((r["x"], r["w"]), (100, 20))
+        # rename keeps the extension and cleans the name
+        code, r = self.call("POST", "/api/files/rename", {"id": ids[0], "name": "Left half!"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["file"]["name"], "Left_half.svg")
+        code, r = self.call("POST", "/api/files/rename", {"id": ids[0], "name": "  "})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/files/rename", {"id": "nope", "name": "x"})
+        self.assertEqual(code, 404)
+        # plot only one object (apart: the planner itself joins strokes that touch end to end)
+        b = self.obj(ids[1], 115, 50, 10, 1)
+        full = self.doc_preview([a, b])
+        one = self.doc_preview([a, b], {"only": [a["id"]]})
+        self.assertEqual(full["summary"]["strokes"], 2)
+        self.assertEqual(one["summary"]["strokes"], 1)
+        self.assertNotEqual(full["plan_id"], one["plan_id"])
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": [a], "settings": {"only": ["gone"]}}})
+        self.assertEqual(code, 400)
+        # ink: the second object moves to a red layer
+        two = self.doc_preview([a, dict(b, ink="#ff0000")])
+        self.assertEqual(sorted(l["color"] for l in two["file_layers"]), ["#000000", "#ff0000"])
+        # export: what will be plotted, one group per pen in plot order
+        code, raw = None, None
+        req = urllib.request.Request(self.base + "/api/export_doc", method="POST",
+                                     data=json.dumps({"doc": {"name": "my bed", "objects": [a, dict(b, ink="#ff0000")],
+                                                              "settings": {}}}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            self.assertIn("my_bed-plot.svg", resp.headers["Content-Disposition"])
+            raw = resp.read().decode()
+        self.assertEqual(raw.count("<path"), 2)
+        self.assertIn('stroke="#ff0000"', raw)
+        self.assertIn("M100 50.5 L110 50.5", raw.replace(".0 ", " ").replace(".0L", "L"))
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

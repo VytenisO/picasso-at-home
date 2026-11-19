@@ -3,7 +3,7 @@
 import { api, post } from './api.js';
 import { armPlace } from './bed.js';
 import { state, set, on, jobActive, prefs } from './store.js';
-import { $, el, toast, ask } from './ui.js';
+import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
 
@@ -90,6 +90,7 @@ function renderArrange() {
   xf.rot.placeholder = one ? '' : 'one only';
   $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to canvas';
   $('shapeRow').hidden = !(state.me && state.me.features && state.me.features.shapes);
+  renderInk(sel, locked);
   for (const k of ['union', 'subtract', 'intersect']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 2;
   for (const k of ['distx', 'disty']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
 }
@@ -135,6 +136,8 @@ function act(a) {
   else if (a === 'dup') D.duplicateSel();
   else if (a === 'array') openArray();
   else if (['union', 'subtract', 'intersect'].includes(a)) shapeOp(a);
+  else if (a === 'join') joinLines();
+  else if (a === 'ink-own') D.editSel((objs) => { for (const o of objs) delete o.ink; });
   else if (a === 'offset') openOffset();
   else if (a === 'del') D.removeSel();
   else D.align(a);
@@ -157,6 +160,41 @@ function renderObjects() {
       el('span', { class: 'spacer' }),
       mv('down', '▲', 'Plot earlier (within each pen)'), mv('up', '▼', 'Plot later (within each pen)'));
   }));
+}
+
+// Join replaces the selection with one drawing whose touching ends are joined; it says how many strokes went.
+async function joinLines() {
+  const sel = D.selected();
+  const t = await askText('Join lines', 'Ends this close (mm) are joined, in the same colour only. Where three or more ends meet nothing is joined.', '0.2', 'Join');
+  if (t === null) return;
+  const tol = Number(t);
+  if (!(tol >= 0.01 && tol <= 5)) { toast('The join distance must be 0.01 to 5 mm.', true); return; }
+  try {
+    const r = await post('/api/shapes', { op: 'join', objects: sel, tolerance: tol });
+    await refreshFiles();
+    await D.addFile(r.file.id, { at: [r.x, r.y], replace: sel.map((o) => o.id) });
+    toast(r.after < r.before ? `${r.before} strokes became ${r.after}.` : 'No touching ends found: nothing was joined.');
+  } catch (e) { toast(e.message, true); }
+}
+
+function setInk(hex) {
+  D.editSel((objs) => { for (const o of objs) o.ink = hex.toLowerCase(); });
+}
+
+// The ink colours on the bed now (from the last preview), as one-click targets for the selection.
+function renderInk(sel, locked) {
+  const pv = state.preview;
+  const cols = [...new Set(((pv && pv.file_layers) || []).map((l) => (l.color || '').toLowerCase()).filter((c) => /^#[0-9a-f]{6}$/.test(c)))];
+  const cur = new Set(sel.map((o) => o.ink || ''));
+  $('inkSwatches').replaceChildren(...cols.map((c) => {
+    const b = el('button', { type: 'button', class: 'swatch-btn', title: `Draw in ${c} (its layer and pen)`, 'aria-label': `Colour ${c}`,
+      'aria-pressed': String(cur.size === 1 && cur.has(c)), disabled: locked, onclick: () => setInk(c) });
+    b.style.background = c;
+    return b;
+  }));
+  const one = cur.size === 1 ? [...cur][0] : '';
+  if (document.activeElement !== $('inkPick')) $('inkPick').value = one || '#000000';
+  $('xfBox').querySelector('[data-act=ink-own]').disabled = locked || !sel.some((o) => o.ink);
 }
 
 // Union, subtract, intersect replace the selection with the result (Undo brings it back); offset adds an outline.
@@ -364,8 +402,22 @@ function renderLayers() {
       el('div', { class: 'layer-grid' }, el('label', { class: 'field' }, el('span', { text: 'Pen' }), pen),
         num('speed', L.speed, String(state.doc.settings.speed ?? L.speed.default), 'Speed (mm/s)'),
         num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')),
-      el('div', { class: 'layer-foot' }, passes, el('small', { class: 'muted', text: `${fl.strokes} strokes` })));
+      el('div', { class: 'layer-foot' }, passes, el('small', { class: 'muted', text: `${fl.strokes} strokes` }),
+        el('button', { type: 'button', class: 'link', text: 'Select', title: 'Select the objects that draw in this layer',
+          onclick: () => selectLayer(fl) })));
   }));
+}
+
+// Objects with any line in this layer's colour (their own colour, or the one they were moved to).
+function selectLayer(fl) {
+  const c = (fl.color || '').toLowerCase();
+  const ids = state.doc.objects.filter((o) => {
+    if (o.ink) return o.ink === c;
+    const n = state.naturals[o.file];
+    return !!(n && (n.layers || []).some((l) => (l.color || '').toLowerCase() === c));
+  }).map((o) => o.id);
+  if (!ids.length) { toast('No object draws in this layer.', true); return; }
+  D.select(ids);
 }
 
 function renderFills() {

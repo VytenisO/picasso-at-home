@@ -89,6 +89,38 @@ def dedupe(strokes, metas, tol=0.05, closed_tol=0.1):
     return out_s, out_m, len(strokes) - len(out_s)
 
 
+def join_touching(paths, tol=0.2):
+    """Chain strokes whose ends lie within tol mm into one stroke (fewer pen lifts). Where three or more ends meet
+    nothing is joined there: which branch continues would be a guess. Closed strokes stay as they are."""
+    paths = [list(p) for p in paths if len(p) >= 2]
+    while True:
+        grid = {}
+        for i, p in enumerate(paths):
+            if len(p) > 2 and math.dist(p[0], p[-1]) <= tol:
+                continue
+            for e in (0, -1):
+                grid.setdefault((int(p[e][0] // tol), int(p[e][1] // tol)), []).append((i, e))
+        used, merged = set(), False
+        for (cx, cy), items in list(grid.items()):
+            for i, ea in items:
+                if i in used:
+                    continue
+                pt = paths[i][ea]
+                near = [(j, eb) for dx in (-1, 0, 1) for dy in (-1, 0, 1) for j, eb in grid.get((cx + dx, cy + dy), ())
+                        if (j, eb) != (i, ea) and j not in used and math.dist(pt, paths[j][eb]) <= tol]
+                if len(near) != 1 or near[0][0] == i or near[0][0] in used:
+                    continue
+                j, eb = near[0]
+                p = paths[i] if ea == -1 else paths[i][::-1]
+                q = paths[j] if eb == 0 else paths[j][::-1]
+                paths[i], paths[j] = p + q[1:], None
+                used.update((i, j))
+                merged = True
+        paths = [p for p in paths if p is not None]
+        if not merged:
+            return paths
+
+
 def travel(strokes, order, start):
     """Pen-up distance of an order, from start and back to it."""
     cur, d = start, 0.0

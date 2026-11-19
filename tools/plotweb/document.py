@@ -77,6 +77,9 @@ def clean_objects(raw, known_files):
             # the drawing's geometry hash when it was placed: the page re-fits the box if the drawing changed
             "g": re.sub(r"[^0-9a-f]", "", str(o.get("g") or ""))[:16],
         })
+        ink = str(o.get("ink") or "").lower()
+        if re.fullmatch(r"#[0-9a-f]{6}", ink):     # every line of the object in this colour: it moves to that layer
+            out[-1]["ink"] = ink
     return out
 
 
@@ -149,14 +152,34 @@ def compose(objects, files, bed):
         inner = ET.SubElement(outer, f"{{{SVG_NS}}}g", attrs)
         for child in src:
             inner.append(copy.deepcopy(child))
+        if o.get("ink"):
+            recolor(inner, o["ink"])
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+_STYLE_COLOR = re.compile(r"((?:^|;)\s*(?:stroke|fill)\s*:\s*)([^;]+)")
+
+
+def recolor(group, ink):
+    """Every stroke and fill colour under group becomes ink; 'none' stays none. Lines that set no colour inherit
+    it from the group."""
+    group.set("stroke", ink)
+    for el in group.iter():
+        for prop in ("stroke", "fill"):
+            v = el.get(prop)
+            if v and v.strip().lower() not in ("none", "transparent") and el is not group:
+                el.set(prop, ink)
+        st = el.get("style")
+        if st:
+            el.set("style", _STYLE_COLOR.sub(
+                lambda m: m.group(0) if m.group(2).strip().lower() in ("none", "transparent") else m.group(1) + ink, st))
 
 
 def bed_key(objects, settings):
     """Hash of what decides the plot order, without the resume point: a stopped plot can resume only on the same
     bed. Objects as validated by clean_objects."""
     st = {k: v for k, v in (settings or {}).items() if k not in ("start_at", "guides")}    # guides are never plotted
-    raw = json.dumps({"o": [{k: o[k] for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy")} for o in objects],
+    raw = json.dumps({"o": [{k: o.get(k) for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy", "ink")} for o in objects],
                       "s": st}, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -216,8 +239,12 @@ class DocStore:
                 isinstance(x, dict) and x.get("axis") in ("x", "y") and isinstance(x.get("at"), (int, float))
                 and math.isfinite(x["at"]) for x in g)):
             raise DocError("guides must be a list of {axis: x|y, at: mm}")
+        only = st.get("only")
+        if only is not None and (not isinstance(only, list) or len(only) > MAX_OBJECTS
+                                 or not all(isinstance(x, str) and len(x) <= 40 for x in only)):
+            raise DocError("only must be a list of object ids")
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
-                                       "dedupe", "fills", "guides")}
+                                       "dedupe", "fills", "guides", "only")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

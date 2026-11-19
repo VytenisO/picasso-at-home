@@ -8,6 +8,7 @@ import http.cookies
 import json
 import mimetypes
 import pathlib
+import re
 import secrets
 import shutil
 import threading
@@ -66,7 +67,7 @@ class App:
         bed = self.s.bed()
         return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
                 "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch,
-                "features": {"shapes": shapes.available()}}
+                "features": {"shapes": shapes.available()}, "plotter": hardware.LAST if authed else None}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
@@ -231,6 +232,11 @@ class App:
         if not objs:
             raise ApiError(400, "The bed is empty. Add a drawing from the Library.")
         rs = raw_doc.get("settings") if isinstance(raw_doc.get("settings"), dict) else {}
+        if isinstance(rs.get("only"), list) and rs["only"]:
+            objs = [o for o in objs if o["id"] in rs["only"]]
+            if not objs:
+                raise ApiError(400, "None of the objects chosen for plotting are on the bed. Plot all of them, "
+                                    "or choose again.")
         try:
             fill = float(rs.get("fill") or 0)
             fill_angle = float(rs.get("fill_angle", 45.0) if rs.get("fill_angle") not in (None, "") else 45.0)
@@ -286,6 +292,84 @@ class App:
         if new != m:
             (self.s.cache / "pen_map.json").write_text(json.dumps(new, indent=1))
 
+    def export_doc(self, body):
+        """-> SVG text of exactly what the bed plots: every stroke after fills, layer order and the plot's start
+        point, in machine mm, one group per pen in plot order."""
+        raw = body.get("doc")
+        if not isinstance(raw, dict):
+            raise ApiError(400, "Send the bed.")
+        v, objs, pid, layers, plan = self._resolve_doc(raw)
+        ok, problems, pv, out = self._dry(plan, v, None)
+        if not pv:
+            raise ApiError(409, "Could not plan the bed: " + "; ".join(problems))
+        bw, bh = self._bed(plan)["bed"]
+        sl = pv["summary"]["layers"]
+        groups, seen = {}, []
+        for i in pv["order"]:
+            s = pv["strokes"][i]
+            if s["l"] not in groups:
+                groups[s["l"]] = []
+                seen.append(s["l"])
+            groups[s["l"]].append(s["pts"])
+        esc = lambda t: str(t).replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")  # noqa: E731
+        parts = [f'<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" '
+                 f'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="{bw:g}mm" height="{bh:g}mm" '
+                 f'viewBox="0 0 {bw:g} {bh:g}">']
+        for n, l in enumerate(seen):
+            ly = sl[l] if l < len(sl) else {}
+            name = ly.get("title") or ly.get("name") or f"Layer {n + 1}"
+            label = f"{n + 1}. {name}" + (f" ({ly['pen']})" if ly.get("pen") else "")
+            d = " ".join("M" + " L".join(f"{x:g} {y:g}" for x, y in pts) for pts in groups[l])
+            parts.append(f'<g inkscape:groupmode="layer" inkscape:label="{esc(label)}"><path d="{d}" fill="none" '
+                         f'stroke="{esc(ly.get("color") or "#000000")}" stroke-width="0.3" stroke-linecap="round" '
+                         f'stroke-linejoin="round"/></g>')
+        parts.append("</svg>\n")
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(raw.get("name") or "bed")).strip("._") or "bed"
+        return "".join(parts), f"{name}-plot.svg"
+
+    def rename_file(self, body):
+        from .library import safe_name
+        e = self.lib.get(body.get("id"))
+        if not e:
+            raise ApiError(404, "Unknown file.")
+        suffix = pathlib.Path(e["name"]).suffix
+        stem = str(body.get("name") or "").strip()
+        if stem.lower().endswith(suffix.lower()):
+            stem = stem[: -len(suffix)]
+        stem = safe_name(stem)
+        if not stem or stem == "upload" and not str(body.get("name") or "").strip():
+            raise ApiError(400, "Give the drawing a name.")
+        new = stem[: 100 - len(suffix)] + suffix
+        self.lib.update(e["id"], name=new)
+        self.ev.log("info", f"Renamed {e['name']} to {new}.")
+        return {"ok": True, "file": {"id": e["id"], "name": new}}
+
+    def join_objects(self, objs, tol):
+        """Strokes of several bed objects -> one drawing where touching ends of the same colour are joined."""
+        import collections
+        import pathplan
+        import plot_svg
+        bed = self.s.bed()
+        by = collections.OrderedDict()
+        before = 0
+        for o in objs:
+            e, p = self._entry(o["file"])
+            g = self.geometry(e, p)[0]
+            tmp = self.plan_dir / f"join_{secrets.token_hex(4)}.svg"
+            try:
+                tmp.write_bytes(document.compose([o], {o["file"]: (p, g)}, bed))
+                polys, metas, _, _ = plot_svg.load_svg(str(tmp), True)
+            finally:
+                tmp.unlink(missing_ok=True)
+            for q, m in zip(polys, metas):
+                by.setdefault(m.get("color") or "#000000", []).append([tuple(pt) for pt in q])
+                before += 1
+        groups = [(c, pathplan.join_touching(ps, tol)) for c, ps in by.items()]
+        after = sum(len(ps) for _, ps in groups)
+        if not after:
+            raise ApiError(400, "These objects have no lines to join.")
+        return shapes.svg_layers(groups), before, after
+
     def shape_op(self, body):
         """Union, subtract, intersect or offset of bed objects -> a new library drawing and where it sits."""
         import collections
@@ -298,6 +382,19 @@ class App:
         if not objs:
             raise ApiError(400, "Select the objects first.")
         op = body.get("op")
+        if op == "join":
+            try:
+                tol = float(body.get("tolerance") or 0.2)
+            except (TypeError, ValueError):
+                tol = 0.2
+            if not 0.01 <= tol <= 5:
+                raise ApiError(400, "The join distance must be 0.01 to 5 mm.")
+            (text, b), before, after = self.join_objects(objs, tol)
+            names = sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs})
+            e = self.lib.add_svg_text(text, f"joined-{'-'.join(names)[:40]}.svg", kind="shape")
+            self.ev.log("info", f"Joined {len(objs)} object(s): {before} strokes became {after} -> {e['name']}.")
+            return {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
+                    "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3), "before": before, "after": after}
         try:
             distance = float(body.get("distance") or 0)
         except (TypeError, ValueError):
@@ -409,6 +506,9 @@ class App:
         if isinstance(body.get("doc"), dict):
             known = {x["id"]: x["name"] for x in self.lib.list()}
             objs = [o for o in body["doc"].get("objects") or [] if isinstance(o, dict) and o.get("file") in known]
+            only = (body["doc"].get("settings") or {}).get("only") if isinstance(body["doc"].get("settings"), dict) else None
+            if isinstance(only, list) and only:
+                objs = [o for o in objs if o.get("id") in only]
             names = sorted({known[o["file"]] for o in objs})
             name = str(body["doc"].get("name") or "").strip()[:80] or (
                 (names[0] + (f" x{len(objs)}" if len(objs) > 1 else "")) if len(names) == 1
@@ -1160,6 +1260,14 @@ class Handler(BaseHTTPRequestHandler):
     def r_shapes(self):
         self.send(200, self.app.shape_op(self.json_body()))
 
+    def r_export_doc(self):
+        text, name = self.app.export_doc(self.json_body())
+        self.send(200, text, "image/svg+xml; charset=utf-8",
+                  {"Content-Disposition": f'attachment; filename="{name}"'})
+
+    def r_rename(self):
+        self.send(200, self.app.rename_file(self.json_body()))
+
     def r_natural(self):
         self.send(200, self.app.natural(self.query().get("id", "")))
 
@@ -1300,11 +1408,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(409, "Another plotter check is running.")
         try:
             if self.app.runner.busy():
-                return self.send(200, {"ok": True, "message": "A job is using the plotter."})
-            ok, msg = hardware.precheck(self.app.s.sim)
+                return self.send(200, dict(hardware.LAST or {}, ok=True, message="A job is using the plotter.",
+                                           at=time.strftime("%H:%M:%S")))
+            hardware.precheck(self.app.s.sim)
         finally:
             self.app.hw_lock.release()
-        self.send(200, {"ok": ok, "message": msg})
+        self.send(200, dict(hardware.LAST))
 
 
 ROUTES_GET = {
@@ -1335,6 +1444,8 @@ ROUTES_POST = {
     "/api/files/upload": (Handler.r_upload, True),
     "/api/files/convert_preview": (Handler.r_convert_preview, True),
     "/api/files/delete": (Handler.r_delete, True),
+    "/api/files/rename": (Handler.r_rename, True),
+    "/api/export_doc": (Handler.r_export_doc, True),
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),
     "/api/text_single": (Handler.r_text_single, True),

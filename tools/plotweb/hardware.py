@@ -16,6 +16,13 @@ except ImportError:
     serial = None
 
 EBB = (0x04D8, 0xFD92)
+LAST = None          # the last answer from the plotter: {ok, port, firmware, message, at}; shown in the Machine tab
+
+
+def _remember(ok, message, port=None, firmware=None):
+    global LAST
+    LAST = {"ok": ok, "port": port, "firmware": firmware, "message": message, "at": time.strftime("%H:%M:%S")}
+    return ok, message
 
 
 def find_port():
@@ -27,24 +34,25 @@ def find_port():
 def precheck(sim):
     """-> (ok, message). Never called while a job owns the port (the runner reserves first)."""
     if sim:
-        return True, "simulator (no hardware)"
+        return _remember(True, "simulator (no hardware)", "simulator")
     if serial is None:
-        return False, "pyserial is not installed for this Python. Install python-pyserial on the plotter PC."
+        return _remember(False, "pyserial is not installed for this Python. Install python-pyserial on the plotter PC.")
     try:
         port = find_port()
     except Exception as ex:  # noqa: BLE001
-        return False, f"Could not list serial ports: {ex}"
+        return _remember(False, f"Could not list serial ports: {ex}")
     if not port:
-        return False, "No plotter found on USB (EBB 04d8:fd92). Plug it in and switch it on."
+        return _remember(False, "No plotter found on USB (EBB 04d8:fd92). Plug it in and switch it on.")
     try:
         with serial.Serial(port, 9600, timeout=2) as s:
             s.reset_input_buffer()
             s.write(b"V\r")
             ver = s.readline().decode(errors="replace").strip()
-        return True, f"{port} ({ver or 'no version reply'})"
+        fw = firmware_version(ver)
+        return _remember(True, f"{port} ({ver or 'no version reply'})", port, ".".join(map(str, fw)) if fw else None)
     except Exception as ex:  # noqa: BLE001
-        return False, (f"Cannot open {port}: {ex}. The server user must be in the serial group "
-                       "(dialout or uucp); log out and in again after adding it.")
+        return _remember(False, (f"Cannot open {port}: {ex}. The server user must be in the serial group "
+                                 "(dialout or uucp); log out and in again after adding it."), port)
 
 
 def last_resort_safe(sim, servo=None):

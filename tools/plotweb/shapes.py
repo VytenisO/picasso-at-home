@@ -90,6 +90,20 @@ def outlines(g):
     return out
 
 
+def svg_layers(groups):
+    """groups: [(colour, polys)] -> (svg text, bounds), like svg() with one path per colour."""
+    allp = [s for _, ps in groups for s in ps]
+    xs = [x for s in allp for x, _ in s]
+    ys = [y for s in allp for _, y in s]
+    x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+    w, h = max(x1 - x0, 0.01), max(y1 - y0, 0.01)
+    body = "".join(
+        f'<path d="{" ".join("M" + " L".join(f"{x - x0:.3f} {y - y0:.3f}" for x, y in s) for s in ps)}" fill="none" '
+        f'stroke="{c}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>' for c, ps in groups if ps)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" '
+            f'viewBox="0 0 {w:.3f} {h:.3f}">{body}</svg>'), [x0, y0, x1, y1]
+
+
 def svg(polys, color="#000000"):
     """-> (svg text, bounds [x0, y0, x1, y1] in mm). The drawing's own mm are machine mm minus the corner."""
     xs = [x for s in polys for x, _ in s]

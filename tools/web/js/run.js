@@ -3,7 +3,7 @@ import { post, ApiError } from './api.js';
 import { state, set, on, jobActive } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
-import { fileName, setStartAt } from './doc.js';
+import { fileName, setStartAt, setSettings } from './doc.js';
 
 const TITLES = {
   idle: 'Idle', starting: 'Starting', running: 'Plotting', pausing: 'Pausing', paused: 'Paused',
@@ -15,6 +15,13 @@ const DOT = { running: 'busy', starting: 'busy', returning: 'busy', pausing: 'wa
 
 export function initRun() {
   $('previewBtn').onclick = previewNow;
+  $('onlySelBtn').onclick = () => {
+    const ids = state.sel.filter((id) => state.doc.objects.some((o) => o.id === id));
+    if (!ids.length) { toast('Select the objects to plot first.', true); return; }
+    setSettings({ only: ids });
+  };
+  $('onlyAll').onclick = () => setSettings({ only: null });
+  $('exportBtn').onclick = exportPlot;
   $('simBtn').onclick = () => start('simulate');
   $('traceBtn').onclick = () => start('trace');
   $('plotBtn').onclick = () => start('plot');
@@ -169,6 +176,12 @@ function renderRun() {
   if (rp) $('resumeText').textContent = `The last plot stopped after stroke ${rp} of this bed. Re-park the carriage at S, ` +
     `then resume at stroke ${rp + 1} (a stroke cut short by the stop is drawn whole).`;
   $('startAtBox').hidden = active || !state.startAt;
+  const all = state.doc ? state.doc.objects : [];
+  const only = ((state.doc && state.doc.settings.only) || []).filter((id) => all.some((o) => o.id === id));
+  $('onlyBox').hidden = active || !only.length;
+  if (only.length) $('onlyText').textContent = `Plotting only ${only.length} of ${all.length} object${all.length === 1 ? '' : 's'}; the rest are shown faded and stay on the bed. `;
+  $('onlySelBtn').disabled = active || !state.sel.length;
+  $('exportBtn').disabled = active || !all.length;
   if (state.startAt) {
     const tot = pv && pv.summary && pv.summary.total_in_order;
     $('startAtText').textContent = `Starts at stroke ${state.startAt + 1}${tot ? ` of ${tot}` : ''}: the first ${state.startAt} are skipped. `;
@@ -206,6 +219,29 @@ function resumePoint() {
   const done = j.progress ? j.progress.done : 0;
   if (!done || !pv || !pv.bed_key || !j.meta || j.meta.bed_key !== pv.bed_key) return 0;
   return (j.meta.start_at || 0) + done;
+}
+
+// Download exactly what will be plotted, as the server plans it now.
+async function exportPlot() {
+  const d = state.doc;
+  if (!d || !d.objects.length) { toast('The bed is empty.', true); return; }
+  let r;
+  try {
+    r = await fetch('/api/export_doc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc: { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: 0 } } }) });
+  } catch (e) { toast('The server cannot be reached.', true); return; }
+  if (!r.ok) {
+    let msg = `Export failed (${r.status})`;
+    try { msg = (await r.json()).error || msg; } catch (e) { /* not JSON */ }
+    toast(msg, true); return;
+  }
+  const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'plot.svg';
+  const url = URL.createObjectURL(await r.blob());
+  const a = el('a', { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 async function previewNow() {

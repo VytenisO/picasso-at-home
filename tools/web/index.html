@@ -214,6 +214,11 @@
 
     <section id="tab-machine" role="tabpanel" aria-labelledby="tabBtn-machine" hidden>
       <div class="section">
+        <h2>Plotter</h2>
+        <p id="hwInfo" class="hint">Not checked since the server started.</p>
+        <div class="row"><button type="button" id="hwCheck" title="Ask the board for its firmware version (nothing moves)">Check the plotter</button></div>
+      </div>
+      <div class="section">
         <h2>Control</h2>
         <p><span id="mcPos" class="pill">Position unknown</span></p>
         <div id="mcIdle">
@@ -355,8 +360,14 @@
         <div class="row"><button type="button" id="resumeBtn" class="primary">Resume there</button></div></div>
       <div id="startAtBox" class="note warn" hidden><span id="startAtText"></span>
         <button type="button" class="link" id="startAtReset">Plot from the start</button></div>
+      <div id="onlyBox" class="note warn" hidden><span id="onlyText"></span>
+        <button type="button" class="link" id="onlyAll">Plot all objects</button></div>
       <ul id="problemList" class="problems" hidden></ul>
       <dl class="kv" id="planKv"></dl>
+      <div class="row run-extra">
+        <button type="button" class="link" id="onlySelBtn" title="Plot only the selected objects; the rest stay on the bed">Plot only the selection</button>
+        <button type="button" class="link" id="exportBtn" title="Download exactly what will be plotted: machine mm, fills, pen order">Export plot SVG</button>
+      </div>
       <div class="run-buttons" id="idleButtons">
         <button id="previewBtn" title="Check the plan (P)">Preview</button>
         <button id="simBtn" title="Run on the simulator: nothing moves">Simulate</button>
@@ -417,6 +428,13 @@
           <button type="button" data-act="subtract" title="Cut the others out of the first one in the list">Subtract</button>
           <button type="button" data-act="intersect" title="Keep only where all the selected shapes overlap">Intersect</button>
           <button type="button" data-act="offset" title="A new outline a set distance outside (or inside) the selection">Offset</button>
+        </div>
+        <div class="tool-row" role="group" aria-label="Lines and colour">
+          <button type="button" data-act="join" title="Join lines whose ends touch (same colour) into one stroke: fewer pen lifts. Replaces the selection; Undo brings it back.">Join lines</button>
+          <span class="muted">Colour</span>
+          <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
+          <label class="ink-pick" title="Any colour: a layer of its own"><input type="color" id="inkPick" aria-label="Pick a colour"></label>
+          <button type="button" data-act="ink-own" title="Back to the drawing's own colours">Own colours</button>
         </div>
         <div class="tool-row" role="group" aria-label="Place">
           <button type="button" data-act="anchor" id="toAnchor" title="Put the reference point on the same point of the canvas">To canvas top-left</button>
@@ -622,6 +640,7 @@
   <form method="dialog" class="dlg">
     <h2 id="askTitle"></h2>
     <p id="askText"></p>
+    <input id="askInput" maxlength="100" aria-labelledby="askTitle" hidden>
     <div class="actions"><button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button value="cancel">Cancel</button><button value="ok" class="primary" id="askOk">OK</button></div>
   </form>

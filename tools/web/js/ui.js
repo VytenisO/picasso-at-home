@@ -32,9 +32,28 @@ export function ask(title, text, okLabel = 'OK') {
     $('askTitle').textContent = title;
     $('askText').textContent = text;
     $('askOk').textContent = okLabel;
+    $('askInput').hidden = true;
     d.returnValue = '';
     d.onclose = () => resolve(d.returnValue === 'ok');
     d.showModal();
+  });
+}
+
+// Like ask, with a one-line text field. -> the text, or null when cancelled.
+export function askText(title, text, value = '', okLabel = 'OK') {
+  return new Promise((resolve) => {
+    const d = $('askDlg'), inp = $('askInput');
+    $('askTitle').textContent = title;
+    $('askText').textContent = text;
+    $('askOk').textContent = okLabel;
+    inp.hidden = false;
+    inp.value = value;
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); d.close('ok'); } };
+    d.returnValue = '';
+    d.onclose = () => { inp.hidden = true; resolve(d.returnValue === 'ok' ? inp.value : null); };
+    d.showModal();
+    inp.focus();
+    inp.select();
   });
 }
 

@@ -2,7 +2,7 @@
 // 3D models, text, an SVG to clean up) goes through Prepare.
 import { api, post } from './api.js';
 import { state, on, jobActive } from './store.js';
-import { $, el, toast, ask } from './ui.js';
+import { $, el, toast, ask, askText } from './ui.js';
 import { openFile, refreshFiles } from './workspace.js';
 import { addFile } from './doc.js';
 import { showWs } from './ws.js';
@@ -53,6 +53,12 @@ function renderFiles() {
       f.pen && el('span', { class: 'tag', text: `pen ${f.pen}` })];
     const prep = el('button', { class: 'icon', text: 'Prepare', title: f.recipe ? 'Reopen its recipe in Prepare' : 'Open it in Prepare',
       onclick: () => { showWs('prepare'); prepareFromLibrary(f.id); } });
+    const ren = el('button', { class: 'icon', text: 'Rename', 'aria-label': `Rename ${f.name}`, onclick: async () => {
+      const stem = f.name.replace(/\.[^.]+$/, '');
+      const name = await askText('Rename drawing', 'Letters, digits, dot, dash and underscore; other characters become _.', stem, 'Rename');
+      if (name === null || name.trim() === stem) return;
+      try { await post('/api/files/rename', { id: f.id, name }); await refreshFiles(); } catch (e) { toast(e.message, true); }
+    } });
     const del = el('button', { class: 'icon', text: 'Delete', 'aria-label': `Delete ${f.name}`, onclick: async () => {
       if (!(await ask('Delete drawing', `Delete ${f.name} from the library? This cannot be undone.`, 'Delete'))) return;
       try { await post('/api/files/delete', { id: f.id }); await refreshFiles(); } catch (e) { toast(e.message, true); }
@@ -62,6 +68,6 @@ function renderFiles() {
     return el('li', { class: sel ? 'selected' : '' },
       el('img', { src: `/api/files/svg?id=${encodeURIComponent(f.id)}`, alt: '', loading: 'lazy' }),
       el('div', {}, el('div', { class: 'name' }, open), el('div', { class: 'meta' }, ...tags, ' ', f.uploaded ? f.uploaded.replace('T', ' ') : '')),
-      el('div', { class: 'row' }, add, prep, dl, del));
+      el('div', { class: 'row' }, add, prep, dl, ren, del));
   }));
 }

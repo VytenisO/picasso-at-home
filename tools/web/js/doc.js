@@ -55,8 +55,20 @@ function apply(d, sel = null) {
 function schedule(now = false) {
   seq++;                                   // an older preview still in flight must not overwrite this change
   clearTimeout(timer);
+  pending = true;
   timer = setTimeout(runPreview, now ? 0 : 600);
 }
+
+// Leaving the page within the preview delay would drop the last change: send it on the way out.
+let pending = false;
+window.addEventListener('pagehide', () => {
+  const d = state.doc;
+  if (!pending || !d) return;
+  try {
+    fetch('/api/doc', { method: 'POST', keepalive: true, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: d.name, objects: d.objects, settings: { ...d.settings, start_at: state.startAt || 0 }, client: CLIENT }) });
+  } catch (e) { /* the page is going anyway */ }
+});
 
 function restore(s) {
   lastCoalesce = null;
@@ -124,6 +136,7 @@ export function setStartAt(n) {
 
 export async function runPreview() {
   clearTimeout(timer);
+  pending = false;
   const d = state.doc;
   if (!d) return null;
   const my = ++seq;

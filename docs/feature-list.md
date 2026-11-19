@@ -112,10 +112,10 @@ niche.
 | Import report (what was skipped or changed) | PART | P2 | errors listed; add a "converted N elements, ignored M" summary |
 | Paste SVG text or image from the clipboard | TODO | P2 | |
 | Library list with thumbnails, kind, pen tag, date | HAVE | | |
-| Rename library file | TODO | P1 | |
+| Rename library file | HAVE | | Library: Rename; the name is cleaned the way uploads are, the extension kept |
 | Search, sort and filter library | TODO | P2 | |
 | Folders or tags in library | TODO | P3 | |
-| Re-convert with new parameters (saved params editable) | TODO | P1 | today a new upload is needed |
+| Re-convert with new parameters (saved params editable) | HAVE | | Library: Prepare reopens a prepared drawing's recipe with its settings; save replaces it |
 | Replace source keeping placement and settings | TODO | P2 | |
 | Download original | HAVE | | "Save" button |
 | Delete with confirmation; refused while plotting | HAVE | | |
@@ -125,9 +125,9 @@ niche.
 | Recent projects | PART | P3 | projects are listed newest first; no separate recent list |
 | Templates (project that opens as a copy, keeps layer/pen setup) | TODO | P3 | |
 | Autosave and recovery after reload or crash | HAVE | | the bed is saved on the server with every change and reloads on every device |
-| Warn on leaving with unsaved changes | TODO | P1 | browser leave prompt |
+| Warn on leaving with unsaved changes | HAVE | | no prompt needed: the bed is saved on the server with every change, and a change still waiting for its preview is sent as the page closes; Prepare keeps its recipe in the browser |
 | Project notes (free text shown on open) | TODO | P3 | pen and paper reminders |
-| Export flattened plot SVG | TODO | P1 | exactly what will be plotted, in machine mm |
+| Export flattened plot SVG | HAVE | | Run: Export plot SVG. Every stroke after fills, in plot order, machine mm, one Inkscape layer per pen |
 | Export preview as PNG | TODO | P3 | |
 | Export compiled job (EBB command stream) and run it later | TODO | P3 | |
 | Print to paper printer | SKIP | | |
@@ -140,7 +140,7 @@ niche.
 | Box select: enclosing (drag right) and crossing (drag left) | HAVE | | a mouse or pen on empty bed; a finger pans |
 | Shift add, Ctrl toggle | HAVE | | Shift and Ctrl both toggle |
 | Select all, deselect with Esc or empty click | HAVE | | Ctrl+A; Esc only deselects, it never stops a job |
-| Select all on a layer (pen) | TODO | P1 | |
+| Select all on a layer (pen) | HAVE | | Layers: Select on a layer card selects the objects that draw in it |
 | Tab cycles through objects | TODO | P3 | |
 | Invert selection | TODO | P3 | |
 | Select open paths, select shapes smaller than N | TODO | P3 | cleanup helpers |
@@ -208,7 +208,7 @@ niche.
 | Freehand drawing on the bed | PART | P2 | the writing pad plots live; add "draw into the scene" |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |
 | Trim at intersections (click to delete a piece) | TODO | P3 | |
-| Join touching paths | PART | P1 | Prepare clean-up step "Join touching strokes" (tolerance); add a "join selected" action in Plot |
+| Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
 | Close nearly closed paths within a tolerance | TODO | P3 | |
 | Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
 | Simplify paths (tolerance, before/after node count) | PART | P2 | Prepare clean-up step "Simplify" with the point count in Result; the planner's own `--simplify 0.05` stays fixed |
@@ -235,7 +235,7 @@ niche.
 | Show/hide a layer in the view without dropping it from the plot | TODO | P2 | today "enabled" does both |
 | Reorder layers (pen order) | HAVE | | Layers: arrows change the pen order; pen changes follow it |
 | Rename, recolour layers | PART | P3 | rename (shown at the pen change and in Run); no recolour |
-| Move objects to another layer (colour palette) | TODO | P1 | |
+| Move objects to another layer (colour palette) | HAVE | | Arrange, Colour: the bed's ink colours as swatches, or any colour; Own colours undoes it. The object's lines are recoloured when the bed is composed |
 | Merge layers that share a pen (one swap fewer) | TODO | P2 | |
 | Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
 | Non-plotting guide layer | PART | P3 | guide lines; no guide shapes |
@@ -297,7 +297,7 @@ niche.
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
 | Stale-connection warning | HAVE | | |
 | Start from stroke N (resume an interrupted or stopped job) | HAVE | | Start here on the scrubber; after a stopped plot of the same bed, Run offers Resume there (the stroke cut short is drawn whole) |
-| Plot only selected objects or layers | PART | P1 | layers via enable; add "plot selection" |
+| Plot only selected objects or layers | HAVE | | layers via enable; Run: Plot only the selection (the rest fade on the bed, Plot all objects returns) |
 | Repeat job N times with a paper-change hold between | TODO | P2 | cards, batches |
 | Live speed override during a run | TODO | P3 | applies from the next chunk |
 | Finish position: S, a named spot, or stay | PART | P2 | always returns to S |
@@ -354,7 +354,7 @@ niche.
 | Simulator time scale and estimate tuning | PART | P3 | `--sim-speed` flag only |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | TODO | P2 | |
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
-| Firmware version shown | PART | P1 | read by the check; not displayed. Needed once 3.x features are used |
+| Firmware version shown | HAVE | | Machine tab, Plotter: version, port and time of the last answer; Check the plotter asks again (nothing moves) |
 | EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |
 | Pen positions put back after every EBB power-on or reset (3.x starts the servo at its own pen-up, 22565, past the top of this lift) | PART | P0 | built and tested on a fake board in b38800b (`hardware.ServoGuard`, `settle_servo`). To do: deploy to robotlab and restart the server, then switch the plotter off and on while watching the pen: at most a second of stall, then a slow move to pen-up and a "Plotter switched on or reset" line in the log |
 | Driver uses `ES`, `QS`, `QM`, `HM` when `V` reports them, timed waits otherwise | TODO | P0 | `wcb_setup.py` already detects missing commands |

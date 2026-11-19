@@ -14,7 +14,20 @@ let armed = false;
 export const machineRunning = () => !!(state.job && state.job.kind === 'machine' && state.job.state === 'running' &&
   state.job.machine && state.job.machine.ready);
 
+function showHw(h) {
+  if (!h) return;
+  if (h.port === 'simulator') { $('hwInfo').textContent = 'Simulator: no plotter attached.'; $('hwInfo').className = 'hint'; return; }
+  const fw = h.firmware ? `Firmware ${h.firmware}` : 'Firmware not reported';
+  $('hwInfo').textContent = h.ok ? `${fw} on ${h.port || 'USB'}, checked at ${h.at}.` : `Not answering (${h.at}): ${h.message}`;
+  $('hwInfo').className = h.ok ? 'hint' : 'note err';
+}
+
 export function initMachine() {
+  on('me', () => showHw(state.me && state.me.plotter));
+  $('hwCheck').onclick = async () => {
+    $('hwCheck').disabled = true;
+    try { showHw(await api('/api/plotter')); } catch (e) { toast(e.message, true); } finally { $('hwCheck').disabled = false; }
+  };
   $('mcTake').onclick = () => take(false);
   $('mcSim').onclick = () => take(true);
   $('mcSteps').replaceChildren(...STEPS.map((s) => el('button', { type: 'button', text: `${s} mm`, 'aria-pressed': String(s === step),

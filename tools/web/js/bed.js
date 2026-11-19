@@ -484,10 +484,25 @@ function drawObject(o, { px, layers, pens }) {
   }
   const mt = G.matrix(o, n.geom);
   const k = Math.sqrt(Math.abs(mt[0] * mt[3] - mt[1] * mt[2])) || 1;
+  const only = state.doc.settings.only;
+  const out = Array.isArray(only) && only.length && only.some((id) => state.doc.objects.some((x) => x.id === id)) && !only.includes(o.id);
   ctx.save();
   ctx.transform(...mt);
-  drawInk(ctx, n, { px: px / k, layers, pens, css, alpha: state.previewStale || draft ? 0.75 : 1, lineScale: k });
+  drawInk(ctx, o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css,
+    alpha: (state.previewStale || draft ? 0.75 : 1) * (out ? 0.4 : 1), lineScale: k });
   ctx.restore();
+}
+
+// The drawing with every layer in one colour (an object moved to another layer). Kept per colour, so the ink
+// renderer's path cache holds.
+const inkedCache = new WeakMap();
+function inked(n, ink) {
+  let m = inkedCache.get(n);
+  if (!m) { m = new Map(); inkedCache.set(n, m); }
+  if (!m.has(ink)) {
+    m.set(ink, { ...n, layers: (n.layers || []).map((l) => ({ ...l, color: ink, key: `${ink}|${String(l.key || '').split('|')[1] || ''}` })) });
+  }
+  return m.get(ink);
 }
 
 function poly(pts) {
