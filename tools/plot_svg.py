@@ -480,10 +480,15 @@ def load_svg(path, ignore_unsupported):
             cur["layer"] = layer
         if el.get("data-pressure") is not None:
             cur["pressure"] = float(el.get("data-pressure"))
+        if el.get("data-speed") is not None:
+            try:
+                cur["speed"] = min(MAX_SPEED, max(1.0, float(el.get("data-speed"))))   # a test cell's own speed
+            except ValueError:
+                pass
         if el.get("data-obj") is not None and el.get("data-obj").isdigit():
             cur["obj"] = int(el.get("data-obj"))          # which bed object (the web UI's composed document)
         meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                "obj": cur.get("obj")}
+                "obj": cur.get("obj"), "speed": cur.get("speed")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -598,7 +603,7 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
     sp = [[(x * scale + dx, y * scale + dy) for x, y in p] for p in polys]
     merged, mmeta = [], []
     for p, m in zip(sp, metas):
-        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj")) == \
+        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj"), m.get("speed")) == \
                    (mmeta[-1].get("color"), mmeta[-1].get("layer"), mmeta[-1].get("pressure"))
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
@@ -1133,7 +1138,8 @@ def main():
     obj_of = (lambda i: metas[i].get("obj") or 0) if a.by_object else (lambda i: 0)
     order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0), obj_of(i),
                               not metas[i].get("fill")))
-    speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
+    # a stroke's own data-speed (test sheets) wins over its layer's speed, which wins over the job's
+    speed_of = [metas[i].get("speed") or lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     pen_s = a.pen_delay / 1000 + 0.15
     file_order = None
     if (a.optimize or a.sweep != "none") and order:

@@ -376,9 +376,9 @@ niche.
 | Pressure test sheet | HAVE | | |
 | Record results into the pen profile | HAVE | | |
 | Pen height test (toggle, sweep) | HAVE | | |
-| Two-parameter grid test (e.g. speed x pressure) with value labels | TODO | P2 | one sheet instead of several runs |
+| Two-parameter grid test (e.g. speed x pressure) with value labels | HAVE |  | Tools, Speed x pressure grid: one cell per speed and pressure (patch, line, circle) at its own settings (data-speed, data-pressure), labelled, one run |
 | Place a test sheet anywhere on the paper | PART | P2 | placed like any drawing; add "fit in the free corner" |
-| Tone ramp test (hatch spacing -> perceived grey) | TODO | P2 | feeds the image pipeline's tone mapping |
+| Tone ramp test (hatch spacing -> perceived grey) | HAVE |  | Tools, Tone ramp: patches hatched 0.3 to 3 mm apart, labelled |
 | Test presets | TODO | P3 | |
 
 ## 15. Images and tracing

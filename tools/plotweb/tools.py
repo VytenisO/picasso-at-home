@@ -66,6 +66,18 @@ REGISTRY = {t.id: t for t in [
                                                                        str(s.machine_path)]
         + (["--levels", p["levels"]] if p.get("levels") else []),
         help="Each block at its own lighter touch, in one run."),
+    Tool("grid_sheet", "Speed x pressure grid", "sheet", [
+        PEN,
+        {"key": "speeds", "label": "Speeds (mm/s)", "type": "text", "default": "10,20,30,40",
+         "help": "Columns, comma separated, up to 8, at most 40."},
+        {"key": "pressures", "label": "Pressures", "type": "text", "default": "0,0.15,0.3,0.45",
+         "help": "Rows: fractions from pen-down toward pen-up, 0 to 0.8. Larger = lighter."},
+    ], lambda s, p: _script(s, "grid_test.py") + _sheet_common(s, p)
+        + ["--speeds", p.get("speeds") or "10,20,30,40", "--pressures", p.get("pressures") or "0,0.15,0.3,0.45"],
+        help="One cell per speed and pressure (a patch, a line, a circle), each at its own settings, in one run."),
+    Tool("tone_sheet", "Tone ramp", "sheet", [PEN],
+         lambda s, p: _script(s, "grid_test.py") + _sheet_common(s, p) + ["--tone"],
+         help="Patches hatched from 0.3 to 3 mm apart, labelled: which spacing reads as which grey with this pen."),
     Tool("stroke_record", "Record stroke results", "record", [
         PEN,
         _num("single", "Shortest single line", "mm", 0.1, 20, 0.05),

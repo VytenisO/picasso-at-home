@@ -37,6 +37,19 @@ class TestFlags(unittest.TestCase):
         _, metas, _, _ = load_svg(str(svg), False)
         self.assertEqual([m["color"] for m in metas], ["#2463a6", "#2463a6", "#111111", "#000000"])
 
+    def test_stroke_speed_is_used_and_capped(self):
+        def est(attr):
+            svg = self.tmp / "sp.svg"
+            svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="10mm" viewBox="0 0 100 10">'
+                           f'<path d="M0 5 L100 5" stroke="#000"{attr}/></svg>')
+            pv = self.tmp / "pv.json"
+            rc, out = run(svg, "--mode", "dry", "--x0", "20", "--y0", "20", "--speed", "20", "--preview-json", pv)
+            self.assertEqual(rc, 0, out)
+            return json.loads(pv.read_text())["summary"]["est_seconds"]
+        base = est("")
+        self.assertAlmostEqual(est(' data-speed="10"') - base, 5.0, delta=0.3)      # 100 mm at 10 instead of 20
+        self.assertAlmostEqual(est(' data-speed="400"') - base, -2.5, delta=0.3)    # capped at 40 mm/s
+
     def test_layer_limits(self):
         svg = FIX / "two_layers.svg"
         rc, out = run(svg, "--layers", self.layers([{"speed": 41}]))
