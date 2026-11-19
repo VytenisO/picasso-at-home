@@ -745,6 +745,22 @@ class TestDocument(SimServer):
         self.assertEqual(code, 200, r)
         self.assertEqual([p["name"] for p in r["presets"]], [])
 
+    def test_04l_layer_follows_its_pen(self):
+        code, r = self.call("POST", "/api/pens/save", {"name": "slowpen", "pen": {"speed": 12, "pressure": 0.2}})
+        self.assertEqual(code, 200, r)
+        fid = self.upload("two_layers.svg")
+        objs = [self.obj(fid, 80, 30, 40, 40)]
+        keys = [l["key"] for l in self.doc_preview(objs)["file_layers"]]
+        pv = self.doc_preview(objs, {"layers": [{"key": keys[0], "pen": "slowpen"},
+                                                {"key": keys[1], "pen": "slowpen", "speed": 30}]})
+        ls = {l["key"]: l for l in pv["settings"]["layers"]}
+        self.assertEqual((ls[keys[0]]["speed"], ls[keys[0]]["pressure"]), (12, 0.2))     # from the pen
+        self.assertEqual(ls[keys[1]]["speed"], 30)                                     # its own wins
+        code, r = self.call("POST", "/api/pens/save", {"name": "slowpen", "pen": {"speed": 18, "pressure": 0.2}})
+        pv = self.doc_preview(objs, {"layers": [{"key": keys[0], "pen": "slowpen"}]})
+        self.assertEqual(pv["settings"]["layers"][0]["speed"], 18)                     # retuned pen, same job
+        self.call("POST", "/api/pens/delete", {"name": "slowpen"})
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

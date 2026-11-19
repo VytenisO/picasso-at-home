@@ -1,7 +1,7 @@
 // The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
 // settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
 import { api, post } from './api.js';
-import { armPlace, armPoly } from './bed.js';
+import { armPlace, armPoly, armFree } from './bed.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
@@ -314,7 +314,10 @@ function initShapeTool() {
           await D.addFile(r.file.id, { at: r.at || at });
         } catch (e) { toast(e.message, true); }
       };
-      if (p.kind === 'poly') {
+      if (p.kind === 'free') {
+        toast('Drag on the bed to draw.');
+        armFree((pts) => { if (pts) make({ kind: 'poly', pts, closed: false }); else btn.setAttribute('aria-pressed', 'false'); });
+      } else if (p.kind === 'poly') {
         toast('Click the points. Enter or double-click finishes; Esc cancels.');
         armPoly((pts, closed) => { if (pts) make({ kind: 'poly', pts, closed }); else btn.setAttribute('aria-pressed', 'false'); });
       } else {
@@ -372,6 +375,8 @@ function fillJobForm() {
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
   f.paper_w.disabled = f.paper_h.disabled = !st.paper || jobActive();
+  const sz = st.paper ? `${st.paper.width}x${st.paper.height}` : '';
+  f.paper_preset.value = [...f.paper_preset.options].some((o) => o.value === sz) ? sz : '';
 }
 
 function fromJobForm(e) {
@@ -402,7 +407,11 @@ function fromJobForm(e) {
       return;
     }
   }
-  if (e && e.target === f.paper_custom && f.paper_custom.checked) {
+  if (e && e.target === f.paper_preset) {
+    if (!f.paper_preset.value) return;
+    const [w, h] = f.paper_preset.value.split('x').map(Number);
+    patch.paper = { width: w, height: h };
+  } else if (e && e.target === f.paper_custom && f.paper_custom.checked) {
     const [, , pw, ph] = state.me.machine.paper;
     patch.paper = { width: pw, height: ph };
   } else {
@@ -451,13 +460,15 @@ function renderLayers() {
     d.settings.layers = order.map((k, r) => ({ ...(cur.find((y) => y.key === k) || { key: k, enabled: true, pen: null, speed: null, pressure: null }), rank: r }));
   });
   list.replaceChildren(...rows.map(({ fl, s }, n) => {
+    // choosing a pen clears the layer's own speed and pressure: it follows the pen profile (empty fields show it)
     const pen = el('select', { 'aria-label': `Pen for layer ${n + 1}`, disabled: locked, onchange: (e) => {
-      const p = pens[e.target.value] || {};
-      upd(fl.key, { pen: e.target.value || null, ...(p.speed ? { speed: p.speed } : {}), ...(p.pressure !== undefined ? { pressure: p.pressure } : {}) });
+      upd(fl.key, { pen: e.target.value || null, speed: null, pressure: null });
     } }, el('option', { value: '', text: 'Pen: not set' }),
       Object.entries(pens).map(([nm, p]) => el('option', { value: nm, text: p.colour ? `${nm} (${p.colour})` : nm })));
     pen.value = s.pen || '';
+    const prof = s.pen ? pens[s.pen] || {} : {};
     const num = (key, lim, ph, label) => {
+      if (prof[key] !== undefined && prof[key] !== null) ph = `${prof[key]} (pen)`;
       const i2 = el('input', { type: 'number', min: lim.min, max: lim.max, step: key === 'pressure' ? 0.05 : 1,
         placeholder: ph, 'aria-label': label, disabled: locked, title: `${label}: ${lim.min} to ${lim.max}` });
       i2.value = s[key] ?? '';

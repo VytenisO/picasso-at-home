@@ -35,6 +35,22 @@ export function armPoly(fn) {
   if (fn) cv.focus();
   redraw();
 }
+// Freehand: one drag draws one line, smoothed (Douglas-Peucker, 0.3 mm) when the button comes up.
+let freeHook = null, freePts = null;
+export function armFree(fn) { freeHook = fn; freePts = null; cv.style.cursor = fn ? 'crosshair' : ''; }
+function rdp(pts, tol) {
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9;
+  let best = -1, bd = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((b[0] - a[0]) * (a[1] - pts[i][1]) - (a[0] - pts[i][0]) * (b[1] - a[1])) / L;
+    if (d > bd) { bd = d; best = i; }
+  }
+  if (bd <= tol) return [a, b];
+  return [...rdp(pts.slice(0, best + 1), tol).slice(0, -1), ...rdp(pts.slice(best), tol)];
+}
+
 function polyPoint(mx, my, e) {
   let [x, y] = [snapHalf(mx), snapHalf(my)];
   const last = polyPts[polyPts.length - 1];
@@ -205,6 +221,10 @@ function render() {
     if (editable()) overlays(px);
   }
   if (state.doc) drawGuides(px);
+  if (freeHook && freePts && freePts.length > 1) {
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1.5 * px;
+    ctx.beginPath(); freePts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+  }
   if (polyHook && polyPts.length) {        // the line being clicked, with a rubber band to the pointer
     ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1.5 * px;
     ctx.beginPath();
@@ -670,6 +690,7 @@ function down(e) {
   const [mx, my] = toMm(px, py);
   closeMenu();
   if (e.button === 0 && placeHook) { const f = placeHook; placeHook = null; cv.style.cursor = ''; f(mx, my); return; }
+  if (e.button === 0 && freeHook) { freePts = [[G.r2(mx), G.r2(my)]]; cv.setPointerCapture(e.pointerId); return; }
   if (e.button === 0 && polyHook) {
     const p = polyPoint(mx, my, e);
     const first = polyPts[0];
@@ -723,6 +744,11 @@ function move(e) {
   pointerMm = [mx, my];
   lastPointerEvent = { shiftKey: e.shiftKey };
   if (polyHook) { redraw(); status(); return; }
+  if (freeHook && freePts) {
+    const last = freePts[freePts.length - 1];
+    if (Math.hypot(mx - last[0], my - last[1]) >= 0.2) { freePts.push([G.r2(mx), G.r2(my)]); redraw(); }
+    return;
+  }
   status();
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [px, py]);
   if (pinch && pointers.size === 2) {
@@ -882,6 +908,14 @@ function dragGroupScale(sel, mx, my) {
 }
 
 function up(e) {
+  if (freeHook && freePts) {
+    const f = freeHook, pts = rdp(freePts, 0.3);
+    freeHook = null; freePts = null; cv.style.cursor = '';
+    pointers.delete(e.pointerId);
+    redraw();
+    f(pts.length >= 2 ? pts : null);
+    return;
+  }
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch = null;
   cv.classList.remove('dragging');

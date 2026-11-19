@@ -215,6 +215,7 @@
           <div class="field-row">
             <label class="field"><span>Letter height (mm)</span><input id="liveSize" type="number" value="4.5" min="2" max="20" step="0.5"></label>
             <label class="field"><span>Speed (mm/s)</span><input id="liveSpeed" type="number" value="15" min="1" max="40" step="1"></label>
+            <label class="field" title="0 = the configured pen-down (heaviest), up to 0.9 (lightest); empty = 0"><span>Pressure (0-0.9)</span><input id="livePressure" type="number" min="0" max="0.9" step="0.05" placeholder="0"></label>
           </div>
           <label class="check"><input type="checkbox" id="liveSport"> Sport mode (pad only): the plotter follows the speed of your hand, up to 100 mm/s</label>
           <p class="hint warn-text">Sport mode is above the tested speed (40 mm/s). The motors can lose steps and the position
@@ -545,6 +546,11 @@
           <summary>Paper</summary>
           <p class="hint" id="paperHint"></p>
           <label class="check"><input type="checkbox" name="paper_custom"> Different sheet size for this job</label>
+          <label class="field"><span>Size</span><select name="paper_preset" aria-label="Sheet size">
+            <option value="">Custom</option><option value="297x210">A4 landscape (297 x 210)</option>
+            <option value="210x148">A5 landscape (210 x 148)</option><option value="148x105">A6 landscape (148 x 105)</option>
+            <option value="279x216">US Letter landscape (279 x 216)</option><option value="152x102">Postcard 6 x 4 in (152 x 102)</option>
+            <option value="210x297">A4 portrait (210 x 297)</option><option value="148x210">A5 portrait (148 x 210)</option></select></label>
           <div class="field-row">
             <label class="field"><span>Width (mm)</span><input name="paper_w" type="number" step="1" min="20"></label>
             <label class="field"><span>Height (mm)</span><input name="paper_h" type="number" step="1" min="20"></label>
@@ -692,7 +698,7 @@
     <label class="field"><span>Shape</span><select name="kind">
       <option value="rect">Rectangle</option><option value="ellipse">Ellipse or circle</option>
       <option value="polygon">Polygon</option><option value="star">Star</option>
-      <option value="poly">Line by clicks</option></select></label>
+      <option value="poly">Line by clicks</option><option value="free">Freehand (drag)</option></select></label>
     <div class="field-row" data-for="rect ellipse polygon star">
       <label class="field"><span>Width (mm)</span><input name="w" type="number" min="1" max="500" step="0.5" value="40"></label>
       <label class="field"><span>Height (mm)</span><input name="h" type="number" min="1" max="500" step="0.5" value="40"></label>
@@ -701,6 +707,7 @@
     <label class="field" data-for="polygon star"><span>Sides or points</span><input name="n" type="number" min="3" max="64" step="1" value="5"></label>
     <label class="field" data-for="star"><span>Inner radius (% of outer)</span><input name="inner" type="number" min="5" max="95" step="1" value="45"></label>
     <p class="hint" data-for="rect ellipse polygon star">Then click on the bed where its top-left corner goes.</p>
+    <p class="hint" data-for="free">Then drag on the bed to draw one line; it is smoothed a little (0.3 mm).</p>
     <p class="hint" data-for="poly">Then click on the bed for each point. Shift keeps 45 degree steps. Click the first point to
       close the shape; double-click or Enter finishes an open line; Esc cancels; Backspace removes the last point.</p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place</button></div>

@@ -53,6 +53,7 @@ async function start(simulate) {
     set({ liveStrokes: [] });
     fetched = '';
     await post('/api/live/start', { font, xheight: Number($('liveSize').value), speed: Number($('liveSpeed').value),
+      pressure: $('livePressure').value === '' ? null : Number($('livePressure').value),
       mode: simulate ? 'simulate' : 'plot', sport, confirm: { parked: true, sport } });
   } catch (e) { toast(e.message, true); }
 }

@@ -205,7 +205,7 @@ niche.
 | Bezier drawing (drag for handles) | TODO | P3 | |
 | Rectangle (corner radius), ellipse, polygon, star | HAVE |  | Bed, Shape: size, corner radius, sides or points and inner radius, placed by a click; each becomes a library drawing (not editable as parameters afterwards) |
 | Shape properties stay editable (sides, radius) | TODO | P3 | |
-| Freehand drawing on the bed | PART | P2 | the writing pad plots live; add "draw into the scene" |
+| Freehand drawing on the bed | HAVE |  | Bed, Shape, Freehand: drag to draw one line, smoothed to 0.3 mm, kept as a drawing; the writing pad still plots live |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |
 | Trim at intersections (click to delete a piece) | TODO | P3 | |
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
@@ -329,7 +329,7 @@ niche.
 | Macros: saved command sequences as buttons | TODO | P3 | must mark position unknown if they move |
 | Raw EBB command line in the console | TODO | P3 | warn; mark position unknown after motion commands |
 | Live writing (font or own handwriting), new page, finish | HAVE | | `live.js`, `live_plot.py` |
-| Live writing: pressure field | TODO | P2 | the server accepts it already |
+| Live writing: pressure field | HAVE |  | Tools, Live writing: Pressure 0-0.9 (empty = the configured pen-down) |
 | Live writing: pause and return | TODO | P3 | |
 | Replot a saved live session | TODO | P3 | |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
@@ -368,8 +368,8 @@ niche.
 | Pen profiles (name, colour, speed, pressure) | HAVE | | read-only, `config/pens.json` |
 | Pen library editor: create, edit, duplicate, delete | PART | P3 | create, edit, rename, delete; no duplicate |
 | Pen fields: line width, best hatch spacing, dwell, notes | PART | P3 | line width, colour, speed, pressure, notes; hatch spacing and dwell are not fields |
-| Paper profiles (size, type, notes), paired with pens | TODO | P2 | today one paper plus a per-job size override |
-| Link a layer to a pen profile (retune updates the job) vs copy values | PART | P2 | choosing a pen copies its values today |
+| Paper profiles (size, type, notes), paired with pens | PART | P3 | Job, Paper: standard sheet sizes (A4, A5, A6, Letter, postcard, portrait A4/A5) or custom; no paper types, notes or pen pairing |
+| Link a layer to a pen profile (retune updates the job) vs copy values | HAVE |  | choosing a pen leaves the layer's speed and pressure empty: they follow the pen profile (shown as placeholders), so retuning the pen changes every job using it; a value typed on the layer wins |
 | Export / import pen library | TODO | P3 | |
 | Stroke and circle test sheet | HAVE | | |
 | Infill (hatch spacing) test sheet | HAVE | | |
