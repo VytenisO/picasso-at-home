@@ -90,8 +90,9 @@ class GuardThread(unittest.TestCase):
         settings.machine.return_value = {"servo": SERVO}
         runner = mock.Mock()
         runner.busy.return_value = False
-        with mock.patch.object(hardware, "find_port", return_value="/dev/fake"), 
-                mock.patch.object(hardware, "serial", mock.Mock(Serial=lambda *a, **k: Ctx())):
+        port = mock.patch.object(hardware, "find_port", return_value="/dev/fake")
+        ser = mock.patch.object(hardware, "serial", mock.Mock(Serial=lambda *a, **k: Ctx()))
+        with port, ser:
             g = hardware.ServoGuard(settings, runner, threading.Lock(), lambda lvl, msg: logs.append((lvl, msg)),
                                     interval=0.05)
             g.start()
