@@ -708,6 +708,25 @@ class TestDocument(SimServer):
         self.assertEqual([o.get("grp") for o in got], ["g1", "g1", None])
         self.assertTrue(self.doc_preview(objs)["ok"])          # neither changes the plan
 
+    def test_04j_order_by_object(self):
+        wide = b'<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="10mm" viewBox="0 0 60 10"><path d="M0 5 L4 5" stroke="#000"/><path d="M56 5 L60 5" stroke="#000"/></svg>'
+        dot = b'<svg xmlns="http://www.w3.org/2000/svg" width="4mm" height="10mm" viewBox="0 0 4 10"><path d="M0 5 L4 5" stroke="#000"/></svg>'
+        ids = []
+        for n, raw in (("wide", wide), ("mid", dot)):
+            code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": f"{n}.svg", "X-Params": "{}"})
+            ids.append(d["file"]["id"])
+        objs = [self.obj(ids[0], 80, 40, 60, 10), self.obj(ids[1], 100, 40, 4, 10)]
+
+        def xs(settings):
+            pv = self.doc_preview(objs, settings)
+            self.assertTrue(pv["ok"], pv["problems"])
+            return [round(pv["strokes"][i]["pts"][0][0]) for i in pv["order"]]
+        near = xs({})
+        self.assertEqual(near[:2], [80, 100])          # nearest next: the middle object comes between
+        by = xs({"by_object": True})
+        self.assertEqual(sorted(by[:2]), [80, 136])     # the wide object first, both its ends
+        self.assertIn(by[2], (100, 104))                # then the middle one (from either end)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

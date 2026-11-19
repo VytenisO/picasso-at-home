@@ -359,6 +359,7 @@ function fillJobForm() {
   if (document.activeElement !== f.sweep) f.sweep.value = st.sweep || 'none';
   f.optimize.checked = st.optimize !== false;
   f.dedupe.checked = !!st.dedupe;
+  f.by_object.checked = !!st.by_object;
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -370,7 +371,7 @@ function fromJobForm(e) {
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
   const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
     optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
-    sweep: f.sweep.value === 'none' ? null : f.sweep.value };
+    sweep: f.sweep.value === 'none' ? null : f.sweep.value, by_object: f.by_object.checked || null };
   const st = state.doc.settings;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {

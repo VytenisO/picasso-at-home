@@ -480,7 +480,10 @@ def load_svg(path, ignore_unsupported):
             cur["layer"] = layer
         if el.get("data-pressure") is not None:
             cur["pressure"] = float(el.get("data-pressure"))
-        meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure")}
+        if el.get("data-obj") is not None and el.get("data-obj").isdigit():
+            cur["obj"] = int(el.get("data-obj"))          # which bed object (the web UI's composed document)
+        meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
+                "obj": cur.get("obj")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -545,7 +548,8 @@ def load_svg(path, ignore_unsupported):
             skipped[tag] = skipped.get(tag, 0) + 1
         if cur.get("fill") and el_rings and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
             fills.append({"rings": el_rings, "color": cur["fill"], "opacity": cur["fop"],
-                          "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure")})
+                          "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure"),
+                          "obj": cur.get("obj")})
         for child in el:
             walk(child, cur, xform)
 
@@ -594,7 +598,7 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
     sp = [[(x * scale + dx, y * scale + dy) for x, y in p] for p in polys]
     merged, mmeta = [], []
     for p, m in zip(sp, metas):
-        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure")) == \
+        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj")) == \
                    (mmeta[-1].get("color"), mmeta[-1].get("layer"), mmeta[-1].get("pressure"))
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
@@ -893,6 +897,9 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--by-object", action="store_true",
+                    help="within each pen, finish one object before the next, in the document's object order "
+                         "(data-obj on the web UI's composed document); nearest stroke next inside an object")
     ap.add_argument("--sweep", choices=("none", "down", "right"), default="none",
                     help="plot order within each pen in 20 mm bands, top to bottom (down) or left to right (right), "
                          "nearest next inside a band: the hand and the drawn ink stay behind the pen")
@@ -1024,7 +1031,7 @@ def main():
                 sys.exit(str(ex))
             for ln in lines:
                 fpolys.append(ln)
-                fmetas.append({"color": f["color"], "layer": f["layer"], "pressure": f["pressure"]})
+                fmetas.append({"color": f["color"], "layer": f["layer"], "pressure": f["pressure"], "obj": f.get("obj")})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
         log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
             + (f" (default hatch {a.fill} mm, {a.fill_angle:g} deg)" if a.fill else "")
@@ -1118,7 +1125,8 @@ def main():
     order = [i for i in order if lset[stroke_group[i]].get("enabled", True)]
     # Layers plot in their rank order (the operator can reorder pens); within a layer fills come before outlines.
     rank_of = [lset[gi].get("rank", gi) for gi in range(len(groups))]
-    order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0),
+    obj_of = (lambda i: metas[i].get("obj") or 0) if a.by_object else (lambda i: 0)
+    order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0), obj_of(i),
                               not metas[i].get("fill")))
     speed_of = [lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     pen_s = a.pen_delay / 1000 + 0.15
@@ -1129,7 +1137,7 @@ def main():
                                         a.travel_speed, pen_s, speeds=[speed_of[i] for i in order])
         blocks, cur = [], (-ox, -oy)
         for i in order:     # one block per pen and per fill/outline run: those boundaries stay where they are
-            k = (stroke_group[i] if by_layer else 0, bool(metas[i].get("fill")))
+            k = (stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")))
             if not blocks or blocks[-1][0] != k:
                 blocks.append((k, []))
             blocks[-1][1].append(i)

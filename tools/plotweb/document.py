@@ -143,7 +143,7 @@ def compose(objects, files, bed):
     ET.register_namespace("", SVG_NS)
     root = ET.Element(f"{{{SVG_NS}}}svg", {"width": f"{bw:g}mm", "height": f"{bh:g}mm", "viewBox": f"0 0 {bw:g} {bh:g}"})
     parsed = {}
-    for o in objects:
+    for n, o in enumerate(objects):
         path, geom = files[o["file"]]
         if o["file"] not in parsed:
             parsed[o["file"]] = ET.parse(path).getroot()
@@ -151,7 +151,8 @@ def compose(objects, files, bed):
         s, vx, vy = _doc_scale(src)
         a, b, c, d, e, f = object_matrix(o, geom)
         outer = ET.SubElement(root, f"{{{SVG_NS}}}g", {
-            "id": f"obj-{o['id']}", "transform": f"matrix({a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g} {f:.9g})"})
+            "id": f"obj-{o['id']}", "data-obj": str(n),
+            "transform": f"matrix({a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g} {f:.9g})"})
         attrs = {k: v for k, v in src.attrib.items() if k not in ROOT_ONLY and not k.startswith("{")}
         attrs["transform"] = f"scale({s:.9g}) translate({-vx:.9g} {-vy:.9g})"
         inner = ET.SubElement(outer, f"{{{SVG_NS}}}g", attrs)
@@ -249,7 +250,7 @@ class DocStore:
                                  or not all(isinstance(x, str) and len(x) <= 40 for x in only)):
             raise DocError("only must be a list of object ids")
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
-                                       "dedupe", "fills", "guides", "only", "copies", "finish", "sweep")}
+                                       "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

@@ -179,7 +179,7 @@ niche.
 | Align left/right/top/bottom/centres | HAVE | | to each other with several selected, to the canvas with one |
 | Distribute by edges or centres | PART | P3 | Spread H/V gives equal gaps between edges; not by centres |
 | Move together (abut) and dock to edge | TODO | P3 | |
-| Draw order: forward/back/front/back, per-object priority | PART | P2 | objects list order (earlier/later) is the plot order within each pen; path planning (step 3) may reorder strokes |
+| Draw order: forward/back/front/back, per-object priority | HAVE |  | Arrange list arrows; the list order is the plot order within each pen with planning off, or with Finish each object before the next |
 | Grid array (rows, columns, spacing, stagger, alternate mirror) | PART | P3 | Arrange, Array: columns, rows, gaps; no stagger or alternate mirror |
 | Circular array | TODO | P3 | |
 | Copy along path | TODO | P3 | |
@@ -270,8 +270,8 @@ niche.
 | Reduce travel (nearest neighbour or better) | HAVE | | `pathplan.py`, greedy nearest next with a cell grid; on by default (Job, Path planning). No 2-opt yet |
 | Allow path reversal | HAVE | | open strokes are reversed when their far end is nearer |
 | Best start point on closed paths (prefer corners) | PART | P3 | closed paths start at the vertex nearest the pen; no preference for corners |
-| Order by group (finish one object before the next) | TODO | P2 | |
-| Order by priority, pin some objects first | TODO | P2 | |
+| Order by group (finish one object before the next) | HAVE |  | Job, Path planning: Finish each object before the next (within each pen), nearest stroke next inside an object; a group counts as its objects |
+| Order by priority, pin some objects first | HAVE |  | with Finish each object before the next, the Arrange list order is the priority: move an object up to plot it first |
 | Inner shapes first | TODO | P3 | |
 | Sweep direction (e.g. top to bottom so the hand never touches wet ink) | HAVE |  | Job, Path planning, Sweep: top to bottom or left to right in 20 mm bands within each pen, nearest stroke next inside a band |
 | Same approach direction (hide backlash) | TODO | P3 | |
