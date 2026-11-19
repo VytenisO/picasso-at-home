@@ -74,6 +74,7 @@ def validate(raw, bed, pens, layer_keys):
     out["sweep"] = sw
     out["by_object"] = raw.get("by_object") is True
     out["keep_motors"] = raw.get("keep_motors") is True
+    out["simplify"] = _num(raw, "simplify", 0, 2, 0.05, False, "Simplify")
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -149,6 +150,7 @@ def validate_fills(raw):
             e["angle"] = _num(f, "angle", 0, 180, 45.0, False, f"Fill {i + 1} angle")
             e["cross"] = f.get("cross") is True
             e["zigzag"] = f.get("zigzag", True) is not False
+            e["own_layer"] = f.get("own_layer") is True
         out[f["key"]] = e
     return [out[k] for k in sorted(out)]
 
@@ -212,6 +214,8 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--sweep", v["sweep"]]
     if v.get("by_object"):
         argv.append("--by-object")
+    if v.get("simplify") is not None and abs(v["simplify"] - 0.05) > 1e-9:
+        argv += ["--simplify", f"{v['simplify']:g}"]
     if v.get("keep_motors") and mode == "plot":
         argv.append("--keep-motors")
     if v.get("fill"):

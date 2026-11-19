@@ -524,6 +524,7 @@
         <label class="check"><input type="checkbox" name="dedupe"> Skip strokes that exactly repeat an earlier one of the same pen</label>
         <label class="check"><input type="checkbox" name="by_object"> Finish each object before the next, in the Arrange
           list's order (still one pen at a time): move an object up the list to plot it first</label>
+        <label class="field" title="Points closer than this to a straight line are dropped: fewer, longer moves. 0 keeps every point."><span>Simplify (mm, 0-2)</span><input name="simplify" type="number" min="0" max="2" step="0.01"></label>
         <label class="field"><span>Sweep</span><select name="sweep" title="Work across the sheet in 20 mm bands so the hand and fresh ink stay behind the pen">
           <option value="none">Nearest stroke next</option><option value="down">Top to bottom</option>
           <option value="right">Left to right</option></select></label>

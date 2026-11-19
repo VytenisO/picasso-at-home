@@ -782,6 +782,23 @@ class TestDocument(SimServer):
         self.assertEqual(len(firsts), 3)
         self.assertGreater(firsts[0][0], firsts[-1][0])        # the last stroke now comes first, from its far end
 
+    def test_04n_fill_own_layer_and_simplify(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="30mm" height="30mm" viewBox="0 0 30 30">'
+               b'<rect x="2" y="2" width="26" height="26" stroke="#000000" fill="#000000"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "box.svg", "X-Params": "{}"})
+        objs = [self.obj(d["file"]["id"], 100, 40, 30, 30)]
+        pv = self.doc_preview(objs)
+        key = pv["summary"]["fill_inks"][0]["key"]
+        same = self.doc_preview(objs, {"fills": [{"key": key, "mode": "hatch", "spacing": 2}]})
+        own = self.doc_preview(objs, {"fills": [{"key": key, "mode": "hatch", "spacing": 2, "own_layer": True}]})
+        self.assertEqual(len(same["file_layers"]), 1)
+        self.assertEqual(len(own["file_layers"]), 2)          # the hatch on a layer of its own: its own pen
+        self.assertIn("fill", own["file_layers"][1]["name"].lower())
+        a = self.doc_preview(objs, {"simplify": 0})
+        self.assertEqual(a["settings"]["simplify"], 0)
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"simplify": 3}}})
+        self.assertEqual(code, 400)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

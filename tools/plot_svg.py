@@ -1039,9 +1039,11 @@ def main():
                     lines = []
             except ValueError as ex:
                 sys.exit(str(ex))
+            # own_layer: the fill gets a layer (and so a pen) of its own, apart from the outlines of the same colour
+            flayer = f"{f['layer'] or color_label((f['color'], None))} fill" if fc and fc.get("own_layer") else f["layer"]
             for ln in lines:
                 fpolys.append(ln)
-                fmetas.append({"color": f["color"], "layer": f["layer"], "pressure": f["pressure"], "obj": f.get("obj")})
+                fmetas.append({"color": f["color"], "layer": flayer, "pressure": f["pressure"], "obj": f.get("obj")})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
         log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
             + (f" (default hatch {a.fill} mm, {a.fill_angle:g} deg)" if a.fill else "")

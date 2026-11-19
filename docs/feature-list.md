@@ -211,7 +211,7 @@ niche.
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
 | Close nearly closed paths within a tolerance | TODO | P3 | |
 | Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
-| Simplify paths (tolerance, before/after node count) | PART | P2 | Prepare clean-up step "Simplify" with the point count in Result; the planner's own `--simplify 0.05` stays fixed |
+| Simplify paths (tolerance, before/after node count) | HAVE |  | Prepare clean-up step Simplify with the point count in Result; Job, Path planning: Simplify (mm) for the plot itself, with the points in the plan |
 | Smooth / fit arcs | TODO | P3 | |
 | Break apart into separate paths | HAVE |  | Arrange, Break apart: every stroke becomes its own object (and library drawing) where it was; one undo step; at most 64 objects on the bed |
 | Reverse path direction | HAVE |  | Arrange, Reverse: each stroke from its other end, last stroke first; only shows with Shorter pen-up travel off, since planning picks direction itself |
@@ -248,7 +248,7 @@ niche.
 | Hatch overscan (start/end outside, clipped) | TODO | P3 | hides blobs at hatch ends |
 | Skip empty gaps in fills without lifting | TODO | P3 | |
 | Angle increment per pass | TODO | P3 | |
-| Several settings on one geometry (outline + hatch, sub-layers) | TODO | P2 | |
+| Several settings on one geometry (outline + hatch, sub-layers) | HAVE |  | Layers, Filled shapes: Own layer puts a colour's hatch or contour fill on a layer of its own, so the fill and the outline take different pens even in the same colour |
 | Pen-width compensation (offset outlines by half the line width) | TODO | P3 | |
 | Dashed / dotted line mode | TODO | P3 | pen taps at intervals |
 | Dwell at stroke start/end | TODO | P3 | ink flow for dip pens; `--pen-delay` exists in the CLI |

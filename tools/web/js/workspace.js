@@ -385,6 +385,7 @@ function fillJobForm() {
   f.dedupe.checked = !!st.dedupe;
   f.by_object.checked = !!st.by_object;
   f.keep_motors.checked = !!st.keep_motors;
+  set_('simplify', st.simplify ?? 0.05);
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -400,6 +401,9 @@ function fromJobForm(e) {
     optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
     sweep: f.sweep.value === 'none' ? null : f.sweep.value, by_object: f.by_object.checked || null,
     keep_motors: f.keep_motors.checked || null };
+  const simp = num('simplify');
+  if (simp === null || !(simp >= 0 && simp <= 2)) { toast('Simplify: 0 to 2 mm.', true); f.simplify.value = st.simplify ?? 0.05; return; }
+  patch.simplify = Math.abs(simp - 0.05) < 1e-9 ? null : simp;
   const st = state.doc.settings;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {
@@ -602,16 +606,17 @@ function renderFills() {
       const row = [n('spacing', 'Spacing (mm)', 0.2, 50, 0.1, 1)];
       if (f.mode === 'hatch') row.push(n('angle', 'Angle (deg)', 0, 180, 5, 45));
       parts.push(el('div', { class: 'field-row' }, ...row));
+      const chk = (k, label, title, dv) => {
+        const c = el('input', { type: 'checkbox', disabled: locked });
+        c.checked = f[k] === undefined ? dv : !!f[k];
+        c.onchange = () => upd(ink.key, { [k]: c.checked });
+        return el('label', { class: 'check inline', title }, c, ' ', label);
+      };
       if (f.mode === 'hatch') {
-        const chk = (k, label, title, dv) => {
-          const c = el('input', { type: 'checkbox', disabled: locked });
-          c.checked = f[k] === undefined ? dv : !!f[k];
-          c.onchange = () => upd(ink.key, { [k]: c.checked });
-          return el('label', { class: 'check inline', title }, c, ' ', label);
-        };
         parts.push(el('div', { class: 'row' }, chk('cross', 'Cross-hatch', 'A second pass at right angles', false),
           chk('zigzag', 'Back and forth', 'Join the lines into zigzags (fewer pen lifts). Off: every line the same way.', true)));
       }
+      parts.push(el('div', { class: 'row' }, chk('own_layer', 'Own layer', 'The fill plots as a layer of its own, so it can take its own pen (a marker for the fill, a fineliner for the outline)', false)));
     }
     return el('div', { class: 'layer fill-ink' }, ...parts);
   }));
