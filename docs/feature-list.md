@@ -356,6 +356,7 @@ niche.
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
 | Firmware version shown | PART | P1 | read by the check; not displayed. Needed once 3.x features are used |
 | EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |
+| Pen positions put back after every EBB power-on or reset (3.x starts the servo at its own pen-up, 22565, past the top of this lift) | PART | P0 | built and tested on a fake board in b38800b (`hardware.ServoGuard`, `settle_servo`). To do: deploy to robotlab and restart the server, then switch the plotter off and on while watching the pen: at most a second of stall, then a slow move to pen-up and a "Plotter switched on or reset" line in the log |
 | Driver uses `ES`, `QS`, `QM`, `HM` when `V` reports them, timed waits otherwise | TODO | P0 | `wcb_setup.py` already detects missing commands |
 | Pen-depth pot firmware patch | PART | P3 | written in `firmware/`, not compiled or flashed; needs MPLAB X + C18; after the stock upgrade |
 | Several machine profiles | SKIP | | one machine |
