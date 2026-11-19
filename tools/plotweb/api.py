@@ -361,6 +361,42 @@ class App:
         self.ev.log("info", f"Renamed {e['name']} to {new}.")
         return {"ok": True, "file": {"id": e["id"], "name": new}}
 
+    def object_strokes(self, objs):
+        """[(colour, stroke in machine mm)] of bed objects, in order."""
+        import plot_svg
+        bed = self.s.bed()
+        out = []
+        for o in objs:
+            e, p = self._entry(o["file"])
+            g = self.geometry(e, p)[0]
+            tmp = self.plan_dir / f"strk_{secrets.token_hex(4)}.svg"
+            try:
+                tmp.write_bytes(document.compose([o], {o["file"]: (p, g)}, bed))
+                polys, metas, _, _ = plot_svg.load_svg(str(tmp), True)
+            finally:
+                tmp.unlink(missing_ok=True)
+            out += [(m.get("color") or "#000000", [tuple(pt) for pt in q]) for q, m in zip(polys, metas)]
+        return out
+
+    def split_objects(self, objs):
+        """Each stroke of the objects as its own drawing. -> [{file, x, y, w, h}]"""
+        strokes = [(c, s) for c, s in self.object_strokes(objs) if len(s) >= 2]
+        if len(strokes) < 2:
+            raise ApiError(400, "Nothing to break apart: one stroke is one piece already.")
+        room = document.MAX_OBJECTS - (len(self.docs.get().get("objects") or []) - len(objs))
+        if len(strokes) > room:
+            raise ApiError(400, f"That makes {len(strokes)} pieces; the bed has room for {room} more objects "
+                                f"(at most {document.MAX_OBJECTS}).")
+        base = "-".join(sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs}))[:30]
+        out = []
+        for n, (c, s) in enumerate(strokes, 1):
+            text, b = shapes.svg_layers([(c, [s])])
+            e = self.lib.add_svg_text(text, f"{base}-part{n}.svg", kind="shape")
+            out.append({"file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
+                        "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3)})
+        self.ev.log("info", f"Broke {len(objs)} object(s) apart into {len(out)} pieces.")
+        return out
+
     def join_objects(self, objs, tol):
         """Strokes of several bed objects -> one drawing where touching ends of the same colour are joined."""
         import collections
@@ -399,6 +435,20 @@ class App:
         if not objs:
             raise ApiError(400, "Select the objects first.")
         op = body.get("op")
+        if op == "split":
+            return {"ok": True, "pieces": self.split_objects(objs)}
+        if op == "reverse":
+            strokes = self.object_strokes(objs)
+            if not strokes:
+                raise ApiError(400, "These objects have no lines.")
+            groups = {}
+            for c, s in reversed(strokes):            # last stroke first, each drawn from its other end
+                groups.setdefault(c, []).append(s[::-1])
+            text, b = shapes.svg_layers(list(groups.items()))
+            names = sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs})
+            e = self.lib.add_svg_text(text, f"reversed-{'-'.join(names)[:40]}.svg", kind="shape")
+            return {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
+                    "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3)}
         if op == "join":
             try:
                 tol = float(body.get("tolerance") or 0.2)

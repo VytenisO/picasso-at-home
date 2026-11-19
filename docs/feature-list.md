@@ -213,9 +213,9 @@ niche.
 | Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
 | Simplify paths (tolerance, before/after node count) | PART | P2 | Prepare clean-up step "Simplify" with the point count in Result; the planner's own `--simplify 0.05` stays fixed |
 | Smooth / fit arcs | TODO | P3 | |
-| Break apart into separate paths | TODO | P2 | |
-| Reverse path direction | TODO | P2 | |
-| Set start point of a closed path | TODO | P2 | seam placement |
+| Break apart into separate paths | HAVE |  | Arrange, Break apart: every stroke becomes its own object (and library drawing) where it was; one undo step; at most 64 objects on the bed |
+| Reverse path direction | HAVE |  | Arrange, Reverse: each stroke from its other end, last stroke first; only shows with Shorter pen-up travel off, since planning picks direction itself |
+| Set start point of a closed path | PART | P3 | planning starts each closed path at the vertex nearest the pen; no manual seam |
 | Offset (in, out, both; round/miter/bevel corners) | HAVE | | Arrange, Offset: outward or inward, round, sharp or cut corners; lines get a band (shapely; python3-shapely on robotlab) |
 | Booleans: union/weld, subtract, intersect | HAVE | | Arrange: union, subtract (others from the first), intersect; the result replaces the selection as a new library drawing |
 | Cut shapes with a closed shape | TODO | P3 | |
@@ -427,7 +427,7 @@ niche.
 | Text on a path | TODO | P3 | |
 | Fit text to a width (squeeze) | TODO | P3 | |
 | Font browser with favourites and search | TODO | P3 | |
-| Own handwriting as a text font outside live writing | TODO | P2 | use the samples in the text panel |
+| Own handwriting as a text font outside live writing | SKIP |  | handwriting capture and synthesis moved to the separate handwriting-synth project (2026-11-19) |
 | Serial numbers, dates, CSV merge (variable text) | TODO | P3 | name tags, numbered cards |
 | QR / bar code generator | TODO | P3 | |
 | Right-to-left text | SKIP | | |

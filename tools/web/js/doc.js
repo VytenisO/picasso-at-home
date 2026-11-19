@@ -271,6 +271,19 @@ export function clearBed() {
   edit((d) => { d.objects = []; d.name = ''; }, { sel: [] });
 }
 
+// Break apart: new objects for library pieces at their bed positions, in place of the originals (one undo step).
+export async function replaceWithPieces(ids, pieces) {
+  const objs = pieces.map((p) => ({ id: newId(), file: p.file.id, x: G.r2(p.x), y: G.r2(p.y), w: G.r2(Math.max(0.1, p.w)),
+    h: G.r2(Math.max(0.1, p.h)), rot: 0, fx: false, fy: false }));
+  await ensureNaturals(objs);
+  for (const o of objs) { const n = state.naturals[o.file]; if (n) o.g = n.geom.svg_hash; }
+  edit((d) => {
+    const at = d.objects.findIndex((x) => ids.includes(x.id));
+    d.objects = d.objects.filter((x) => !ids.includes(x.id));
+    d.objects.splice(Math.max(0, at), 0, ...objs);
+  }, { sel: objs.map((o) => o.id) });
+}
+
 // Copies form their own groups: a group id maps to a new one, so a copy never joins the original's group.
 function regroup(objs) {
   const map = {};

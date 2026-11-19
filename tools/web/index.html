@@ -493,6 +493,8 @@
         </div>
         <div class="tool-row" role="group" aria-label="Lines and colour">
           <button type="button" data-act="join" title="Join lines whose ends touch (same colour) into one stroke: fewer pen lifts. Replaces the selection; Undo brings it back.">Join lines</button>
+          <button type="button" data-act="split" title="Every stroke becomes an object of its own (at most 64 on the bed)">Break apart</button>
+          <button type="button" data-act="reverse" title="Draw every stroke from its other end, last stroke first. Only shows with Shorter pen-up travel off (Job, Path planning).">Reverse</button>
           <span class="muted">Colour</span>
           <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
           <label class="ink-pick" title="Any colour: a layer of its own"><input type="color" id="inkPick" aria-label="Pick a colour"></label>

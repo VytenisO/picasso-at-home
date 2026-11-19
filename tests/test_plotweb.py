@@ -761,6 +761,27 @@ class TestDocument(SimServer):
         self.assertEqual(pv["settings"]["layers"][0]["speed"], 18)                     # retuned pen, same job
         self.call("POST", "/api/pens/delete", {"name": "slowpen"})
 
+    def test_04m_break_apart_and_reverse(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="10mm" viewBox="0 0 40 10">'
+               b'<path d="M0 2 L10 2" stroke="#000"/><path d="M20 8 L30 8" stroke="#f00"/><path d="M35 0 L40 10" stroke="#000"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "three.svg", "X-Params": "{}"})
+        o = self.obj(d["file"]["id"], 100, 50, 40, 10)
+        code, r = self.call("POST", "/api/shapes", {"op": "split", "objects": [o]})
+        self.assertEqual(code, 200, r)
+        ps = r["pieces"]
+        self.assertEqual(len(ps), 3)
+        self.assertEqual([(p["x"], p["y"]) for p in ps], [(100, 52), (120, 58), (135, 50)])
+        code, n = self.call("GET", f"/api/files/natural?id={ps[1]['file']['id']}")
+        self.assertEqual(n["layers"][0]["color"], "#ff0000")
+        code, r = self.call("POST", "/api/shapes", {"op": "split", "objects": [self.obj(ps[0]["file"]["id"], 1, 1, 10, 0.3)]})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/shapes", {"op": "reverse", "objects": [o]})
+        self.assertEqual(code, 200, r)
+        code, n = self.call("GET", f"/api/files/natural?id={r['file']['id']}")
+        firsts = [s["pts"][0] for s in n["strokes"]]
+        self.assertEqual(len(firsts), 3)
+        self.assertGreater(firsts[0][0], firsts[-1][0])        # the last stroke now comes first, from its far end
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

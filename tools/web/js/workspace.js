@@ -170,6 +170,8 @@ function act(a) {
   else if (a === 'array') openArray();
   else if (['union', 'subtract', 'intersect'].includes(a)) shapeOp(a);
   else if (a === 'join') joinLines();
+  else if (a === 'reverse') shapeOp('reverse');
+  else if (a === 'split') breakApart();
   else if (a === 'ink-own') D.editSel((objs) => { for (const o of objs) delete o.ink; }, { allowLocked: true });
   else if (a === 'group') D.group();
   else if (a === 'ungroup') D.ungroup();
@@ -211,6 +213,18 @@ async function joinLines() {
     await refreshFiles();
     await D.addFile(r.file.id, { at: [r.x, r.y], replace: sel.map((o) => o.id) });
     toast(r.after < r.before ? `${r.before} strokes became ${r.after}.` : 'No touching ends found: nothing was joined.');
+  } catch (e) { toast(e.message, true); }
+}
+
+// Break apart: the selection is replaced by one object per stroke, as one undoable edit.
+async function breakApart() {
+  const sel = D.selected();
+  if (D.lockedSel()) return;
+  try {
+    const r = await post('/api/shapes', { op: 'split', objects: sel });
+    await refreshFiles();
+    await D.replaceWithPieces(sel.map((o) => o.id), r.pieces);
+    toast(`${r.pieces.length} pieces.`);
   } catch (e) { toast(e.message, true); }
 }
 
