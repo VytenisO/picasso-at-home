@@ -581,6 +581,68 @@ class Workshop:
         return out
 
 
+# ------------------------------------------------------------------ presets
+PRESET_KINDS = ("image", "svg", "mesh", "none")
+
+
+class Presets:
+    """Named recipes (steps with their settings, plus the fill), shared by every browser: results/web/presets.json."""
+
+    def __init__(self, settings):
+        self.path = settings.cache / "presets.json"
+
+    def list(self):
+        try:
+            d = json.loads(self.path.read_text())
+            return d if isinstance(d, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def _save(self, items):
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(items, indent=1))
+        tmp.replace(self.path)
+
+    def put(self, body):
+        name = re.sub(r"\s+", " ", str(body.get("name") or "")).strip()[:60]
+        if not name:
+            raise PrepareError("Give the preset a name.")
+        kind = body.get("kind")
+        if kind not in PRESET_KINDS:
+            raise PrepareError("Unknown source kind for the preset.")
+        raw = body.get("steps")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 40:
+            raise PrepareError("A preset needs the recipe's steps.")
+        steps = []
+        for ent in raw:
+            if not isinstance(ent, dict) or ent.get("step") not in STEPS:
+                raise PrepareError("The recipe has an unknown step.")
+            st = STEPS[ent["step"]]
+            steps.append({"step": st.id, "on": ent.get("on") is not False, "params": clamp_params(st.params, ent.get("params"))})
+        if sum(1 for s in steps if STEPS[s["step"]].stage == "method" and s["on"]) != 1:
+            raise PrepareError("A preset has exactly one method.")
+        st = body.get("settings") if isinstance(body.get("settings"), dict) else {}
+        try:
+            fill = max(0.0, min(50.0, float(st.get("fill") or 0)))
+            angle = max(0.0, min(180.0, float(st.get("fill_angle", 45))))
+        except (TypeError, ValueError):
+            fill, angle = 0.0, 45.0
+        item = {"name": name, "kind": kind, "steps": steps, "settings": {"fill": fill, "fill_angle": angle},
+                "saved": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        items = [p for p in self.list() if p.get("name") != name] + [item]
+        if len(items) > 200:
+            raise PrepareError("At most 200 presets.")
+        self._save(sorted(items, key=lambda p: p["name"].lower()))
+        return item
+
+    def delete(self, name):
+        items = self.list()
+        keep = [p for p in items if p.get("name") != name]
+        if len(keep) == len(items):
+            raise PrepareError("No preset by that name.")
+        self._save(keep)
+
+
 def recipe_for_entry(entry):
     """A recipe that rebuilds a library entry made before recipes existed (or None)."""
     if entry.get("recipe"):

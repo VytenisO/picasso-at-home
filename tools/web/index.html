@@ -47,6 +47,17 @@
       <input id="prepFile" type="file" hidden>
     </section>
     <section class="recipe" id="prepRecipe" aria-label="Recipe steps"></section>
+    <section class="section presets" id="prepPresets" hidden>
+      <h2>Presets</h2>
+      <div class="row">
+        <select id="presetSel" aria-label="Preset"></select>
+        <button type="button" id="presetApply" title="Use this preset's steps and settings on the current source">Apply</button>
+      </div>
+      <div class="row">
+        <button type="button" class="link" id="presetSave" title="Save this recipe (steps, settings, fill) under a name">Save the recipe as a preset</button>
+        <button type="button" class="link danger-text" id="presetDel">Delete</button>
+      </div>
+    </section>
   </aside>
 
   <section class="center prep-center" aria-label="Preview">

@@ -47,6 +47,7 @@ class App:
         if self.ntfy:
             self.runner.notify = self._push
         self.prep = prepare.Workshop(settings)
+        self.presets = prepare.Presets(settings)
         self.docs = document.DocStore(settings, self.lib, self.ev)
         self.plans = {}
         self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
@@ -1289,6 +1290,24 @@ class Handler(BaseHTTPRequestHandler):
     def r_prep_save(self):
         self.send(200, self.app.prepare_save(self.json_body()))
 
+    def r_presets(self):
+        self.send(200, {"presets": self.app.presets.list()})
+
+    def r_preset_put(self):
+        try:
+            p = self.app.presets.put(self.json_body())
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+        self.app.ev.log("info", f"Saved the Prepare preset {p['name']!r}.")
+        self.send(200, {"ok": True, "preset": p, "presets": self.app.presets.list()})
+
+    def r_preset_delete(self):
+        try:
+            self.app.presets.delete(str(self.json_body().get("name") or ""))
+        except prepare.PrepareError as ex:
+            raise ApiError(404, str(ex))
+        self.send(200, {"ok": True, "presets": self.app.presets.list()})
+
     def r_prep_file(self):
         """Stage results (adjusted image, mask, SVG) and source originals, for the previews."""
         q = self.query()
@@ -1527,6 +1546,7 @@ ROUTES_GET = {
     "/api/plotter/doctor": (Handler.r_doctor, True),
     "/api/backup": (Handler.r_backup, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
+    "/api/prepare/presets": (Handler.r_presets, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
 }
 ROUTES_POST = {
@@ -1570,6 +1590,8 @@ ROUTES_POST = {
     "/api/prepare/from_library": (Handler.r_prep_from, True),
     "/api/prepare/run": (Handler.r_prep_run, True),
     "/api/prepare/save": (Handler.r_prep_save, True),
+    "/api/prepare/presets/save": (Handler.r_preset_put, True),
+    "/api/prepare/presets/delete": (Handler.r_preset_delete, True),
 }
 
 

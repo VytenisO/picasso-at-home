@@ -3,7 +3,7 @@
 // step there adds it here, forms included. The recipe is kept in this browser, so a reload resumes the work.
 import { api, post } from './api.js';
 import { state, on, prefs, jobActive } from './store.js';
-import { $, el, toast, schemaForm, formValues, fmtTime } from './ui.js';
+import { $, el, toast, schemaForm, formValues, fmtTime, ask, askText } from './ui.js';
 import { drawInk, inkMode, setInkMode } from './ink.js';
 import { openFile, refreshFiles } from './workspace.js';
 import { showWs } from './ws.js';
@@ -78,6 +78,54 @@ export async function initPrepare() {
     $('prepFile').accept = Object.values(kinds).flat().join(',');
   } catch (e) { toast(e.message, true); }
   restore();
+  initPresets();
+}
+
+// ------------------------------------------------------------------ presets
+// Named recipes on the server: the list shows the ones made for the current kind of source.
+let presets = [];
+async function initPresets() {
+  $('presetApply').onclick = () => {
+    const p = presets.find((x) => x.name === $('presetSel').value);
+    if (!p) return;
+    P.list = p.steps.filter((s) => byId[s.step] && fits(byId[s.step])).map((s) => ({ uid: uid++, step: s.step, on: s.on !== false, params: s.params || {} }));
+    P.settings = { ...P.settings, fill: p.settings.fill || 0, fill_angle: p.settings.fill_angle ?? 45 };
+    P.result = null; P.error = null;
+    renderAll(); save(); schedule(0);
+    toast(`Preset ${p.name} applied.`);
+  };
+  $('presetSave').onclick = async () => {
+    const cur = $('presetSel').value;
+    const name = await askText('Save as a preset', 'A name for this recipe. A preset with the same name is replaced.', cur || '', 'Save');
+    if (name === null || !name.trim()) return;
+    try {
+      const r = await post('/api/prepare/presets/save', { name, kind: kindNow(), steps: P.list.map(({ step, on: o, params }) => ({ step, on: o, params })),
+        settings: { fill: P.settings.fill, fill_angle: P.settings.fill_angle } });
+      presets = r.presets;
+      renderPresets(r.preset.name);
+      toast(`Preset ${r.preset.name} saved.`);
+    } catch (e) { toast(e.message, true); }
+  };
+  $('presetDel').onclick = async () => {
+    const name = $('presetSel').value;
+    if (!name || !(await ask('Delete preset', `Delete the preset ${name}?`, 'Delete'))) return;
+    try { presets = (await post('/api/prepare/presets/delete', { name })).presets; renderPresets(); } catch (e) { toast(e.message, true); }
+  };
+  try { presets = (await api('/api/prepare/presets')).presets; } catch (e) { presets = []; }
+  renderPresets();
+}
+
+function renderPresets(pick) {
+  const box = $('prepPresets');
+  const has = !!methodOf();
+  const mine = presets.filter((p) => p.kind === kindNow());
+  box.hidden = !has && !mine.length;
+  const sel = $('presetSel'), was = pick || sel.value;
+  sel.replaceChildren(...(mine.length ? mine.map((p) => el('option', { value: p.name, text: p.name }))
+    : [el('option', { value: '', text: 'No presets for this kind of source' })]));
+  if (mine.some((p) => p.name === was)) sel.value = was;
+  sel.disabled = $('presetApply').disabled = $('presetDel').disabled = !mine.length;
+  $('presetSave').disabled = !has;
 }
 
 function restore() {
@@ -314,6 +362,7 @@ function setBusy(text, done = false) {
 function renderAll() {
   renderSource();
   renderRecipe();
+  if ($('presetSel')) renderPresets();
   renderResult();
   $('prepName').value = P.name;
   redraw();

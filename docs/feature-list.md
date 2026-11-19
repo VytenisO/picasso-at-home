@@ -60,7 +60,7 @@ niche.
 | Prepare: conversion methods as plugins with a parameter schema; forms built from it | HAVE | | `prepare.py` `STEPS`; each trace style is its own method with only its own settings |
 | Prepare: recipe of chained steps (adjust, method, clean up; fill and pens as plot settings), saved with the result | HAVE | | reopen from the Library and re-tune; update in place or save as new |
 | Ink preview: pen colour and width, hatch fills, real size, stroke count, pen-down length, time | HAVE | | `ink.js`, shared by Prepare and Plot; Ink/Lines toggle. Pen widths default to 0.5 mm until `pens.json` has `width_mm` |
-| Prepare: recipe presets (named recipes to reuse on new sources) | TODO | P2 | today: Replace the source keeps the recipe |
+| Prepare: recipe presets (named recipes to reuse on new sources) | HAVE |  | Prepare, Presets: save the recipe (steps, their settings, fill) under a name, apply it to a later source of the same kind, delete; kept on the server for every browser |
 | Prepare: undo for recipe edits | TODO | P3 | |
 | Bed view drawn to machine size with paper, inset canvas and start point S | HAVE | | `bed.js` |
 | Three-panel layout with console row | HAVE | | `index.html`, `app.css` |
@@ -404,7 +404,7 @@ niche.
 | Dither styles drawn as stipple dots (error diffusion, ordered) | TODO | P2 | the image research names stipple/TSP as a tone option |
 | Variable pressure by tone | TODO | P3 | servo is coarse; hatch density is the main tone tool |
 | Hatch angle per tone level / crosshatch for darks | PART | P2 | in halftone; expose angles |
-| Image presets (named parameter sets) | TODO | P2 | |
+| Image presets (named parameter sets) | HAVE |  | the Prepare presets: an image recipe saved with its adjustments, method and clean-up |
 | Save the processed (pre-vector) image | TODO | P3 | debugging the pipeline |
 | Batch convert many images | TODO | P3 | |
 | Mesh view parameters (yaw, pitch, width) | HAVE | | add max height (CLI only) |

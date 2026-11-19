@@ -727,6 +727,24 @@ class TestDocument(SimServer):
         self.assertEqual(sorted(by[:2]), [80, 136])     # the wide object first, both its ends
         self.assertIn(by[2], (100, 104))                # then the middle one (from either end)
 
+    def test_04k_prepare_presets(self):
+        code, r = self.call("GET", "/api/prepare/presets")
+        self.assertEqual(code, 200)
+        steps = [{"step": "lineart", "on": True, "params": {"width": 120, "nonsense": 5}}, {"step": "join", "params": {"tolerance": 0.5}}]
+        code, r = self.call("POST", "/api/prepare/presets/save", {"name": "  Ink  sketch ", "kind": "image", "steps": steps,
+                                                                    "settings": {"fill": 1.5}})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["preset"]["name"], "Ink sketch")
+        self.assertNotIn("nonsense", r["preset"]["steps"][0]["params"])
+        self.assertEqual(r["preset"]["settings"]["fill"], 1.5)
+        code, r = self.call("POST", "/api/prepare/presets/save", {"name": "Ink sketch", "kind": "image", "steps": steps[1:]})
+        self.assertEqual(code, 400)                                  # no method
+        code, r = self.call("POST", "/api/prepare/presets/save", {"name": "x", "kind": "image", "steps": [{"step": "rm -rf"}]})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/prepare/presets/delete", {"name": "Ink sketch"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual([p["name"] for p in r["presets"]], [])
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)
