@@ -671,18 +671,23 @@ class JobRunner:
                 elif status.startswith("stopped"):
                     j.update(state="stopped", message="Stopped and returned to the start point.")
                 elif status.startswith("interrupted"):
+                    where = (f"at ({res['end_mm'][0]:.1f}, {res['end_mm'][1]:.1f}) mm, read back from the board"
+                             if res.get("readback") else
+                             f"at about ({res['end_mm'][0]:.0f}, {res['end_mm'][1]:.0f}) mm")
                     j.update(state="stopped" if j["stop_requested"] else "interrupted",
-                             message="Stopped. Pen up, motors released. The carriage was left at about "
-                                     f"({res['end_mm'][0]:.0f}, {res['end_mm'][1]:.0f}) mm: slide it back to the "
-                                     "paper's top-left before the next run.")
+                             message=f"Stopped. Pen up, motors released. The carriage was left {where}: slide it "
+                                     "back to the paper's top-left before the next run.")
                 else:
                     j.update(state="error", message=f"The plot stopped with an error: {status}. Pen up and motors "
                                                     "released if the cleanup ran; check the machine.")
                 if "FAILED" not in status:
                     if res.get("at_start"):
                         self.position = {"state": "at_start", "at": res.get("end_mm"),
-                                         "note": "Should be at the start point (commanded position; there is no "
-                                                 "readback). Check by eye before the next run."}
+                                         "note": "At the start point by the board's step count. Steps lost to a "
+                                                 "stall are not counted: check by eye before the next run."
+                                         if res.get("readback") else
+                                         "Should be at the start point (commanded position; there is no "
+                                         "readback). Check by eye before the next run."}
                     else:
                         self.position = {"state": "moved", "at": res.get("end_mm"),
                                          "note": "Not at the start point. Slide it back by hand."}

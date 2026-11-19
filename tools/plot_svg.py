@@ -605,6 +605,8 @@ class Plotter:
         self.last_track = 0.0
         self.pen_state = True
         self.ser = None
+        self.caps = set()            # firmware 3.x: ES (instant stop), QS (step position readback)
+        self.readback = False        # the end position was read back from the board, not just counted
         self.ctl = getattr(args, "ctl", None)
         self.sim_speed = getattr(args, "sim_speed", None) or 0.0
         if not self.sim:
@@ -615,17 +617,33 @@ class Plotter:
                 raise SystemExit("No EBB (04d8:fd92) found. Plug in/power the plotter.")
             self.ser = serial.Serial(port, 9600, timeout=3)
             log(f"Connected {port}")
+            self.probe()
+
+    def probe(self):
+        """Which newer commands the firmware has. 2.0.1 answers ES/QS/QM with an error; 3.x has all three."""
+        self.ser.reset_input_buffer()
+        self.ser.write(b"V\r")
+        ver = self.ser.readline().decode(errors="replace").strip()
+        m = re.search(r"Version (\d+)\.(\d+)\.(\d+)", ver)
+        if m and tuple(int(x) for x in m.groups()) >= (3, 0, 0):
+            self.caps = {"ES", "QS"}
+        log(f"Firmware: {ver or 'no answer'}" + ("; instant stop and position readback on" if self.caps else
+                                                 "; no instant stop (stops after the move in flight)"))
 
     def now(self):
         return self.vt if self.sim else time.monotonic()
 
-    def sleep(self, s):
+    def sleep(self, s, interruptible=True):
+        """Wait s seconds (virtual in --sim). With an instant stop, a STOP cuts the wait short: the caller's
+        next check_stop raises and shutdown() sends ES."""
         if s <= 0:
             return
         if self.sim:
             self.vt += s
             if self.sim_speed > 0:
                 time.sleep(s / self.sim_speed)
+        elif interruptible and self.ctl and "ES" in self.caps:
+            self.ctl.stop.wait(s)
         else:
             time.sleep(s)
 
@@ -666,6 +684,8 @@ class Plotter:
     def setup(self):
         s = self.cfg["servo"]
         self.cmd("EM,1,1")
+        if "QS" in self.caps:
+            self.cmd("CS")              # step counters from here: QS then reads the position relative to S
         self.cmd(f"SC,4,{s['pen_up']}")
         self.cmd(f"SC,5,{s['pen_down']}")
         self.down = s["pen_down"]
@@ -690,16 +710,46 @@ class Plotter:
         self.t_end = max(self.t_end, self.now())
         self.track(force=True)
 
-    def shutdown(self):
-        """Raise the pen, wait for any move already sent to finish, then release the motors. -> True if clean."""
+    def shutdown(self, abort=None):
+        """Raise the pen, wait for any move already sent to finish, then release the motors. -> True if clean.
+
+        abort (default: a STOP came in): on firmware with ES, end the move in flight at once instead of letting it
+        run out, then read the real position back with QS."""
+        if abort is None:
+            abort = bool(self.ctl and self.ctl.stop.is_set())
+        if abort and "ES" in self.caps and not self.sim:
+            try:
+                self.cmd("ES")
+                self.t_end = self.now()
+                log("Instant stop (ES): the move in flight was cut short.")
+            except Exception as ex:   # noqa: BLE001
+                log(f"ES failed ({ex!r}); waiting for the move in flight instead")
         try:
             self.cmd("SP,1,300")
-            self.sleep(max(0.0, self.t_end - self.now()) + 0.4)
+            self.sleep(max(0.0, self.t_end - self.now()) + 0.4, interruptible=False)
+            if "QS" in self.caps and not self.sim:
+                self.read_position()
             self.cmd("EM,0,0")
             return True
         except Exception as ex:   # noqa: BLE001
             log(f"shutdown problem: {ex!r}")
             return False
+
+    def read_position(self):
+        """Set pos from the board's step counters (zeroed at S by setup). Best effort: a bad answer keeps the
+        counted position."""
+        try:
+            out = self.cmd("QS")
+            m = [int(v) for v in out[0].split(",")[:2]]
+            world = [0, 0]
+            for w in (0, 1):
+                world[w] = m[self.ax[w]["ebb_axis"] - 1] * self.ax[w]["sign"]
+            if world != self.pos:
+                log(f"Position read back: {world} steps (counted {self.pos}).")
+            self.pos = world
+            self.readback = True
+        except Exception as ex:   # noqa: BLE001
+            log(f"Could not read the position back ({ex!r}); keeping the counted one.")
 
     def _sm(self, a1, a2, ms):
         wait = self.t_end - self.now() - LEAD
@@ -1275,7 +1325,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 signal.signal(sig, signal.SIG_IGN)   # a second Ctrl-C/SIGTERM must not cut the cleanup short
             except (ValueError, OSError):
                 pass
-        if not p.shutdown():
+        if not p.shutdown(abort=status.startswith(("interrupted", "error"))):
             status += " (cleanup FAILED: pen may be down or motors still on, check the machine and cut power if needed)"
         el = p.now() - t_start
         summary.update(status=status, elapsed_s=el, sm_commands=p.nsm, net_ebb_steps_sent=p.sent,
@@ -1286,6 +1336,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
             print("__RESULT__:" + json.dumps({
                 "status": status, "elapsed_s": round(el, 2),
                 "end_mm": [round(a.start_x + p.pos[0] / spmm[0], 2), round(a.start_y + p.pos[1] / spmm[1], 2)],
+                "readback": p.readback,
                 "at_start": p.pos == [0, 0] and not status.startswith(("interrupted", "error")) and "FAILED" not in status}), flush=True)
     return 0 if status == "complete" else 1
 

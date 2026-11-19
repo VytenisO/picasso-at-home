@@ -385,8 +385,9 @@
         <button id="ptSweep">Sweep range</button>
         <button id="ptQuit" class="wide">Finish (pen up)</button>
       </div>
-      <p class="note" id="stopNote">No emergency stop on this firmware. <b>Stop</b> lets the move already sent finish
-        (normally within 3 s), lifts the pen and releases the motors. <b>For an instant stop, switch the plotter off.</b></p>
+      <p class="note" id="stopNote"><b>Stop</b> lifts the pen and releases the motors. On firmware 3.x it cuts the move
+        in flight short at once and reads the position back; on older firmware that move finishes first (within 3 s).
+        <b>To cut everything at once, switch the plotter off.</b></p>
     </section>
 
     <section class="section" id="placeBox">
