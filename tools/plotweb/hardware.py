@@ -196,7 +196,7 @@ class ServoGuard(threading.Thread):
         self.s, self.runner, self.lock, self.log, self.interval = settings, runner, lock, log, interval
 
     @staticmethod
-    def _ident(port):
+    def _port_id(port):       # not "_ident": threading.Thread keeps the thread id in self._ident
         try:
             st = os.stat(port)
             return port, st.st_ino, st.st_ctime_ns       # udev makes a new node for every USB connect
@@ -214,8 +214,9 @@ class ServoGuard(threading.Thread):
         while True:
             time.sleep(self.interval)
             try:
+                ident = None
                 port = find_port()
-                ident = self._ident(port) if port else None
+                ident = self._port_id(port) if port else None
                 if ident is None or ident == seen:
                     pending = None
                     continue

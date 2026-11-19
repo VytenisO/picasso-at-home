@@ -71,5 +71,35 @@ class SettleServo(unittest.TestCase):
         self.assertIsNone(hardware.firmware_version("garbage"))
 
 
+class GuardThread(unittest.TestCase):
+    def test_runs_as_a_thread_and_settles_a_fresh_board(self):
+        import threading
+        import time
+        from unittest import mock
+        ebb = FakeEBB(ql=0)
+        logs = []
+
+        class Ctx:
+            def __enter__(self):
+                return ebb
+
+            def __exit__(self, *a):
+                return False
+
+        settings = mock.Mock()
+        settings.machine.return_value = {"servo": SERVO}
+        runner = mock.Mock()
+        runner.busy.return_value = False
+        with mock.patch.object(hardware, "find_port", return_value="/dev/fake"), 
+                mock.patch.object(hardware, "serial", mock.Mock(Serial=lambda *a, **k: Ctx())):
+            g = hardware.ServoGuard(settings, runner, threading.Lock(), lambda lvl, msg: logs.append((lvl, msg)),
+                                    interval=0.05)
+            g.start()
+            time.sleep(0.8)
+        self.assertTrue(g.is_alive())
+        self.assertIn("SL,1", ebb.sent)
+        self.assertTrue(any("switched on" in m for _, m in logs), logs)
+
+
 if __name__ == "__main__":
     unittest.main()
