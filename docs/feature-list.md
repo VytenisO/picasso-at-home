@@ -16,7 +16,7 @@ niche.
 
 ## Machine facts that shape the list
 
-- EBB firmware 2.0.1: no e-stop, no position readback, no limit switches, no homing. Position is the commanded
+- EBB firmware 3.1.7 since 2026-11-19 (was 2.0.1). The driver still treats it like 2.0.1 until it uses `ES`/`QS`/`QM`: no e-stop, no position readback, no limit switches, no homing. Position is the commanded
   position from a hand-placed start point. Any jog or click-to-move must update that tracked position and clamp to
   travel; anything that breaks tracking (raw console commands, a manual push) must mark the position unknown.
 - Servo lift with variable height = pressure. No Z axis, no laser power, no air, no rotary.
@@ -26,7 +26,7 @@ niche.
 
 ## Build order (proposed)
 
-0. **Firmware.** (Crash homing was planned here and dropped on 2026-11-18 after the user watched it run on the
+0. **Firmware** (stock 3.1.7 flashed 2026-11-19; driver use of the new commands still open). (Crash homing was planned here and dropped on 2026-11-18 after the user watched it run on the
    machine; the start corner stays a hand park.) Upgrade the EBB from 2.0.1 to stock 3.x (prebuilt image, no
    compiler needed) for `ES` (instant stop), `QS` (step
    counter readback), `QM` (motion idle) and `HM` (absolute move). The driver detects them from `V` and falls back
@@ -355,7 +355,7 @@ niche.
 | Backup / restore all settings (machine, pens, macros, positions) as one file | TODO | P2 | |
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
 | Firmware version shown | PART | P1 | read by the check; not displayed. Needed once 3.x features are used |
-| EBB firmware upgrade 2.0.1 -> stock 3.x | TODO | P0 | prebuilt image from Evil Mad Scientist; confirm the bootloader update path for this v2.3 board first (a bad flash can need bootloader recovery); note the `V` output; re-check servo values, timing and calibration after |
+| EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |
 | Driver uses `ES`, `QS`, `QM`, `HM` when `V` reports them, timed waits otherwise | TODO | P0 | `wcb_setup.py` already detects missing commands |
 | Pen-depth pot firmware patch | PART | P3 | written in `firmware/`, not compiled or flashed; needs MPLAB X + C18; after the stock upgrade |
 | Several machine profiles | SKIP | | one machine |

@@ -80,7 +80,8 @@ class EBB:
                 if not r:
                     break
                 out.append(r)
-                if r == "OK" or not ok:
+                # read to the end of the reply: 3.x answers QS/ES with data then OK; V and QM end on the timeout
+                if r == "OK" or r.startswith("!"):
                     break
         log(f"  <- {out}", echo=False)
         if ok and not self.sim and "OK" not in out:
