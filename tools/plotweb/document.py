@@ -77,6 +77,11 @@ def clean_objects(raw, known_files):
             # the drawing's geometry hash when it was placed: the page re-fits the box if the drawing changed
             "g": re.sub(r"[^0-9a-f]", "", str(o.get("g") or ""))[:16],
         })
+        if o.get("locked") is True:
+            out[-1]["locked"] = True
+        grp = str(o.get("grp") or "")
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", grp):
+            out[-1]["grp"] = grp
         ink = str(o.get("ink") or "").lower()
         if re.fullmatch(r"#[0-9a-f]{6}", ink):     # every line of the object in this colour: it moves to that layer
             out[-1]["ink"] = ink

@@ -92,16 +92,41 @@ function renderArrange() {
   $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to canvas';
   $('shapeRow').hidden = !(state.me && state.me.features && state.me.features.shapes);
   renderInk(sel, locked);
+  const allLocked = sel.every((o) => o.locked);
+  $('lockBtn').textContent = allLocked ? 'Unlock' : 'Lock';
+  box.querySelector('[data-act=group]').disabled = locked || sel.length < 2;
+  box.querySelector('[data-act=ungroup]').disabled = locked || !sel.some((o) => o.grp);
+  $('measureLine').textContent = measure(sel);
   for (const k of ['union', 'subtract', 'intersect']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 2;
   for (const k of ['distx', 'disty']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
+}
+
+// Paths and line length of the selection, from the drawings' natural geometry and each object's transform.
+function measure(sel) {
+  let paths = 0, len = 0, missing = false;
+  for (const o of sel) {
+    const n = state.naturals[o.file];
+    if (!n) { missing = true; continue; }
+    const [a, b, c, d] = G.matrix(o, n.geom);
+    for (const s of n.strokes || []) {
+      paths++;
+      for (let i = 1; i < s.pts.length; i++) {
+        const dx = s.pts[i][0] - s.pts[i - 1][0], dy = s.pts[i][1] - s.pts[i - 1][1];
+        len += Math.hypot(a * dx + c * dy, b * dx + d * dy);
+      }
+    }
+  }
+  if (!paths) return missing ? '' : 'No lines.';
+  return `${paths} path${paths === 1 ? '' : 's'}, ${len >= 1000 ? `${(len / 1000).toFixed(2)} m` : `${Math.round(len)} mm`} of line` +
+    (sel.some((o) => o.locked) ? '; locked' : '') + (sel.some((o) => o.grp) ? '; grouped' : '');
 }
 
 function fromXfForm(e) {
   const xf = $('xfForm');
   const name = e.target.name;
   if (name === 'lock' || !name) return;
-  const v = Number(xf[name].value);
-  if (xf[name].value === '' || !Number.isFinite(v)) { renderArrange(); return; }
+  const v = G.parseLength(xf[name].value);
+  if (!Number.isFinite(v)) { toast(`Cannot read "${xf[name].value}". Type a number, arithmetic (100/3) or a unit (2in, 5cm).`, true); renderArrange(); return; }
   D.editSel((objs) => {
     const b = G.bounds(objs);
     const [ax, ay] = G.anchorPoint(b, anchor);
@@ -138,7 +163,10 @@ function act(a) {
   else if (a === 'array') openArray();
   else if (['union', 'subtract', 'intersect'].includes(a)) shapeOp(a);
   else if (a === 'join') joinLines();
-  else if (a === 'ink-own') D.editSel((objs) => { for (const o of objs) delete o.ink; });
+  else if (a === 'ink-own') D.editSel((objs) => { for (const o of objs) delete o.ink; }, { allowLocked: true });
+  else if (a === 'group') D.group();
+  else if (a === 'ungroup') D.ungroup();
+  else if (a === 'lock') D.toggleLock();
   else if (a === 'offset') openOffset();
   else if (a === 'del') D.removeSel();
   else D.align(a);
@@ -166,6 +194,7 @@ function renderObjects() {
 // Join replaces the selection with one drawing whose touching ends are joined; it says how many strokes went.
 async function joinLines() {
   const sel = D.selected();
+  if (D.lockedSel()) return;
   const t = await askText('Join lines', 'Ends this close (mm) are joined, in the same colour only. Where three or more ends meet nothing is joined.', '0.2', 'Join');
   if (t === null) return;
   const tol = Number(t);
@@ -179,7 +208,7 @@ async function joinLines() {
 }
 
 function setInk(hex) {
-  D.editSel((objs) => { for (const o of objs) o.ink = hex.toLowerCase(); });
+  D.editSel((objs) => { for (const o of objs) o.ink = hex.toLowerCase(); }, { allowLocked: true });
 }
 
 // The ink colours on the bed now (from the last preview), as one-click targets for the selection.
@@ -201,6 +230,7 @@ function renderInk(sel, locked) {
 // Union, subtract, intersect replace the selection with the result (Undo brings it back); offset adds an outline.
 async function shapeOp(op, extra = {}) {
   const sel = D.selected();
+  if (D.lockedSel()) return;
   try {
     const r = await post('/api/shapes', { op, objects: sel, ...extra });
     await refreshFiles();

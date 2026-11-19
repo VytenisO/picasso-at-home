@@ -696,6 +696,18 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/files/restore", {"id": fid})
         self.assertEqual(code, 404)
 
+    def test_04i_lock_and_group_are_kept(self):
+        fid = self.upload("two_layers.svg")
+        objs = [self.obj(fid, 80, 30, 40, 40, locked=True, grp="g1"), self.obj(fid, 140, 30, 40, 40, grp="g1"),
+                self.obj(fid, 200, 30, 40, 40, locked="yes", grp="bad group!")]
+        code, r = self.call("POST", "/api/doc", {"objects": objs, "settings": {}})
+        self.assertEqual(code, 200, r)
+        code, d = self.call("GET", "/api/doc")
+        got = d["doc"]["objects"]
+        self.assertEqual([o.get("locked") for o in got], [True, None, None])
+        self.assertEqual([o.get("grp") for o in got], ["g1", "g1", None])
+        self.assertTrue(self.doc_preview(objs)["ok"])          # neither changes the plan
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

@@ -144,7 +144,7 @@ niche.
 | Tab cycles through objects | TODO | P3 | |
 | Invert selection | TODO | P3 | |
 | Select open paths, select shapes smaller than N | TODO | P3 | cleanup helpers |
-| Selection drawn with marching dashes, groups distinct | TODO | P2 | |
+| Selection drawn with marching dashes, groups distinct | PART | P3 | groups get a dotted box when selected or hovered; the selection outline is solid (one) or dashed (several), not animated |
 
 ## 5. Edit and transform
 
@@ -159,12 +159,12 @@ niche.
 | Mirror about a drawn line | TODO | P3 | |
 | Shear | TODO | P3 | |
 | Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | HAVE | | X/Y/W/H are the selection's bounds at the chosen reference point; a group scales about it |
-| Unit-aware and arithmetic input (`100/3`, `2in`) | TODO | P2 | |
+| Unit-aware and arithmetic input (`100/3`, `2in`) | HAVE |  | Arrange X, Y, width, height, turn: + - * / and brackets, units mm, cm, in or ", pt, px; a decimal comma works |
 | Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | HAVE | | 200 steps per page; typing and arrow nudges coalesce into one step |
 | Undo history list | TODO | P3 | |
 | Copy / cut / paste / paste in place / duplicate / delete | PART | P3 | copy, cut, paste (offset each time), duplicate, delete; no paste in place |
-| Group / ungroup | TODO | P2 | |
-| Lock object (no move/resize/delete) | TODO | P2 | |
+| Group / ungroup | HAVE |  | Arrange Group/Ungroup, Ctrl+G and Ctrl+Shift+G: selecting one member selects the group; copies get their own group |
+| Lock object (no move/resize/delete) | HAVE |  | Arrange Lock/Unlock: no handles, no drag, nudge, transform, shape operation or remove; colour and plot settings still change |
 | Make same width / height | TODO | P3 | |
 | Two-point rotate/scale (match two points to two targets) | TODO | P3 | scale a traced photo to true size |
 | Warp (4-corner) and deform (grid) | TODO | P3 | |
@@ -221,7 +221,7 @@ niche.
 | Cut shapes with a closed shape | TODO | P3 | |
 | Fillet corners | TODO | P3 | |
 | Convex outline around a selection | TODO | P3 | |
-| Measure tool (length, size, area, path count) | TODO | P2 | length feeds time estimates |
+| Measure tool (length, size, area, path count) | HAVE |  | Arrange: path count and line length of the selection (from the drawings' geometry), size on the bed label and in the status line; no area |
 | Clip art library (save selection, drag back in) | TODO | P3 | signatures, stamps, borders |
 | Tabs, slot resizing, path-from-cut, tangent circles | SKIP | | cutting concepts or niche geometry |
 
@@ -450,7 +450,7 @@ niche.
 | UI preferences in local storage (theme, tab, console) | HAVE | | |
 | Preferences page (units, grid, nudge, snapping, defaults) | TODO | P2 | |
 | Shortcuts: `?` `P` Space `Shift+S` `+ - 0` arrows Esc | HAVE | | |
-| Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | PART | P2 | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc on the bed; no rotate or flip keys, no groups |
+| Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | HAVE |  | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc, R/Shift+R turn, H/V mirror, Ctrl+G/Ctrl+Shift+G group |
 | Shortcut list in the help dialog kept in sync | PART | P2 | written by hand; generate from one table |
 | Rebind shortcuts | TODO | P3 | |
 | First-run setup wizard (connect, park, calibrate, pen height) | TODO | P3 | |

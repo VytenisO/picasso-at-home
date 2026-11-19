@@ -93,7 +93,15 @@ export function setSettings(patch, opts = {}) {
 
 export function select(ids, { add = false, toggle = false } = {}) {
   let s = add ? [...state.sel] : [];
+  // a grouped object brings its whole group
+  const objs = state.doc ? state.doc.objects : [];
+  const all = [];
   for (const id of [].concat(ids)) {
+    const o = objs.find((x) => x.id === id);
+    const mates = o && o.grp ? objs.filter((x) => x.grp === o.grp).map((x) => x.id) : [id];
+    for (const m of mates) if (!all.includes(m)) all.push(m);
+  }
+  for (const id of all) {
     if (toggle && s.includes(id)) s = s.filter((x) => x !== id);
     else if (!s.includes(id)) s.push(id);
   }
@@ -253,6 +261,7 @@ export async function addFile(id, { select: pick = true, at = null, replace = []
 }
 
 export function removeSel() {
+  if (lockedSel()) return;
   const ids = state.sel;
   if (!ids.length) return;
   edit((d) => { d.objects = d.objects.filter((o) => !ids.includes(o.id)); }, { sel: [] });
@@ -262,10 +271,17 @@ export function clearBed() {
   edit((d) => { d.objects = []; d.name = ''; }, { sel: [] });
 }
 
+// Copies form their own groups: a group id maps to a new one, so a copy never joins the original's group.
+function regroup(objs) {
+  const map = {};
+  for (const o of objs) if (o.grp) o.grp = map[o.grp] || (map[o.grp] = newId());
+  return objs;
+}
+
 export function duplicateSel(offset = 5) {
   const src = selected();
   if (!src.length) return;
-  const copies = src.map((o) => ({ ...structuredClone(o), id: newId(), x: G.r2(o.x + offset), y: G.r2(o.y + offset) }));
+  const copies = regroup(src.map((o) => ({ ...structuredClone(o), id: newId(), x: G.r2(o.x + offset), y: G.r2(o.y + offset), locked: undefined })));
   edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
 }
 
@@ -287,22 +303,51 @@ export async function paste() {
   if (!known.length) { toast('The copied drawings are no longer in the library.', true); return; }
   await ensureNaturals(known);
   pasteN++;
-  const copies = known.map((o) => ({ ...o, id: newId(), x: G.r2(o.x + 5 * pasteN), y: G.r2(o.y + 5 * pasteN) }));
+  const copies = regroup(known.map((o) => ({ ...o, id: newId(), x: G.r2(o.x + 5 * pasteN), y: G.r2(o.y + 5 * pasteN), locked: undefined })));
   edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
 }
 
 // Move the selection by (dx, dy) mm.
 export function nudge(dx, dy) {
   const ids = state.sel;
-  if (!ids.length) return;
+  if (!ids.length || lockedSel()) return;
   edit((d) => { for (const o of d.objects) if (ids.includes(o.id)) { o.x = G.r2(o.x + dx); o.y = G.r2(o.y + dy); } },
     { coalesce: 'nudge' });
 }
 
-// Run fn(objs, d) on the selected objects of a draft.
+// True (and says so) when the selection has a locked object: it may not move, resize, turn or go.
+export function lockedSel() {
+  if (!selected().some((o) => o.locked)) return false;
+  toast('The selection has a locked object. Unlock it first (Arrange, Unlock).', true);
+  return true;
+}
+
+export function group() {
+  const ids = state.sel;
+  if (ids.length < 2) { toast('Select two or more objects to group.', true); return; }
+  const g = newId();
+  editSel((objs) => { for (const o of objs) o.grp = g; }, { allowLocked: true });
+}
+
+export function ungroup() {
+  editSel((objs) => { if (!objs.some((o) => o.grp)) return false; for (const o of objs) delete o.grp; }, { allowLocked: true });
+}
+
+export function toggleLock() {
+  const sel = selected();
+  if (!sel.length) return;
+  const lock = !sel.every((o) => o.locked);
+  editSel((objs) => { for (const o of objs) { if (lock) o.locked = true; else delete o.locked; } }, { allowLocked: true });
+}
+
+// Run fn(objs, d) on the selected objects of a draft. Refused when one is locked, unless allowLocked (colour,
+// grouping, locking itself).
 export function editSel(fn, opts = {}) {
   const ids = state.sel;
   if (!ids.length) return false;
+  const { allowLocked = false, ...eopts } = opts;
+  if (!allowLocked && lockedSel()) return false;
+  opts = eopts;
   return edit((d) => {
     const objs = d.objects.filter((o) => ids.includes(o.id));
     if (fn(objs, d) === false) return false;

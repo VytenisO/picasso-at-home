@@ -530,6 +530,13 @@ function overlays(px) {
     poly(G.corners(o)); ctx.stroke();
     ctx.setLineDash([]);
   }
+  // groups: a dotted box around each group that is selected or under the pointer
+  const groups = new Set(objs.filter((o) => o.grp && (state.sel.includes(o.id) || hover === o.id)).map((o) => o.grp));
+  for (const g of groups) {
+    const gb = G.bounds(objs.filter((o) => o.grp === g));
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = px; ctx.setLineDash([2 * px, 3 * px]);
+    ctx.strokeRect(gb.x0 - 3 * px, gb.y0 - 3 * px, gb.w + 6 * px, gb.h + 6 * px); ctx.setLineDash([]);
+  }
   if (sel.length) {
     const b = G.bounds(sel), bad = sel.some(G.outside);
     ctx.fillStyle = bad ? css('--err') : css('--accent');
@@ -546,9 +553,9 @@ function overlays(px) {
     }
     ctx.font = `${12 * px}px system-ui, sans-serif`;
     const one = sel.length === 1 ? sel[0] : null;
-    const label = one
+    const label = (one
       ? `${G.r2(one.w)} x ${G.r2(one.h)} mm${one.rot ? `, ${G.r2(one.rot)} deg` : ''}`
-      : `${sel.length} objects, ${G.r2(b.w)} x ${G.r2(b.h)} mm`;
+      : `${sel.length} objects, ${G.r2(b.w)} x ${G.r2(b.h)} mm`) + (sel.some((o) => o.locked) ? '  (locked)' : '');
     ctx.fillText(label + (bad ? '  outside the canvas' : ''), b.x0, b.y0 - (one && !one.rot ? 5 : 5 + ROT_PX) * px);
   }
   if (drag && drag.mode === 'marquee' && drag.rect) {
@@ -565,6 +572,7 @@ function overlays(px) {
 // corners of their bounds (uniform scale).
 function handles(sel) {
   const out = [];
+  if (sel.some((o) => o.locked)) return out;       // locked: no resize or turn
   if (sel.length === 1) {
     const o = sel[0];
     for (const [hx, hy] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]]) {
@@ -652,6 +660,7 @@ function down(e) {
     drag = { mode: 'move', start: [mx, my], orig: structuredClone(state.doc.objects), sel: [...state.sel], hit: o.id,
       add: e.shiftKey || e.ctrlKey || e.metaKey };
     if (!state.sel.includes(o.id)) drag = null;       // toggled off: nothing to drag
+    else if (state.doc.objects.some((x) => state.sel.includes(x.id) && x.locked)) drag = null;   // locked: select only
     cv.classList.add('dragging');
     return;
   }

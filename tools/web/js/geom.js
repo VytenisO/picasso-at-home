@@ -105,6 +105,45 @@ export function mirror(objs, axis, px, py) {
 export const norm = (deg) => Math.round((((deg % 360) + 360) % 360) * 1e6) / 1e6;
 export const r2 = (v) => Math.round(v * 100) / 100;
 
+// A typed length: a number or simple arithmetic, with optional units (mm, cm, in or ", pt, px, deg).
+// '100/3' -> 33.33..., '2in' -> 50.8, '10cm + 5' -> 105. -> NaN when it cannot be read.
+const UNITS = { mm: 1, cm: 10, in: 25.4, '"': 25.4, pt: 25.4 / 72, px: 25.4 / 96, deg: 1 };
+export function parseLength(text) {
+  const s = String(text).trim().replace(/,/g, '.');
+  let i = 0;
+  const ws = () => { while (s[i] === ' ') i++; };
+  const num = () => {
+    ws();
+    const m = /^(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?/i.exec(s.slice(i));
+    if (!m) return NaN;
+    i += m[0].length;
+    let v = Number(m[0]);
+    ws();
+    const u = /^(mm|cm|in|pt|px|deg|")/i.exec(s.slice(i));
+    if (u) { v *= UNITS[u[0].toLowerCase()]; i += u[0].length; }
+    return v;
+  };
+  const factor = () => {
+    ws();
+    if (s[i] === '-') { i++; return -factor(); }
+    if (s[i] === '+') { i++; return factor(); }
+    if (s[i] === '(') { i++; const v = expr(); ws(); if (s[i] !== ')') return NaN; i++; return v; }
+    return num();
+  };
+  const term = () => {
+    let v = factor();
+    for (;;) { ws(); if (s[i] === '*') { i++; v *= factor(); } else if (s[i] === '/') { i++; v /= factor(); } else return v; }
+  };
+  const expr = () => {
+    let v = term();
+    for (;;) { ws(); if (s[i] === '+') { i++; v += term(); } else if (s[i] === '-') { i++; v -= term(); } else return v; }
+  };
+  if (!s) return NaN;
+  const v = expr();
+  ws();
+  return i === s.length && Number.isFinite(v) ? v : NaN;
+}
+
 // Paper and inset canvas in machine mm, with the job's paper size if it has one.
 export function canvasRect() {
   const m = state.me.machine;

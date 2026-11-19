@@ -230,6 +230,12 @@ function docKey(e) {
   if (jobActive()) return false;
   if (mod && k === 'a') { e.preventDefault(); D.selectAll(); return true; }
   if (mod && k === 'd') { e.preventDefault(); D.duplicateSel(); return true; }
+  if (mod && k === 'g') { e.preventDefault(); if (e.shiftKey) D.ungroup(); else D.group(); return true; }
+  if (!mod && !e.altKey && state.sel.length && (k === 'r' || k === 'h' || k === 'v')) {
+    e.preventDefault();
+    if (k === 'r') D.rotateSel(e.shiftKey ? -90 : 90); else D.mirrorSel(k === 'h' ? 'x' : 'y');
+    return true;
+  }
   if (mod && k === 'c' && state.sel.length && !String(window.getSelection())) { D.copySel(); return true; }
   if (mod && k === 'x' && state.sel.length) { e.preventDefault(); D.cutSel(); return true; }
   if (mod && k === 'v') return true;      // the paste event decides: an SVG or image from outside, else copied objects

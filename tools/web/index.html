@@ -429,14 +429,20 @@
         <form id="xfForm" autocomplete="off">
           <div class="xf-grid">
             <div class="anchor-grid" id="anchorGrid" role="radiogroup" aria-label="Reference point for X, Y and resizing"></div>
-            <label class="field"><span>X (mm)</span><input name="x" type="number" step="any"></label>
-            <label class="field"><span>Y (mm)</span><input name="y" type="number" step="any"></label>
-            <label class="field"><span>Width</span><input name="w" type="number" step="any" min="0.1"></label>
-            <label class="field"><span>Height</span><input name="h" type="number" step="any" min="0.1"></label>
-            <label class="field"><span>Turn (deg)</span><input name="rot" type="number" step="any"></label>
+            <label class="field"><span>X (mm)</span><input name="x" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
+            <label class="field"><span>Y (mm)</span><input name="y" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
+            <label class="field"><span>Width</span><input name="w" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
+            <label class="field"><span>Height</span><input name="h" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
+            <label class="field"><span>Turn (deg)</span><input name="rot" inputmode="decimal" autocomplete="off" title="degrees; arithmetic works: 360/7"></label>
             <label class="check lock" title="Keep the proportions when width or height changes"><input type="checkbox" name="lock" checked> Keep proportions</label>
           </div>
         </form>
+        <p class="hint" id="measureLine" aria-live="polite"></p>
+        <div class="tool-row" role="group" aria-label="Group and lock">
+          <button type="button" data-act="group" title="One unit: selecting one selects all (Ctrl+G)">Group</button>
+          <button type="button" data-act="ungroup" title="Separate objects again (Ctrl+Shift+G)">Ungroup</button>
+          <button type="button" data-act="lock" id="lockBtn" title="Locked objects cannot be moved, resized, turned or removed">Lock</button>
+        </div>
         <div class="tool-row" role="group" aria-label="Turn and mirror">
           <button type="button" data-act="rot-90" title="Turn 90 degrees anticlockwise">Turn left</button>
           <button type="button" data-act="rot90" title="Turn 90 degrees clockwise">Turn right</button>
@@ -614,6 +620,9 @@
       <dt>Shift while dragging</dt><dd>A corner: stretch freely. The turn handle: any angle (else 15 degree steps)</dd>
       <dt>Alt while dragging</dt><dd>No snapping: edges and centres snap to the canvas, paper, guides and other objects, else to the 0.5 mm grid</dd>
       <dt><kbd>Z</kbd></dt><dd>Zoom to the selection</dd>
+      <dt><kbd>R</kbd>, <kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>Turn the selection 90 degrees right, left</dd>
+      <dt><kbd>H</kbd>, <kbd>V</kbd></dt><dd>Mirror the selection left to right, top to bottom</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>G</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></dt><dd>Group, ungroup</dd>
       <dt><kbd>\</kbd></dt><dd>Hide or show the side panels (Plot)</dd>
       <dt>Rulers</dt><dd>Drag a guide out of a ruler; drag it back onto the ruler to remove it. Right-click for more</dd>
       <dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
