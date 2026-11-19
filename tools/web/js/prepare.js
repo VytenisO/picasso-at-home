@@ -176,7 +176,7 @@ function useSource(src, { name }) {
   if (prevKind !== src.kind || !methodOf()) {
     // A new kind of source: keep the clean-up steps, rebuild the rest around the default method.
     const clean = P.list.filter((s) => byId[s.step].stage === 'clean');
-    const def = { image: 'contour', svg: 'svg', mesh: 'mesh' }[src.kind];
+    const def = { image: 'contour', svg: 'svg', mesh: 'mesh', pdf: 'pdfpage' }[src.kind];
     P.list = [{ uid: uid++, step: def, on: true, params: P.memo[def] || {} }, ...clean];
   }
   P.name = name; P.replace = null; P.replaceName = '';
@@ -377,7 +377,7 @@ function renderSource() {
     const drop = el('div', { class: 'drop', tabindex: '0', role: 'button', 'aria-label': 'Choose a file to prepare',
       onclick: () => $('prepFile').click(),
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('prepFile').click(); } } },
-    'Drop an image, SVG or 3D model, or ', el('b', { text: 'choose one' }),
+    'Drop an image, SVG, PDF or 3D model, or ', el('b', { text: 'choose one' }),
     el('br'), el('small', { text: Object.values(kinds).flat().join(' ') }));
     const gen_ = el('div', { class: 'gen-row' }, el('span', { class: 'muted', text: 'or start from' }),
       ...generators.map((g) => el('button', { type: 'button', class: m && m.step === g.id ? 'chip on' : 'chip', text: g.title,
@@ -388,9 +388,9 @@ function renderSource() {
     return;
   }
   const s = P.source;
-  const thumb = s.kind === 'mesh' ? el('div', { class: 'thumb glyph', text: '3D' })
+  const thumb = s.kind === 'mesh' || s.kind === 'pdf' ? el('div', { class: 'thumb glyph', text: s.kind === 'pdf' ? 'PDF' : '3D' })
     : el('img', { class: 'thumb', alt: '', src: `/api/prepare/file?kind=source&id=${s.id}` });
-  const facts = [s.kind === 'image' ? 'image' : s.kind === 'svg' ? 'SVG drawing' : '3D model',
+  const facts = [s.kind === 'image' ? 'image' : s.kind === 'svg' ? 'SVG drawing' : s.kind === 'pdf' ? 'PDF' : '3D model',
     s.px ? `${s.px[0]} x ${s.px[1]} px` : '', `${Math.max(1, Math.round(s.bytes / 1024))} KB`].filter(Boolean).join(' · ');
   box.replaceChildren(el('div', { class: 'source-card' }, thumb,
     el('div', { class: 'source-meta' }, el('div', { class: 'name', text: s.name, title: s.name }), el('div', { class: 'muted', text: facts }),
@@ -539,6 +539,12 @@ function renderResult() {
     ['Time', `about ${fmtTime(s.est_seconds)}`],
     ['Ink layers', s.layers.length > 1 ? `${s.layers.length} (${s.layers.length - 1} pen change${s.layers.length > 2 ? 's' : ''})` : '1'],
   ];
+  const st = r.stats || {};
+  if (st.shapes !== undefined) {         // the import report of a drawing used as it is
+    const ign = Object.entries(st.ignored || {}).map(([t, n]) => `${n} ${t}`).join(', ');
+    rows.push(['Imported', [`${st.shapes} shape${st.shapes === 1 ? '' : 's'}`, st.text_elements ? `${st.text_elements} text converted` : '',
+      st.uses ? `${st.uses} clone${st.uses === 1 ? '' : 's'} expanded` : '', ign ? `left out: ${ign}` : ''].filter(Boolean).join('; ')]);
+  }
   $('prepKv').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
   const fit = $('prepFit');
   fit.hidden = r.fit >= 0.999;

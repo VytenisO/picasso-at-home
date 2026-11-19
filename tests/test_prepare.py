@@ -31,6 +31,33 @@ class TestPrepare(SimServer):
         self.assertEqual(code, expect, d)
         return d
 
+    def test_00_pdf_page_and_import_report(self):
+        import shutil
+        try:
+            import pymupdf
+        except ImportError:
+            self.skipTest("pymupdf is not installed")
+        if not shutil.which("pdftocairo"):
+            self.skipTest("pdftocairo is not installed")
+        doc = pymupdf.open()
+        for n in range(2):
+            page = doc.new_page(width=300, height=200)
+            page.draw_line((20, 20), (280, 20 + 40 * n))
+            page.draw_rect(pymupdf.Rect(40, 60, 140, 140))
+            page.insert_text((160, 120), "Hi", fontsize=24)
+        raw = doc.tobytes()
+        src = self.source(raw, "two-pages.pdf")
+        self.assertEqual(src["kind"], "pdf")
+        r = self.run_recipe({"source": src["id"], "steps": [{"step": "pdfpage", "params": {"page": 2}}]})
+        self.assertGreaterEqual(r["summary"]["strokes"], 3)
+        st = r["stats"]
+        self.assertEqual(st["page"], 2)
+        self.assertGreaterEqual(st["shapes"], 2)
+        self.assertGreaterEqual(st["uses"], 2)                  # the two glyphs of "Hi", drawn through <use>
+        r = self.run_recipe({"source": src["id"], "steps": [{"step": "pdfpage", "params": {"page": 9}}]}, expect=400)
+        code, d = self.call("POST", "/api/prepare/source", raw=b"not a pdf", headers={"X-Filename": "x.pdf"})
+        self.assertEqual(code, 400)
+
     def test_01_steps_catalogue(self):
         code, d = self.call("GET", "/api/prepare/steps")
         self.assertEqual(code, 200)

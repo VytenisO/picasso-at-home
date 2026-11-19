@@ -105,11 +105,11 @@ niche.
 | SVG import (text outlined, fills ignored) | HAVE | | fills become lines: the job default hatch or each colour's own mode |
 | Raster image import (png, jpg, webp, bmp, gif, tif) | HAVE | | converted on upload |
 | 3D mesh import (stl, obj) as hidden-line wireframe | HAVE | | `mesh_to_svg.py` |
-| PDF import | TODO | P2 | vector pages |
+| PDF import | HAVE |  | Prepare: a PDF is a source; Use a page as it is takes page N in vectors through pdftocairo (poppler-utils, present on robotlab); pictures on the page are left out |
 | DXF import | TODO | P3 | |
 | HPGL/PLT import | TODO | P3 | classic plotter format |
 | AI, G-code, Gerber import | SKIP | | rare for this use |
-| Import report (what was skipped or changed) | PART | P2 | errors listed; add a "converted N elements, ignored M" summary |
+| Import report (what was skipped or changed) | HAVE |  | Prepare result, Imported: shapes that plot, text converted, clones (<use>) expanded, elements left out (pictures, embedded HTML). <use> is now expanded for every SVG, and unplottable elements are taken out instead of failing the plan |
 | Paste SVG text or image from the clipboard | HAVE |  | Ctrl+V: SVG text or an SVG file goes into the library and onto the bed, an image to Prepare; otherwise the bed pastes copied objects |
 | Library list with thumbnails, kind, pen tag, date | HAVE | | |
 | Rename library file | HAVE | | Library: Rename; the name is cleaned the way uploads are, the extension kept |

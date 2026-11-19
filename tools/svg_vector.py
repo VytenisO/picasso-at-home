@@ -12,6 +12,7 @@ Requires fonttools (pip install fonttools) for text conversion; if it is not
 available the file is still copied and the text elements are reported as
 unconverted.
 """
+import copy
 import math
 import pathlib
 import re
@@ -208,15 +209,87 @@ def text_art_svg(text, size=20.0, family="DejaVu Sans", weight="normal", style="
                  "width_mm": round(vw, 2), "height_mm": round(vh, 2)}
 
 
+XLINK = "http://www.w3.org/1999/xlink"
+DRAWN = {"path", "line", "polyline", "polygon", "rect", "circle", "ellipse"}
+NOT_PLOTTED = {"image", "foreignObject", "video", "audio", "iframe", "canvas"}
+
+
+def _local(tag):
+    return tag.split("}")[-1] if isinstance(tag, str) else ""
+
+
+def expand_uses(root, limit=20000):
+    """Replace every <use> by a group holding a copy of what it points at (a symbol's content), so clones, stamped
+    symbols and the glyphs of a PDF page plot. Nested uses resolve up to 5 deep. -> how many were expanded."""
+    ids = {el.get("id"): el for el in root.iter() if el.get("id")}
+    n = 0
+    for _ in range(5):
+        parent_of = {c: p for p in root.iter() for c in p}
+        uses = [el for el in root.iter() if _local(el.tag) == "use"]
+        if not uses:
+            break
+        for u in uses:
+            par = parent_of.get(u)
+            if par is None:
+                continue
+            href = u.get(f"{{{XLINK}}}href") or u.get("href") or ""
+            ref = ids.get(href[1:]) if href.startswith("#") else None
+            g = ET.Element(f"{{{SVGNS}}}g")
+            tr = [u.get("transform")] if u.get("transform") else []
+            x, y = _length(u.get("x", "0"), 0.0), _length(u.get("y", "0"), 0.0)
+            if x or y:
+                tr.append(f"translate({x:g} {y:g})")
+            if tr:
+                g.set("transform", " ".join(tr))
+            for k in ("style", "fill", "stroke", "stroke-width", "opacity", "class"):
+                if u.get(k) is not None:
+                    g.set(k, u.get(k))
+            if ref is not None and n < limit:
+                kids = list(ref) if _local(ref.tag) == "symbol" else [ref]
+                for c in kids:
+                    c = copy.deepcopy(c)
+                    c.attrib.pop("id", None)
+                    g.append(c)
+                n += 1
+            i = list(par).index(u)
+            par.remove(u)
+            par.insert(i, g)
+    return n
+
+
+def census(root):
+    """Shapes that will plot, for the import report; elements that cannot plot (pictures, embedded HTML) are taken
+    out and counted, so the rest of the drawing still plots. -> (shapes, {tag: count left out})."""
+    drawn, skipped = 0, {}
+
+    def walk(el):
+        nonlocal drawn
+        for c in list(el):
+            t = _local(c.tag)
+            if t in ("defs", "symbol", "clipPath", "mask", "pattern", "marker", "metadata", "title", "desc", "style"):
+                continue
+            if t in NOT_PLOTTED:
+                skipped[t] = skipped.get(t, 0) + 1
+                el.remove(c)
+                continue
+            if t in DRAWN:
+                drawn += 1
+            walk(c)
+    walk(root)
+    return drawn, skipped
+
+
 def prepare(src, dst, font_family="DejaVu Sans"):
-    """Copy an SVG to dst with <text> replaced by outline paths. -> stats dict."""
+    """Copy an SVG to dst with <use> expanded and <text> replaced by outline paths. -> stats dict, with an import
+    report: shapes that plot, clones expanded, text converted, elements that cannot plot."""
     stats = {"text_elements": 0, "text_glyphs": 0, "font": font_family, "converted": False}
     try:
         tree = ET.parse(src)
     except ET.ParseError as ex:
         raise ValueError(f"invalid SVG: {ex}")
     root = tree.getroot()
-    changed = False
+    stats["uses"] = expand_uses(root)
+    changed = stats["uses"] > 0
 
     def walk(el, inherited):
         nonlocal changed
@@ -253,7 +326,8 @@ def prepare(src, dst, font_family="DejaVu Sans"):
             walk(child, st)
 
     walk(root, {})
-    stats["converted"] = changed
+    stats["shapes"], stats["ignored"] = census(root)
+    stats["converted"] = changed or bool(stats["ignored"])
     tree.write(dst, encoding="utf-8", xml_declaration=True)
     return stats
 

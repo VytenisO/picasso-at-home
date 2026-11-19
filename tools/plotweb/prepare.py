@@ -39,7 +39,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 MAX_SOURCE = 12 * 1024 * 1024
 SRC_ID = re.compile(r"^[0-9a-f]{16}$")
 KEY = re.compile(r"^[0-9a-f]{24}$")
-KINDS = {"image": IMG, "svg": (".svg",), "mesh": (".stl", ".obj")}
+KINDS = {"image": IMG, "svg": (".svg",), "mesh": (".stl", ".obj"), "pdf": (".pdf",)}
 STAGES = ("adjust", "method", "clean")
 
 
@@ -152,6 +152,27 @@ def _raster(style, extra_keys):
 def _svg_as_is(src, dst, p, ctx):
     from svg_vector import prepare
     return prepare(src, dst, font_family=p["font"] or "DejaVu Sans")
+
+
+def _pdf_page(src, dst, p, ctx):
+    """One page of a PDF as vectors: pdftocairo (poppler) writes it as SVG, then it is used as it is."""
+    import shutil
+    import subprocess
+    exe = shutil.which("pdftocairo")
+    if not exe:
+        raise PrepareError("PDF pages need pdftocairo on the server (Ubuntu: sudo apt install poppler-utils).")
+    tmp = pathlib.Path(dst).with_suffix(".page.svg")
+    try:
+        r = subprocess.run([exe, "-svg", "-f", str(p["page"]), "-l", str(p["page"]), str(src), str(tmp)],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode or not tmp.is_file():
+            raise PrepareError(f"Could not read page {p['page']}: " + ((r.stderr or "").strip()[-200:] or "pdftocairo failed")
+                               + ". Is there a page with that number?")
+        stats = _svg_as_is(tmp, dst, p, ctx)
+    finally:
+        tmp.unlink(missing_ok=True)
+    stats["page"] = p["page"]
+    return stats
 
 
 def _mesh(src, dst, p, ctx):
@@ -332,6 +353,13 @@ STEPS = {s.id: s for s in [
         {"key": "font", "label": "Font for text", "type": "text", "default": "DejaVu Sans", "list": "fonts",
          "help": "Text in the SVG becomes outlines in this font."},
     ], _svg_as_is, "Plotted as drawn: every line and outline. Filled shapes can be hatched in Fill.", "Vector"),
+    Step("pdfpage", "Use a page as it is", "method", ["pdf"], [
+        {"key": "page", "label": "Page", "type": "number", "default": 1, "min": 1, "max": 9999, "step": 1,
+         "integer": True},
+        {"key": "font", "label": "Font for text", "type": "text", "default": "DejaVu Sans", "list": "fonts",
+         "help": "Only for text the PDF keeps as text; most PDFs carry their letters as outlines."},
+    ], _pdf_page, "The page's lines and shapes in vectors (pdftocairo). Filled shapes can be hatched in Fill; "
+                  "pictures on the page are left out.", "Vector"),
     Step("mesh", "Wireframe, hidden lines removed", "method", ["mesh"], [
         {"key": "yaw", "label": "View yaw", "type": "number", "default": 35, "min": -180, "max": 180, "unit": "deg",
          "slider": True},
@@ -391,7 +419,7 @@ STEPS = {s.id: s for s in [
          "Every layer becomes one ink: no pen swaps."),
 ]}
 
-DEFAULT_METHOD = {"image": "contour", "svg": "svg", "mesh": "mesh"}
+DEFAULT_METHOD = {"image": "contour", "svg": "svg", "mesh": "mesh", "pdf": "pdfpage"}
 
 
 def public_steps():
@@ -430,6 +458,9 @@ class Workshop:
         meta = {"id": sid, "name": safe, "ext": ext, "kind": kind, "bytes": len(raw)}
         if kind == "image":
             meta.update(self._image_info(raw))
+        elif kind == "pdf":
+            if not raw.startswith(b"%PDF"):
+                raise PrepareError("This does not look like a PDF file.")
         elif kind == "svg":
             import xml.etree.ElementTree as ET
             try:
