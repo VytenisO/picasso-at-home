@@ -641,29 +641,7 @@
       <li><b>Start plot</b>, confirm, and watch. Between layers it pauses for a pen change.</li>
     </ol>
     <h3>Shortcuts</h3>
-    <dl class="kv">
-      <dt><kbd>1</kbd> <kbd>2</kbd></dt><dd>Prepare, Plot</dd>
-      <dt><kbd>P</kbd></dt><dd>Preview (Plot)</dd>
-      <dt><kbd>T</kbd></dt><dd>Show or hide the pen-up moves (Plot)</dd>
-      <dt><kbd>Ctrl</kbd>+<kbd>Enter</kbd></dt><dd>Send to Plot (Prepare)</dd>
-      <dt><kbd>Space</kbd></dt><dd>Pause / continue</dd>
-      <dt><kbd>Shift</kbd>+<kbd>S</kbd></dt><dd>Stop</dd>
-      <dt>Arrows</dt><dd>Move the selection 1 mm (Shift: 10 mm, Alt: 0.1 mm), with the bed focused</dd>
-      <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dt><dd>Undo, redo</dd>
-      <dt><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> <kbd>D</kbd> <kbd>A</kbd></dt><dd>Copy, cut, paste, duplicate, select all</dd>
-      <dt><kbd>Delete</kbd></dt><dd>Remove the selection from the bed (the drawing stays in the Library)</dd>
-      <dt>Shift-click, drag a box</dt><dd>Select several. A box dragged left to right takes what is fully inside; right to left, anything it touches</dd>
-      <dt>Shift while dragging</dt><dd>A corner: stretch freely. The turn handle: any angle (else 15 degree steps)</dd>
-      <dt>Alt while dragging</dt><dd>No snapping: edges and centres snap to the canvas, paper, guides and other objects, else to the 0.5 mm grid</dd>
-      <dt><kbd>Z</kbd></dt><dd>Zoom to the selection</dd>
-      <dt><kbd>R</kbd>, <kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>Turn the selection 90 degrees right, left</dd>
-      <dt><kbd>H</kbd>, <kbd>V</kbd></dt><dd>Mirror the selection left to right, top to bottom</dd>
-      <dt><kbd>Ctrl</kbd>+<kbd>G</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></dt><dd>Group, ungroup</dd>
-      <dt><kbd>\</kbd></dt><dd>Hide or show the side panels (Plot)</dd>
-      <dt>Rulers</dt><dd>Drag a guide out of a ruler; drag it back onto the ruler to remove it. Right-click for more</dd>
-      <dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
-      <dt><kbd>Esc</kbd></dt><dd>Close a dialog (never stops a job)</dd>
-    </dl>
+    <dl class="kv" id="keyList"></dl>
     <h3>Stopping</h3>
     <p>This firmware (EBB 2.0.1) has no emergency stop and no position readback. Stop finishes the move already
       sent (normally within 3 s), lifts the pen and releases the motors; the carriage stays where it stopped.

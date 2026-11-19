@@ -9,6 +9,7 @@ import { initWorkspace, openFile, refreshFiles, runPreview, initTextTool } from 
 import * as D from './doc.js';
 import { initRun, pause, resume, stop } from './run.js';
 import { initLibrary, setObjectPaste } from './library.js';
+import { renderShortcutList, tagTooltips } from './shortcuts.js';
 import { initTools } from './tools.js';
 import { initLive } from './live.js';
 import { initConsole, addEvents, resetConsole } from './console.js';
@@ -54,6 +55,8 @@ function initOnce() {
   initTextTool();
   initRun();
   initLibrary();
+  renderShortcutList();
+  tagTooltips();
   setObjectPaste(D.paste);
   initTools();
   initLive();

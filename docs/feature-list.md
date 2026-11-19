@@ -71,7 +71,7 @@ niche.
 | Resizable panels | TODO | P3 | |
 | Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | TODO | P2 | home for the commands below; the panels stay |
 | Right-click context menu on bed and objects | HAVE | | objects: edit, turn, mirror, order, fit, zoom; empty bed: paste, select all, guides, fit |
-| Tooltips that show the shortcut | PART | P2 | some titles exist; make it consistent |
+| Tooltips that show the shortcut | HAVE |  | every control a key presses gets the key in its tooltip, from the shortcut table (shortcuts.js) |
 | Context help (`?` on a control opens its help) | TODO | P3 | |
 | Simple / advanced mode (hide advanced options) | TODO | P3 | |
 | Language switch, right-to-left layout | SKIP | | one user |
@@ -451,7 +451,7 @@ niche.
 | Preferences page (units, grid, nudge, snapping, defaults) | TODO | P2 | |
 | Shortcuts: `?` `P` Space `Shift+S` `+ - 0` arrows Esc | HAVE | | |
 | Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | HAVE |  | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc, R/Shift+R turn, H/V mirror, Ctrl+G/Ctrl+Shift+G group |
-| Shortcut list in the help dialog kept in sync | PART | P2 | written by hand; generate from one table |
+| Shortcut list in the help dialog kept in sync | HAVE |  | the help dialog's list is built from the same table as the tooltips |
 | Rebind shortcuts | TODO | P3 | |
 | First-run setup wizard (connect, park, calibrate, pen height) | TODO | P3 | |
 
