@@ -292,7 +292,11 @@ class JobRunner:
             except OSError:
                 pass
             if not clean:
-                for note in hardware.last_resort_safe(sim):
+                try:
+                    servo = self.s.machine().get("servo")
+                except (OSError, ValueError):
+                    servo = None
+                for note in hardware.last_resort_safe(sim, servo):
                     self._log("warn", note)
             with self.lock:
                 if self.job and self.job["id"] == job_id:

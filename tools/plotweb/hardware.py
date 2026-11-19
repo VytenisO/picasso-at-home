@@ -43,8 +43,11 @@ def precheck(sim):
                        "(dialout or uucp); log out and in again after adding it.")
 
 
-def last_resort_safe(sim):
-    """Raise the pen and release the motors directly. Only after the job process is gone."""
+def last_resort_safe(sim, servo=None):
+    """Raise the pen and release the motors directly. Only after the job process is gone.
+
+    servo: {"pen_up", "pen_down"} from machine.json. Sent first, because after a reset firmware 3.x holds its own
+    default pen-up (22565), far past the top of this lift."""
     if sim:
         return ["simulator: nothing to do"]
     if serial is None:
@@ -55,6 +58,10 @@ def last_resort_safe(sim):
             return ["no plotter found for a direct pen-up/motors-off"]
         with serial.Serial(port, 9600, timeout=2) as s:
             s.reset_input_buffer()
+            if servo:
+                for k, v in ((4, servo["pen_up"]), (5, servo["pen_down"])):
+                    s.write(f"SC,{k},{int(v)}\r".encode())
+                    s.readline()
             s.write(b"SP,1,300\r")
             time.sleep(0.4)
             s.readline()
