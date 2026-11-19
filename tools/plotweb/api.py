@@ -1248,6 +1248,15 @@ class Handler(BaseHTTPRequestHandler):
         e = self.app.lib.add_svg_text(svg, f"text-{first}.svg", kind="text")
         self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "stats": stats})
 
+    def r_shape_new(self):
+        """A rectangle, ellipse, polygon, star or clicked line as a library drawing, for the bed's Shape tool."""
+        try:
+            svg, name, at = shapes.make_shape(self.json_body())
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        e = self.app.lib.add_svg_text(svg, f"{name}.svg", kind="shape")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "at": at})
+
     # ---- routes: catalogue
     def r_converters(self):
         self.send(200, {"converters": [c.public() for c in converters.REGISTRY.values()]})
@@ -1509,6 +1518,7 @@ ROUTES_POST = {
     "/api/text_page": (Handler.r_text_page, True),
     "/api/text_single": (Handler.r_text_single, True),
     "/api/shapes": (Handler.r_shapes, True),
+    "/api/shape_new": (Handler.r_shape_new, True),
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
     "/api/machine/start": (Handler.r_machine_start, True),

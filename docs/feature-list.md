@@ -201,9 +201,9 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Polyline tool (click nodes, Shift for 45 degree steps, close on start) | TODO | P2 | |
+| Polyline tool (click nodes, Shift for 45 degree steps, close on start) | HAVE |  | Bed, Shape, Line by clicks: points on the 0.5 mm grid, Shift for 45 degree steps, click the first point to close, double-click or Enter to finish, Backspace drops a point, Esc cancels |
 | Bezier drawing (drag for handles) | TODO | P3 | |
-| Rectangle (corner radius), ellipse, polygon, star | TODO | P2 | parametric until converted |
+| Rectangle (corner radius), ellipse, polygon, star | HAVE |  | Bed, Shape: size, corner radius, sides or points and inner radius, placed by a click; each becomes a library drawing (not editable as parameters afterwards) |
 | Shape properties stay editable (sides, radius) | TODO | P3 | |
 | Freehand drawing on the bed | PART | P2 | the writing pad plots live; add "draw into the scene" |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |

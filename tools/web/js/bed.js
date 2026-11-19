@@ -26,6 +26,34 @@ let placeHook = null;              // one click on the bed, for the text tool
 
 export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
 
+// Line by clicks: each click adds a point (0.5 mm grid, Shift: 45 degree steps); clicking the first point closes,
+// a double-click or Enter finishes, Esc cancels, Backspace drops the last point. done(pts, closed), or done(null).
+let polyHook = null, polyPts = [];
+export function armPoly(fn) {
+  polyHook = fn; polyPts = [];
+  cv.style.cursor = fn ? 'crosshair' : '';
+  if (fn) cv.focus();
+  redraw();
+}
+function polyPoint(mx, my, e) {
+  let [x, y] = [snapHalf(mx), snapHalf(my)];
+  const last = polyPts[polyPts.length - 1];
+  if (last && e && e.shiftKey) {
+    const dx = mx - last[0], dy = my - last[1];
+    const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), L = Math.hypot(dx, dy);
+    x = G.r2(last[0] + L * Math.cos(a)); y = G.r2(last[1] + L * Math.sin(a));
+  }
+  return [x, y];
+}
+function polyFinish(closed) {
+  const f = polyHook, pts = polyPts;
+  polyHook = null; polyPts = []; cv.style.cursor = '';
+  redraw();
+  if (!f) return;
+  if (pts.length < 2) { f(null); return; }
+  f(pts, closed);
+}
+
 export function setBedClick(fn, jog) { bedClick = fn; if (jog) jogHook = jog; }
 let jogHook = () => false;
 let sub = { pv: null, k: -1, obj: null };    // the first k strokes of the plan, for the scrubber
@@ -40,6 +68,7 @@ export function initBed() {
   cv.addEventListener('pointercancel', up);
   cv.addEventListener('wheel', wheel, { passive: false });
   cv.addEventListener('keydown', key);
+  cv.addEventListener('dblclick', () => { if (polyHook && polyPts.length >= 2) polyFinish(false); });
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
   cv.addEventListener('pointerleave', () => { pointerMm = null; status(); redraw(); });
   document.addEventListener('pointerdown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
@@ -176,6 +205,15 @@ function render() {
     if (editable()) overlays(px);
   }
   if (state.doc) drawGuides(px);
+  if (polyHook && polyPts.length) {        // the line being clicked, with a rubber band to the pointer
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1.5 * px;
+    ctx.beginPath();
+    polyPts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    if (pointerMm) ctx.lineTo(...polyPoint(pointerMm[0], pointerMm[1], lastPointerEvent));
+    ctx.stroke();
+    ctx.fillStyle = css('--accent');
+    for (const [x, y] of polyPts) ctx.fillRect(x - 2.5 * px, y - 2.5 * px, 5 * px, 5 * px);
+  }
 
   // start point S
   const [sx, sy] = m.start;
@@ -632,6 +670,15 @@ function down(e) {
   const [mx, my] = toMm(px, py);
   closeMenu();
   if (e.button === 0 && placeHook) { const f = placeHook; placeHook = null; cv.style.cursor = ''; f(mx, my); return; }
+  if (e.button === 0 && polyHook) {
+    const p = polyPoint(mx, my, e);
+    const first = polyPts[0];
+    if (first && polyPts.length >= 3 && Math.hypot(p[0] - first[0], p[1] - first[1]) * view.s < 8) { polyFinish(true); return; }
+    const last = polyPts[polyPts.length - 1];
+    if (!last || last[0] !== p[0] || last[1] !== p[1]) polyPts.push(p);
+    redraw();
+    return;
+  }
   if (e.button === 0 && bedClick(mx, my)) return;
   const pan = { mode: 'pan', start: [px, py], o: [view.ox, view.oy], menu: e.button === 2 };
   if (e.button === 1 || e.button === 2 || !editable()) { drag = pan; cv.classList.add('dragging'); return; }
@@ -669,10 +716,13 @@ function down(e) {
   cv.classList.add('dragging');
 }
 
+let lastPointerEvent = null;
 function move(e) {
   const [px, py] = local(e);
   const [mx, my] = toMm(px, py);
   pointerMm = [mx, my];
+  lastPointerEvent = { shiftKey: e.shiftKey };
+  if (polyHook) { redraw(); status(); return; }
   status();
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [px, py]);
   if (pinch && pointers.size === 2) {
@@ -882,6 +932,12 @@ function wheel(e) {
 }
 
 function key(e) {
+  if (polyHook) {
+    if (e.key === 'Enter') { e.preventDefault(); polyFinish(false); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); polyPts = []; polyFinish(false); }
+    else if (e.key === 'Backspace') { e.preventDefault(); e.stopPropagation(); polyPts.pop(); redraw(); }
+    return;
+  }
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
   if (state.job && state.job.kind === 'machine' && jobActive()) {      // machine control: the arrows jog
     e.preventDefault();

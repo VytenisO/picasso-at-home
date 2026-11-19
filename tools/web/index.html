@@ -325,6 +325,7 @@
       <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
       <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
       <button class="icon" id="textTool" aria-pressed="false" title="Text: click on the bed where it should go">Text</button>
+      <button class="icon" id="shapeTool" aria-pressed="false" title="Rectangle, ellipse, polygon, star, or a line by clicks">Shape</button>
       <span class="spacer"></span>
       <button class="icon" id="viewBtn" aria-haspopup="true" aria-expanded="false" aria-controls="viewMenu" title="Grid, snapping, path direction, side panels">View</button>
       <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
@@ -653,6 +654,27 @@
         <option value="center">Centre</option><option value="right">Right</option></select></label>
     </div>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place text</button></div>
+  </form>
+</dialog>
+
+<dialog id="shapeDlg" aria-labelledby="shapeDlgTitle">
+  <form method="dialog" class="dlg" id="shapeForm">
+    <h2 id="shapeDlgTitle">Shape</h2>
+    <label class="field"><span>Shape</span><select name="kind">
+      <option value="rect">Rectangle</option><option value="ellipse">Ellipse or circle</option>
+      <option value="polygon">Polygon</option><option value="star">Star</option>
+      <option value="poly">Line by clicks</option></select></label>
+    <div class="field-row" data-for="rect ellipse polygon star">
+      <label class="field"><span>Width (mm)</span><input name="w" type="number" min="1" max="500" step="0.5" value="40"></label>
+      <label class="field"><span>Height (mm)</span><input name="h" type="number" min="1" max="500" step="0.5" value="40"></label>
+    </div>
+    <label class="field" data-for="rect"><span>Corner radius (mm)</span><input name="r" type="number" min="0" max="250" step="0.5" value="0"></label>
+    <label class="field" data-for="polygon star"><span>Sides or points</span><input name="n" type="number" min="3" max="64" step="1" value="5"></label>
+    <label class="field" data-for="star"><span>Inner radius (% of outer)</span><input name="inner" type="number" min="5" max="95" step="1" value="45"></label>
+    <p class="hint" data-for="rect ellipse polygon star">Then click on the bed where its top-left corner goes.</p>
+    <p class="hint" data-for="poly">Then click on the bed for each point. Shift keeps 45 degree steps. Click the first point to
+      close the shape; double-click or Enter finishes an open line; Esc cancels; Backspace removes the last point.</p>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place</button></div>
   </form>
 </dialog>
 

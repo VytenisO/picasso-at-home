@@ -90,6 +90,71 @@ def outlines(g):
     return out
 
 
+def make_shape(d):
+    """A drawn shape as SVG text in mm, from the bed's Shape tool. -> (svg, name, [x, y] of its top-left or None).
+
+    kind rect (w, h, r: corner radius), ellipse (w, h), polygon (w, h, n sides), star (w, h, n points, inner: % of
+    the outer radius), poly (pts: machine mm, closed). Raises ValueError with a plain message."""
+    kind = d.get("kind")
+
+    def num(k, lo, hi, label, default=None):
+        v = d.get(k, default)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"{label} must be a number.")
+        if not lo <= v <= hi:
+            raise ValueError(f"{label} must be {lo:g} to {hi:g}.")
+        return v
+
+    at = None
+    if kind == "poly":
+        pts = d.get("pts")
+        if not isinstance(pts, list) or not 2 <= len(pts) <= 2000:
+            raise ValueError("A line needs 2 to 2000 points.")
+        try:
+            pts = [(float(x), float(y)) for x, y in pts]
+        except (TypeError, ValueError):
+            raise ValueError("Points must be [x, y] pairs in mm.")
+        if not all(math.isfinite(v) and -1000 <= v <= 2000 for p in pts for v in p):
+            raise ValueError("Points must be on the bed.")
+        x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
+        w, h = max(max(p[0] for p in pts) - x0, 0.01), max(max(p[1] for p in pts) - y0, 0.01)
+        body = "M" + " L".join(f"{x - x0:.3f} {y - y0:.3f}" for x, y in pts) + (" Z" if d.get("closed") else "")
+        name, at = f"line-{len(pts)}pts", [x0, y0]
+    else:
+        w = num("w", 1, 500, "Width")
+        h = num("h", 1, 500, "Height")
+        if kind == "rect":
+            r = min(num("r", 0, 250, "Corner radius", 0), w / 2, h / 2)
+            if r > 0:
+                body = (f"M{r:g} 0 H{w - r:g} A{r:g} {r:g} 0 0 1 {w:g} {r:g} V{h - r:g} A{r:g} {r:g} 0 0 1 {w - r:g} {h:g} "
+                        f"H{r:g} A{r:g} {r:g} 0 0 1 0 {h - r:g} V{r:g} A{r:g} {r:g} 0 0 1 {r:g} 0 Z")
+            else:
+                body = f"M0 0 H{w:g} V{h:g} H0 Z"
+            name = f"rect-{w:g}x{h:g}"
+        elif kind == "ellipse":
+            rx, ry = w / 2, h / 2
+            body = f"M0 {ry:g} A{rx:g} {ry:g} 0 1 1 {w:g} {ry:g} A{rx:g} {ry:g} 0 1 1 0 {ry:g} Z"
+            name = f"ellipse-{w:g}x{h:g}"
+        elif kind in ("polygon", "star"):
+            n = int(num("n", 3, 64, "Sides" if kind == "polygon" else "Points", 5))
+            inner = num("inner", 5, 95, "Inner radius", 45) / 100 if kind == "star" else 1.0
+            k = 2 * n if kind == "star" else n
+            raw = [((inner if kind == "star" and i % 2 else 1.0) * math.cos(-math.pi / 2 + 2 * math.pi * i / k),
+                    (inner if kind == "star" and i % 2 else 1.0) * math.sin(-math.pi / 2 + 2 * math.pi * i / k))
+                   for i in range(k)]
+            bx0, by0 = min(p[0] for p in raw), min(p[1] for p in raw)
+            bw, bh = max(p[0] for p in raw) - bx0, max(p[1] for p in raw) - by0
+            body = "M" + " L".join(f"{(x - bx0) / bw * w:.3f} {(y - by0) / bh * h:.3f}" for x, y in raw) + " Z"
+            name = f"{kind}-{n}-{w:g}x{h:g}"
+        else:
+            raise ValueError("Unknown shape.")
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" viewBox="0 0 {w:.3f} {h:.3f}">'
+           f'<path d="{body}" fill="none" stroke="#000000" stroke-width="0.3" stroke-linejoin="round"/></svg>')
+    return svg, name, at
+
+
 def svg_layers(groups):
     """groups: [(colour, polys)] -> (svg text, bounds), like svg() with one path per colour."""
     allp = [s for _, ps in groups for s in ps]

@@ -1,7 +1,7 @@
 // The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
 // settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
 import { api, post } from './api.js';
-import { armPlace } from './bed.js';
+import { armPlace, armPoly } from './bed.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
@@ -272,12 +272,50 @@ function openArray() {
 
 // The bed's text tool: click where the text goes, type it, and it is added to the library and placed there.
 export function initTextTool() {
+  initShapeTool();
   const btn = $('textTool');
   btn.onclick = () => {
     const on = btn.getAttribute('aria-pressed') !== 'true';
     btn.setAttribute('aria-pressed', String(on));
     armPlace(on ? placeText : null);
     if (on) toast('Click on the bed where the text should start.');
+  };
+  on('job', () => { btn.disabled = jobActive(); });
+}
+
+// Shape tool: the dialog first, then a click (or clicks, for a line) on the bed.
+function initShapeTool() {
+  const btn = $('shapeTool'), d = $('shapeDlg'), f = $('shapeForm');
+  const showFor = () => { for (const x of f.querySelectorAll('[data-for]')) x.hidden = !x.dataset.for.split(' ').includes(f.kind.value); };
+  f.kind.onchange = showFor;
+  const saved = prefs('shapeTool');
+  if (saved) for (const [k, v] of Object.entries(saved)) if (f[k]) f[k].value = v;
+  showFor();
+  btn.onclick = () => {
+    if (btn.getAttribute('aria-pressed') === 'true') { btn.setAttribute('aria-pressed', 'false'); armPlace(null); armPoly(null); return; }
+    d.returnValue = '';
+    d.onclose = () => {
+      if (d.returnValue !== 'ok') return;
+      const p = { kind: f.kind.value, w: Number(f.w.value), h: Number(f.h.value), r: Number(f.r.value), n: Number(f.n.value), inner: Number(f.inner.value) };
+      prefs('shapeTool', p);
+      btn.setAttribute('aria-pressed', 'true');
+      const make = async (body, at) => {
+        btn.setAttribute('aria-pressed', 'false');
+        try {
+          const r = await post('/api/shape_new', body);
+          await refreshFiles();
+          await D.addFile(r.file.id, { at: r.at || at });
+        } catch (e) { toast(e.message, true); }
+      };
+      if (p.kind === 'poly') {
+        toast('Click the points. Enter or double-click finishes; Esc cancels.');
+        armPoly((pts, closed) => { if (pts) make({ kind: 'poly', pts, closed }); else btn.setAttribute('aria-pressed', 'false'); });
+      } else {
+        toast('Click on the bed where the top-left corner goes.');
+        armPlace((x, y) => make(p, [x, y]));
+      }
+    };
+    d.showModal();
   };
   on('job', () => { btn.disabled = jobActive(); });
 }
