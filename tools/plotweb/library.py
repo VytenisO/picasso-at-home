@@ -12,7 +12,8 @@ from . import converters
 
 MAX_UPLOAD = 12 * 1024 * 1024
 PUBLIC = ("id", "name", "kind", "bytes", "uploaded", "svg", "orig", "conversion", "style", "mask", "vector",
-          "pen", "test", "settings", "layers", "geom", "method", "recipe")
+          "pen", "test", "settings", "layers", "geom", "method", "recipe", "trashed", "replaced")
+TRASH_DAYS = 30      # trashed drawings are deleted for good after this long
 
 
 def safe_name(name):
@@ -43,13 +44,18 @@ class Library:
         self.rev += 1
         self.ev.emit("files", rev=self.rev)
 
-    def list(self):
+    def list(self, trashed=False):
+        """The library (trashed=False) or the trash (trashed=True)."""
         with self.lock:
-            return [{k: e.get(k) for k in PUBLIC} for e in self._load()]
+            return [{k: e.get(k) for k in PUBLIC} for e in self._load() if bool(e.get("trashed")) == trashed]
 
-    def get(self, ident):
+    def get(self, ident, trashed=False):
+        """An entry by id; a trashed one only with trashed=True (or None: either)."""
         with self.lock:
-            return next((e for e in self._load() if e.get("id") == ident), None)
+            e = next((e for e in self._load() if e.get("id") == ident), None)
+        if e and trashed is not None and bool(e.get("trashed")) != trashed:
+            return None
+        return e
 
     def update(self, ident, **fields):
         with self.lock:
@@ -70,7 +76,62 @@ class Library:
             return None
         return p
 
+    def trash(self, ident):
+        """Move to the trash: gone from the library and the bed, files kept until purged."""
+        with self.lock:
+            entries = self._load()
+            e = next((e for e in entries if e.get("id") == ident and not e.get("trashed")), None)
+            if not e:
+                return None
+            e["trashed"] = datetime.datetime.now().isoformat(timespec="seconds")
+            self._save(entries)
+            return e
+
+    def restore(self, ident):
+        with self.lock:
+            entries = self._load()
+            e = next((e for e in entries if e.get("id") == ident and e.get("trashed")), None)
+            if not e:
+                return None
+            e.pop("trashed", None)
+            self._save(entries)
+            return e
+
+    def purge_old(self, days=TRASH_DAYS):
+        cut = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat(timespec="seconds")
+        n = 0
+        for e in self.list(trashed=True):
+            if e["trashed"] < cut and self.delete(e["id"]):
+                n += 1
+        return n
+
+    def replace_svg(self, ident, raw):
+        """New drawing for an SVG entry, same id: bed objects keep their place and re-fit their box."""
+        e = self.get(ident)
+        if not e:
+            raise ValueError("Unknown file.")
+        if e.get("kind") not in ("svg", "shape", "text"):
+            raise ValueError("Only SVG drawings can be replaced here. A prepared drawing: open it in Prepare and "
+                             "replace its source there.")
+        if not raw:
+            raise ValueError("The file is empty.")
+        if len(raw) > MAX_UPLOAD:
+            raise ValueError(f"The file is larger than {MAX_UPLOAD // (1024 * 1024)} MB.")
+        try:
+            ET.fromstring(raw)
+        except ET.ParseError as ex:
+            raise ValueError(f"This SVG is not valid XML ({ex}).")
+        for field in ("svg", "orig"):
+            p = self.path(e, field)
+            if p:
+                tmp = p.with_suffix(".tmp")
+                tmp.write_bytes(raw)
+                tmp.replace(p)
+        return self.update(ident, bytes=len(raw), geom=None, layers=None,
+                           replaced=datetime.datetime.now().isoformat(timespec="seconds"))
+
     def delete(self, ident):
+        """Delete for good (files too)."""
         with self.lock:
             entries = self._load()
             found = next((e for e in entries if e.get("id") == ident), None)

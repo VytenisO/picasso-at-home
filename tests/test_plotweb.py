@@ -640,6 +640,46 @@ class TestDocument(SimServer):
         self.assertIn('stroke="#ff0000"', raw)
         self.assertIn("M100 50.5 L110 50.5", raw.replace(".0 ", " ").replace(".0L", "L"))
 
+    def test_04g_trash_restore_purge_replace(self):
+        sq = b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="10mm" viewBox="0 0 20 10"><rect width="20" height="10" stroke="#000" fill="none"/></svg>'
+        code, d = self.call("POST", "/api/files/upload", raw=sq, headers={"X-Filename": "box.svg", "X-Params": "{}"})
+        fid = d["file"]["id"]
+        o = self.obj(fid, 100, 50, 20, 10)
+        self.doc_preview([o])
+        # trash: gone from the library and from the bed, still in the trash, thumbnail still served
+        code, r = self.call("POST", "/api/files/delete", {"id": fid})
+        self.assertEqual(code, 200, r)
+        code, lib = self.call("GET", "/api/files")
+        self.assertNotIn(fid, [f["id"] for f in lib["files"]])
+        code, t = self.call("GET", "/api/files/trash")
+        self.assertIn(fid, [f["id"] for f in t["files"]])
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": [o], "settings": {}}})
+        self.assertEqual(code, 400)                       # the object's drawing is not in the library
+        with urllib.request.urlopen(self.base + f"/api/files/svg?id={fid}") as resp:
+            self.assertEqual(resp.status, 200)
+        # restore
+        code, r = self.call("POST", "/api/files/restore", {"id": fid})
+        self.assertEqual(code, 200, r)
+        self.assertTrue(self.doc_preview([o])["ok"])
+        # replace: same id, new drawing, natural size changes
+        tall = b'<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="30mm" viewBox="0 0 10 30"><rect width="10" height="30" stroke="#000" fill="none"/></svg>'
+        code, n0 = self.call("GET", f"/api/files/natural?id={fid}")
+        code, r = self.call("POST", f"/api/files/replace?id={fid}", raw=tall)
+        self.assertEqual(code, 200, r)
+        code, n1 = self.call("GET", f"/api/files/natural?id={fid}")
+        self.assertNotEqual(n0["geom"]["svg_hash"], n1["geom"]["svg_hash"])
+        self.assertAlmostEqual(n1["geom"]["raw_h"] / n1["geom"]["raw_w"], 3.0, places=1)
+        code, r = self.call("POST", f"/api/files/replace?id={fid}", raw=b"<svg")
+        self.assertEqual(code, 400)
+        # purge
+        self.call("POST", "/api/files/delete", {"id": fid})
+        code, r = self.call("POST", "/api/files/purge", {"id": fid})
+        self.assertEqual(code, 200, r)
+        code, t = self.call("GET", "/api/files/trash")
+        self.assertNotIn(fid, [f["id"] for f in t["files"]])
+        code, r = self.call("POST", "/api/files/restore", {"id": fid})
+        self.assertEqual(code, 404)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

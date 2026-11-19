@@ -110,16 +110,16 @@ niche.
 | HPGL/PLT import | TODO | P3 | classic plotter format |
 | AI, G-code, Gerber import | SKIP | | rare for this use |
 | Import report (what was skipped or changed) | PART | P2 | errors listed; add a "converted N elements, ignored M" summary |
-| Paste SVG text or image from the clipboard | TODO | P2 | |
+| Paste SVG text or image from the clipboard | HAVE |  | Ctrl+V: SVG text or an SVG file goes into the library and onto the bed, an image to Prepare; otherwise the bed pastes copied objects |
 | Library list with thumbnails, kind, pen tag, date | HAVE | | |
 | Rename library file | HAVE | | Library: Rename; the name is cleaned the way uploads are, the extension kept |
-| Search, sort and filter library | TODO | P2 | |
+| Search, sort and filter library | HAVE |  | Library: name search, kind filter, newest, oldest or A-Z; remembered in this browser |
 | Folders or tags in library | TODO | P3 | |
 | Re-convert with new parameters (saved params editable) | HAVE | | Library: Prepare reopens a prepared drawing's recipe with its settings; save replaces it |
-| Replace source keeping placement and settings | TODO | P2 | |
+| Replace source keeping placement and settings | HAVE |  | Library: Replace loads a new SVG into an SVG, shape or text drawing under the same id; bed objects keep their place and width and take the new proportions. Prepared drawings: replace the source in Prepare |
 | Download original | HAVE | | "Save" button |
 | Delete with confirmation; refused while plotting | HAVE | | |
-| Trash / undo delete | TODO | P2 | delete is permanent today |
+| Trash / undo delete | HAVE |  | Delete moves to the Trash (30 days, then gone); Restore, Delete for good, Empty the trash. The drawing's bed objects leave as an undoable edit |
 | Project file: scene of several objects with layers and settings | HAVE | | the bed document (`document.py`): objects with their own transform, composed into one SVG in machine mm and planned with `plot_svg.py --absolute` |
 | New / open / save / save as project | HAVE | | Library tab, Projects: save the bed under a name, open (undoable), delete, clear the bed |
 | Recent projects | PART | P3 | projects are listed newest first; no separate recent list |

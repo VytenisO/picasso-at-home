@@ -273,6 +273,11 @@ button.icon[aria-pressed="true"] { background: var(--info-bg); border-color: var
 .chip.on { background: var(--info-bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .turtle { display: grid; gap: 8px; }
 .swatches { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.lib-tools { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; margin-bottom: 8px; }
+.lib-tools input, .lib-tools select { min-width: 0; font-size: 13px; }
+.trash { margin-top: 12px; }
+.trash summary { cursor: pointer; font-weight: 600; }
+.files li.trashed img { opacity: .6; }
 .view-menu { position: absolute; right: 8px; top: 44px; z-index: 20; display: grid; gap: 8px; padding: 12px; width: 260px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .25); }
 .workspace.no-panels { grid-template-columns: 0 minmax(0, 1fr) 0; }

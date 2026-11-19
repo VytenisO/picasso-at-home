@@ -143,8 +143,22 @@
       </div>
       <div class="section">
         <h2>Library</h2>
+        <div class="lib-tools">
+          <input id="libSearch" type="search" placeholder="Search names" aria-label="Search the library">
+          <select id="libKind" aria-label="Kind"><option value="">All kinds</option></select>
+          <select id="libSort" aria-label="Sort"><option value="new">Newest first</option><option value="old">Oldest first</option>
+            <option value="name">Name A-Z</option></select>
+        </div>
         <ul id="fileList" class="files" aria-label="Uploaded drawings"></ul>
-        <p id="fileEmpty" class="hint">Nothing here yet. Add a drawing above.</p>
+        <p id="fileEmpty" class="hint">Nothing here yet. Add a drawing above, or paste an SVG or image (Ctrl+V).</p>
+        <input id="replaceInput" type="file" accept=".svg" hidden>
+        <details id="trashBox" class="trash">
+          <summary>Trash <span id="trashCount" class="muted"></span></summary>
+          <p class="hint">Deleted drawings stay here for 30 days. Restoring one brings it back to the library; Undo on the
+            bed puts its objects back.</p>
+          <ul id="trashList" class="files" aria-label="Trash"></ul>
+          <button type="button" id="trashEmpty" class="danger-text">Empty the trash</button>
+        </details>
       </div>
       <div class="section">
         <h2>Projects</h2>

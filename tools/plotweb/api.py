@@ -1071,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, {"files": self.app.lib.list(), "rev": self.app.lib.rev})
 
     def _file_out(self, field, ctype, inline):
-        e = self.app.lib.get(self.query().get("id", ""))
+        e = self.app.lib.get(self.query().get("id", ""), trashed=None)     # the trash shows thumbnails too
         if not e:
             raise ApiError(404, "Unknown file.")
         p = self.app.lib.path(e, field)
@@ -1119,13 +1119,47 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, dict(out, ok=True))
 
     def r_delete(self):
+        """Delete = move to the trash. Refused while it is being plotted."""
         ident = self.json_body().get("id", "")
         job = self.app.runner.snapshot()["job"]
-        if self.app.runner.busy() and job and job["meta"].get("file") == ident:
-            raise ApiError(409, "This file is being plotted. Stop the job first.")
-        if not self.app.lib.delete(ident):
+        if self.app.runner.busy() and job and (job["meta"].get("file") == ident or job["meta"].get("doc")):
+            raise ApiError(409, "A plot is running. Delete drawings when it has ended.")
+        e = self.app.lib.trash(ident)
+        if not e:
             raise ApiError(404, "Unknown file.")
-        self.send(200, {"ok": True})
+        self.app.ev.log("info", f"Moved {e['name']} to the trash.")
+        self.send(200, {"ok": True, "trashed": e["trashed"]})
+
+    def r_trash(self):
+        self.app.lib.purge_old()
+        self.send(200, {"files": self.app.lib.list(trashed=True)})
+
+    def r_restore(self):
+        e = self.app.lib.restore(self.json_body().get("id", ""))
+        if not e:
+            raise ApiError(404, "Not in the trash.")
+        self.app.ev.log("info", f"Restored {e['name']} from the trash.")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}})
+
+    def r_purge(self):
+        b = self.json_body()
+        ids = [e["id"] for e in self.app.lib.list(trashed=True)] if b.get("all") else [b.get("id", "")]
+        n = sum(1 for i in ids if self.app.lib.get(i, trashed=True) and self.app.lib.delete(i))
+        if not b.get("all") and not n:
+            raise ApiError(404, "Not in the trash.")
+        self.app.ev.log("info", f"Deleted {n} drawing{'s' if n != 1 else ''} for good.")
+        self.send(200, {"ok": True, "deleted": n})
+
+    def r_replace(self):
+        ident = self.query().get("id", "")
+        if self.app.runner.busy():
+            raise ApiError(409, "A job is running. Replace the drawing when it has ended.")
+        try:
+            e = self.app.lib.replace_svg(ident, self.raw_body())
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        self.app.ev.log("info", f"Replaced the drawing of {e['name']}.")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}})
 
     def r_text_art(self):
         from svg_vector import text_art_svg
@@ -1434,6 +1468,7 @@ ROUTES_GET = {
     "/api/files/natural": (Handler.r_natural, True),
     "/api/doc": (Handler.r_doc, True),
     "/api/plotter": (Handler.r_plotter, True),
+    "/api/files/trash": (Handler.r_trash, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
 }
@@ -1445,6 +1480,9 @@ ROUTES_POST = {
     "/api/files/convert_preview": (Handler.r_convert_preview, True),
     "/api/files/delete": (Handler.r_delete, True),
     "/api/files/rename": (Handler.r_rename, True),
+    "/api/files/restore": (Handler.r_restore, True),
+    "/api/files/purge": (Handler.r_purge, True),
+    "/api/files/replace": (Handler.r_replace, True),
     "/api/export_doc": (Handler.r_export_doc, True),
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),

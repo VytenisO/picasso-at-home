@@ -8,7 +8,7 @@ import { initDoc } from './doc.js';
 import { initWorkspace, openFile, refreshFiles, runPreview, initTextTool } from './workspace.js';
 import * as D from './doc.js';
 import { initRun, pause, resume, stop } from './run.js';
-import { initLibrary } from './library.js';
+import { initLibrary, setObjectPaste } from './library.js';
 import { initTools } from './tools.js';
 import { initLive } from './live.js';
 import { initConsole, addEvents, resetConsole } from './console.js';
@@ -54,6 +54,7 @@ function initOnce() {
   initTextTool();
   initRun();
   initLibrary();
+  setObjectPaste(D.paste);
   initTools();
   initLive();
   initConsole();
@@ -231,7 +232,7 @@ function docKey(e) {
   if (mod && k === 'd') { e.preventDefault(); D.duplicateSel(); return true; }
   if (mod && k === 'c' && state.sel.length && !String(window.getSelection())) { D.copySel(); return true; }
   if (mod && k === 'x' && state.sel.length) { e.preventDefault(); D.cutSel(); return true; }
-  if (mod && k === 'v') { e.preventDefault(); D.paste(); return true; }
+  if (mod && k === 'v') return true;      // the paste event decides: an SVG or image from outside, else copied objects
   if (!mod && (e.key === 'Delete' || e.key === 'Backspace') && state.sel.length) { e.preventDefault(); D.removeSel(); return true; }
   if (!mod && e.key === 'Escape' && state.sel.length) { D.select([]); return true; }
   return false;
