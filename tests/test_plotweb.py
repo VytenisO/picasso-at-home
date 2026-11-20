@@ -997,6 +997,28 @@ class TestDocument(SimServer):
         self.assertIn("#HEAD ", text)
         self.assertIn("\nSM,", text)
 
+    def test_04v_pages(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="20mm" viewBox="0 0 20 20">'
+               b'<path d="M0 0 L20 20" stroke="#000"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "pg.svg", "X-Params": "{}"})
+        fid = d["file"]["id"]
+        doc = {"objects": [self.obj(fid, 100, 50, 20, 20), self.obj(fid, 100, 50, 20, 20, id="p2", page=1)],
+               "settings": {"pages": 2}}
+        code, pv = self.call("POST", "/api/preview", {"doc": dict(doc, settings={"pages": 2, "dedupe": True, "overlaps": True})})
+        self.assertEqual(pv["summary"]["strokes"], 2)          # repeats are per page
+        code, pv = self.call("POST", "/api/preview", {"doc": doc})
+        self.assertTrue(pv["ok"], pv)
+        self.assertEqual(pv["summary"]["strokes"], 2)          # the same spot on two sheets: not merged or deduped
+        code, r = self.call("POST", "/api/job/start", {"doc": doc, "plan_id": pv["plan_id"], "mode": "plot",
+                                                      "confirm": {"parked": True}})
+        self.assertEqual(code, 200, r)
+        st = self.wait_state(("paused",))
+        self.assertEqual(st["job"]["pause"]["kind"], "page")
+        self.assertEqual(st["job"]["pause"]["page"], 1)
+        self.assertIn("page 2", st["job"]["message"])
+        self.call("POST", "/api/job/continue", {"job": r["job"], "pause": st["job"]["pause"]["id"]})
+        self.wait_state(("complete",))
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

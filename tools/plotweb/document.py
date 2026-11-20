@@ -82,6 +82,9 @@ def clean_objects(raw, known_files):
             out[-1]["locked"] = True
         if o.get("guide") is True:             # shown on the bed for lining things up, never plotted
             out[-1]["guide"] = True
+        pg = o.get("page")
+        if isinstance(pg, int) and not isinstance(pg, bool) and 0 < pg < 50:    # sheet of a several-page project
+            out[-1]["page"] = pg
         seam = o.get("seam")
         # the start point for closed shapes, as fractions of the object's box, so it moves with the object
         if isinstance(seam, list) and len(seam) == 2 and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in seam):
@@ -160,6 +163,8 @@ def compose(objects, files, bed, remap=None):
         outer = ET.SubElement(root, f"{{{SVG_NS}}}g", {
             "id": f"obj-{o['id']}", "data-obj": str(n),
             "transform": f"matrix({a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g} {f:.9g})"})
+        if o.get("page"):
+            outer.set("data-page", str(o["page"]))
         if o.get("seam"):                   # in machine mm: the nearest vertex of each closed stroke starts there
             outer.set("data-seam", f"{o['x'] + o['seam'][0] * o['w']:.3f} {o['y'] + o['seam'][1] * o['h']:.3f}")
         attrs = {k: v for k, v in src.attrib.items() if k not in ROOT_ONLY and not k.startswith("{")}
@@ -227,7 +232,7 @@ def bed_key(objects, settings):
     """Hash of what decides the plot order, without the resume point: a stopped plot can resume only on the same
     bed. Objects as validated by clean_objects."""
     st = {k: v for k, v in (settings or {}).items() if k not in ("start_at", "guides")}    # guides are never plotted
-    raw = json.dumps({"o": [{k: o.get(k) for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy", "ink", "seam")} for o in objects],
+    raw = json.dumps({"o": [{k: o.get(k) for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy", "ink", "seam", "page")} for o in objects],
                       "s": st}, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -295,7 +300,8 @@ class DocStore:
                                        "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
                                        "keep_motors", "simplify", "corner_starts", "inner_first", "approach",
                                        "start_delay", "end_delay", "trace_shape", "trace_repeat", "notes", "overlaps",
-                                       "origin", "origin_anchor", "recolor", "paper_profile")}
+                                       "origin", "origin_anchor", "recolor", "paper_profile",
+                                       "pages")}
         if keep.get("notes") is not None:
             keep["notes"] = str(keep["notes"])[:2000]
         with self.lock:

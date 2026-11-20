@@ -62,7 +62,7 @@ export function initWorkspace() {
   on(['doc', 'preview', 'job'], renderLayers);
   on(['doc', 'sel', 'files', 'job'], renderObjects);
   on(['projects', 'doc', 'job'], renderProjects);
-  on(['doc', 'history', 'job'], renderTitle);
+  on(['doc', 'history', 'job', 'page'], renderTitle);
   on(['job'], () => { f.querySelectorAll('input, select').forEach((i) => { i.disabled = jobActive(); }); });
   setAnchor(anchor);
 }
@@ -81,7 +81,22 @@ export async function openFile(id) {
   return D.addFile(id);
 }
 
+function renderPages() {
+  const bar = $('pageBar'), n = D.pageCount(), cur = D.curPage(), locked = jobActive();
+  if (n === 1) {
+    bar.replaceChildren(el('button', { type: 'button', class: 'icon', text: '+ page', disabled: locked,
+      title: 'Add a second sheet to this project', onclick: () => D.addPage() }));
+    return;
+  }
+  bar.replaceChildren(...Array.from({ length: n }, (_, i) => el('button', { type: 'button', role: 'tab', text: `Page ${i + 1}`,
+    'aria-selected': String(i === cur), 'aria-pressed': String(i === cur),
+    title: `${state.doc.objects.filter((o) => (o.page || 0) === i).length} drawing(s)`, onclick: () => D.showPage(i) })),
+  el('button', { type: 'button', class: 'icon', text: '+', title: 'Add a page', disabled: locked, onclick: () => D.addPage() }),
+  el('button', { type: 'button', class: 'icon', text: '-', title: 'Remove this page (it must be empty)', disabled: locked, onclick: () => D.removePage() }));
+}
+
 function renderTitle() {
+  renderPages();
   const d = state.doc;
   const n = d ? d.objects.length : 0;
   $('bedTitle').textContent = !n ? 'The bed is empty'

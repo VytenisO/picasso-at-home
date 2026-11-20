@@ -650,6 +650,9 @@ class JobRunner:
                 elif info.get("kind") == "paper":
                     msg = (f"Paper change: copy {info['copy'] - 1} of {info['copies']} is done. Put in fresh paper "
                            "in the same place, then Continue.")
+                elif info.get("kind") == "page":
+                    msg = (f"Next sheet: page {info.get('page', 0)} is done. Put in the sheet for page "
+                           f"{info.get('page', 0) + 1} at the same corner, then Continue.")
                 else:
                     msg = "Paused. Pen is up; motors stay on, so do not push the carriage."
                 stopping = j["state"] in ("stopping", "returning")
@@ -657,7 +660,7 @@ class JobRunner:
                 if not stopping:
                     j.update(state="paused", message=msg)
             self._log("warn", msg)
-            if info.get("kind") in ("swap", "paper") and not j.get("sim"):
+            if info.get("kind") in ("swap", "paper", "page") and not j.get("sim"):
                 self.notify("Plotter waiting", msg)
             self._emit_state()
         elif line.startswith("__RESUMED__"):

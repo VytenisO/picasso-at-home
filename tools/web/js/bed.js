@@ -127,7 +127,7 @@ export function initBed() {
   const showInk = () => { inkBtn.setAttribute('aria-pressed', String(inkMode())); inkBtn.textContent = inkMode() ? 'Ink' : 'Lines'; };
   inkBtn.onclick = () => { setInkMode(!inkMode()); showInk(); redraw(); };
   showInk();
-  on(['me', 'doc', 'sel', 'naturals', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'liveStrokes', 'scrub'], redraw);
+  on(['me', 'doc', 'sel', 'naturals', 'preview', 'previewStale', 'job', 'jobPreview', 'pos', 'liveStrokes', 'scrub', 'page'], redraw);
   initScrub();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { colors = {}; redraw(); });
 }
@@ -187,7 +187,7 @@ function donePath(jp, n) {
   return done.path;
 }
 
-const objects = () => draft || (state.doc ? state.doc.objects : []);
+const objects = () => (draft || (state.doc ? state.doc.objects : [])).filter(D.onPage);
 const editable = () => !jobActive() && !!state.doc;
 
 function render() {
@@ -233,7 +233,7 @@ function render() {
     ctx.stroke(donePath(jp, n));
   } else if (!liveOn && state.doc) {
     const pv = state.preview;
-    if (pv && pv.strokes && pv.doc && !state.previewStale && !draft) {
+    if (pv && pv.strokes && pv.doc && !state.previewStale && !draft && D.pageCount() === 1) {
       const order = pv.order || [];
       const k = state.scrub === null ? order.length : state.scrub;
       if (state.scrub !== null || (pv.summary && pv.summary.start_at > 0)) {
@@ -474,7 +474,7 @@ function snapTargets(exclude) {
   const ys = [c[1], (c[1] + c[3]) / 2, c[3], paper[1], paper[1] + paper[3]];
   for (const g of guides()) (g.axis === 'x' ? xs : ys).push(g.at);
   for (const o of state.doc.objects) {
-    if (exclude.includes(o.id)) continue;
+    if (exclude.includes(o.id) || !D.onPage(o)) continue;
     const b = G.bounds([o]);
     xs.push(b.x0, (b.x0 + b.x1) / 2, b.x1);
     ys.push(b.y0, (b.y0 + b.y1) / 2, b.y1);
@@ -585,6 +585,12 @@ function openMenu(clientX, clientY, mm) {
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
     item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
+    item('Move to another page...', async () => {
+      const t = await askText('Move to page', `Page number (1 to ${D.pageCount() + 1}; one more makes a new page):`, String(D.curPage() + 2), 'Move');
+      const n = Number(t);
+      if (Number.isInteger(n) && n >= 1 && n <= Math.min(49, D.pageCount() + 1)) D.moveSelToPage(n - 1);
+      else if (t !== null) toast('No such page.', true);
+    }),
     D.selected().every((o) => o.guide)
       ? item('Plot it (not a guide)', () => D.editSel((objs) => { for (const o of objs) delete o.guide; }, { allowLocked: true }))
       : item('Make it a guide (shown, never plotted)', () => D.editSel((objs) => { for (const o of objs) o.guide = true; }, { allowLocked: true })),
@@ -1045,7 +1051,7 @@ function up(e) {
   } else if (d && d.mode === 'marquee') {
     if (d.rect && d.moved) {
       const r = d.rect;
-      const hits = state.doc.objects.filter((o) => {
+      const hits = state.doc.objects.filter(D.onPage).filter((o) => {
         const b = G.bounds([o]);
         return r.touch ? b.x1 >= r.x0 && b.x0 <= r.x1 && b.y1 >= r.y0 && b.y0 <= r.y1
           : b.x0 >= r.x0 && b.x1 <= r.x1 && b.y0 >= r.y0 && b.y1 <= r.y1;

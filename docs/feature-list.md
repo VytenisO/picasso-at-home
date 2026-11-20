@@ -185,7 +185,7 @@ niche.
 | Copy along path | HAVE |  | Line tools, Copy along a path: the first object selected is the path (its longest line); the rest are copied evenly along it, turned with it |
 | Quick pack small items on a sheet | HAVE |  | Line tools, Pack onto the canvas: rows from the canvas's top-left, tallest first, 3 mm apart (bounding boxes) |
 | Shape-aware nesting | SKIP | | material saving; paper is not the constraint |
-| Several pages in one project | TODO | P3 | sheet sequence with paper-change holds; live mode already has New page |
+| Several pages in one project | HAVE |  | bed toolbar: Page tabs, + and -; right-click Move to another page; the plot goes page by page and waits at S for the next sheet; repeats and overlaps are per page. With several pages the bed shows the current page's drawings, not the combined preview |
 
 ## 7. Snapping
 

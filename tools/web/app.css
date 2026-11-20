@@ -455,3 +455,4 @@ input.swatch-pick { width: 22px; height: 22px; padding: 0; border: 1px solid var
 .resizer:hover, .resizer.drag { background: var(--accent); opacity: .35; }
 .workspace.no-panels > .resizer { display: none; }
 @media (max-width: 900px) { .resizer { display: none; } }
+.pages button[aria-selected="true"] { font-weight: 600; }

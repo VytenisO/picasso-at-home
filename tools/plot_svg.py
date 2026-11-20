@@ -388,6 +388,29 @@ def same_pen(la, lb):
     return bool(la.get("pen")) and la.get("pen") == lb.get("pen")
 
 
+def pause_for_page(page, a, ctl=None):
+    """Between the sheets of a several-page project: the pen is up at S, the next sheet goes in."""
+    info = {"kind": "page", "page": page}
+    log(f"*** PAGE {page + 1}: put in the next sheet, at the same corner ***")
+    if ctl:
+        ctl.drain()
+    print("__PAUSE__:" + json.dumps(info), flush=True)
+    if EMIT is not None:
+        EMIT.append(("PAUSE", info))
+    if ctl:
+        go = ctl.wait_continue()
+        if go:
+            print("__RESUMED__:{}", flush=True)
+        return go
+    if a.sim:
+        return True
+    try:
+        input(f"Sheet {page + 1} in? Type CONTINUE to plot it: ")
+    except EOFError:
+        raise SystemExit("input closed while waiting for the next sheet")
+    return True
+
+
 def pause_for_paper(copy, copies, a, ctl=None):
     """Between copies: the carriage is at S, pen up, motors on. Wait for new paper and CONTINUE.
     -> False if the operator asked to return (it is already at S) instead."""
@@ -618,8 +641,10 @@ def load_svg(path, ignore_unsupported):
                 pass
         if el.get("data-obj") is not None and el.get("data-obj").isdigit():
             cur["obj"] = int(el.get("data-obj"))          # which bed object (the web UI's composed document)
+        if el.get("data-page") is not None and el.get("data-page").isdigit():
+            cur["page"] = int(el.get("data-page"))        # which sheet of a several-page project
         meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam")}
+                "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam"), "page": cur.get("page")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -685,7 +710,7 @@ def load_svg(path, ignore_unsupported):
         if cur.get("fill") and el_rings and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
             fills.append({"rings": el_rings, "color": cur["fill"], "opacity": cur["fop"],
                           "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                          "obj": cur.get("obj")})
+                          "obj": cur.get("obj"), "page": cur.get("page")})
         for child in el:
             walk(child, cur, xform)
 
@@ -1232,6 +1257,7 @@ def main():
             for ln in lines:
                 fpolys.append(ln)
                 fmetas.append({"color": f["color"], "layer": flayer, "pressure": f["pressure"], "obj": f.get("obj"),
+                               "page": f.get("page"),
                                "shape": fi + 1, "flayer": f["layer"]})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
         log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
@@ -1353,7 +1379,8 @@ def main():
             return 0
         g = (fills_cfg.get(layer_key((m.get("color"), m.get("flayer", m.get("layer"))))) or {}).get("group", "all")
         return m.get("obj") or 0 if g == "object" else m.get("shape") or 0 if g == "shape" else 0
-    order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0), obj_of(i),
+    page_of = lambda i: metas[i].get("page") or 0  # noqa: E731
+    order.sort(key=lambda i: (page_of(i), (rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0), obj_of(i),
                               not metas[i].get("fill"), fill_group(i)))
     # a stroke's own data-speed (test sheets) wins over its layer's speed, which wins over the job's
     speed_of = [metas[i].get("speed") or lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
@@ -1367,7 +1394,7 @@ def main():
         seams = {i: metas[i]["seam"] for i in order if metas[i].get("seam")} if a.absolute else {}
         blocks, cur = [], (-ox, -oy)
         for i in order:     # one block per pen and per fill/outline run: those boundaries stay where they are
-            k = (stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")), fill_group(i))
+            k = (page_of(i), stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")), fill_group(i))
             if not blocks or blocks[-1][0] != k:
                 blocks.append((k, []))
             blocks[-1][1].append(i)
@@ -1641,7 +1668,17 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
             cur_layer = None
             copy_no = [1]
             plan = [(c, i) for c in range(a.copies) for i in (order if c == 0 else full_order)]
+            cur_page = [None]
             for c, i in plan:
+                pg = page_of(i)
+                if c + 1 == copy_no[0] and cur_page[0] is not None and pg != cur_page[0]:
+                    # the next sheet of the project: back to S, then wait for it to go in
+                    p.move_to(0, 0, a.travel_speed)
+                    p.idle()
+                    if not pause_for_page(pg, a, ctl):
+                        returned = True
+                        break
+                cur_page[0] = pg
                 if c + 1 != copy_no[0]:
                     # a new copy: back to S, then wait for fresh paper (the pen stays the last layer's)
                     p.move_to(0, 0, a.travel_speed)

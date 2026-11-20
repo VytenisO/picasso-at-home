@@ -90,7 +90,7 @@ function nextStep(job) {
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
       ? 'Change the pen, check it is up and seated, then press Continue.'
-      : job.pause && job.pause.kind === 'paper'
+      : job.pause && (job.pause.kind === 'paper' || job.pause.kind === 'page')
         ? 'Put in fresh paper exactly where the last sheet was, then press Continue.'
         : 'Press Continue to carry on, Return to start, or Stop.';
     case 'stopping': return 'Wait: the move already sent is finishing. Switch the plotter off for an instant stop.';
@@ -149,6 +149,10 @@ function renderStatus() {
       $('swapText').textContent = (pz.pen ? `Put in the ${pz.pen} pen` : 'Put in the pen') +
         ` for layer ${pz.layer_index + 1} (${pz.label}). The pen is up and the motors are on: do not push the carriage. ` +
         'Change only the pen, then press Continue.';
+    } else if (pz.kind === 'page') {
+      $('swapTitle').textContent = `Next sheet: page ${pz.page + 1}`;
+      $('swapText').textContent = `Page ${pz.page} is done and the carriage is back at S, pen up, motors on: do not push it. ` +
+        `Take the sheet out, put the sheet for page ${pz.page + 1} in exactly the same place, then press Continue.`;
     } else if (pz.kind === 'paper') {
       $('swapTitle').textContent = `Paper change: copy ${pz.copy} of ${pz.copies}`;
       $('swapText').textContent = `Copy ${pz.copy - 1} is done and the carriage is back at S, pen up, motors on: do not push it. ` +
@@ -278,6 +282,7 @@ function initNotify() {
     let msg = null;
     if (j.state === 'paused' && j.pause && j.pause.kind === 'swap') msg = `Pen change: ${j.pause.label}${j.pause.pen ? ` (${j.pause.pen})` : ''}`;
     else if (j.state === 'paused' && j.pause && j.pause.kind === 'paper') msg = `Paper change: copy ${j.pause.copy} of ${j.pause.copies}`;
+    else if (j.state === 'paused' && j.pause && j.pause.kind === 'page') msg = `Next sheet: page ${j.pause.page + 1}`;
     else if (['complete', 'stopped', 'error', 'interrupted'].includes(j.state)) msg = `${title(j)}: ${j.meta && j.meta.name ? j.meta.name : j.kind}`;
     if (!msg) return;
     if (prefs('sound')) tone();

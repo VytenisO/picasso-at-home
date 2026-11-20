@@ -108,7 +108,41 @@ export function select(ids, { add = false, toggle = false } = {}) {
   set({ sel: s });
 }
 
-export function selectAll() { if (state.doc) select(state.doc.objects.map((o) => o.id)); }
+export function selectAll() { if (state.doc) select(state.doc.objects.filter(onPage).map((o) => o.id)); }
+
+// ------------------------------------------------------------------ pages: sheets of one project
+// Each object has a page (0 when unset); the bed shows and edits one page at a time, the plot holds for the
+// next sheet between pages. settings.pages keeps empty pages too.
+export const curPage = () => Math.min(state.page || 0, pageCount() - 1);
+export const onPage = (o) => (o.page || 0) === curPage();
+export function pageCount() {
+  if (!state.doc) return 1;
+  return Math.max(state.doc.settings.pages || 1, ...state.doc.objects.map((o) => (o.page || 0) + 1));
+}
+export function showPage(n) { set({ page: Math.max(0, Math.min(n, pageCount() - 1)), sel: [] }); }
+export function addPage() {
+  const n = pageCount();
+  if (n >= 49) { toast('At most 49 pages.', true); return; }
+  edit((d) => { d.settings.pages = n + 1; });
+  showPage(n);
+}
+export function removePage() {
+  const p = curPage();
+  if (pageCount() <= 1) return;
+  if (state.doc.objects.some(onPage)) { toast('Move or remove the drawings on this page first.', true); return; }
+  edit((d) => {
+    for (const o of d.objects) if ((o.page || 0) > p) { o.page -= 1; if (!o.page) delete o.page; }
+    d.settings.pages = Math.max(1, (d.settings.pages || 1) - 1) > 1 ? Math.max(1, (d.settings.pages || 1) - 1) : null;
+  });
+  showPage(Math.max(0, p - 1));
+}
+export function moveSelToPage(n) {
+  editSel((objs, d) => {
+    for (const o of objs) { if (n) o.page = n; else delete o.page; }
+    if (n + 1 > (d.settings.pages || 1)) d.settings.pages = n + 1;
+  }, { allowLocked: true });
+  showPage(n);
+}
 
 // ------------------------------------------------------------------ server
 export async function loadDoc() {
@@ -230,8 +264,9 @@ export async function addFile(id, { select: pick = true, at = null, replace = []
   const fit = Math.min(1, (c[2] - c[0]) / w, (c[3] - c[1]) / h);
   w *= fit; h *= fit;
   const o = { id: newId(), file: id, x: c[0], y: c[1], w: G.r2(w), h: G.r2(h), rot: 0, fx: false, fy: false, g: g.svg_hash };
+  if (curPage()) o.page = curPage();
   const s = entry.settings || {};
-  const others = state.doc.objects;
+  const others = state.doc.objects.filter(onPage);
   if (!others.length && s.x !== null && s.x !== undefined && s.w) {
     // the drawing's place from before the bed held several objects
     o.x = s.x; o.y = s.y; o.w = G.r2(s.w); o.h = G.r2(g.raw_w > 1e-6 ? s.w * g.raw_h / g.raw_w : h);
@@ -330,7 +365,7 @@ export async function pasteInPlace() {
   const known = clip.filter((o) => state.files.some((f) => f.id === o.file));
   if (!known.length) { toast('The copied drawings are no longer in the library.', true); return; }
   await ensureNaturals(known);
-  const copies = regroup(known.map((o) => ({ ...o, id: newId(), locked: undefined })));
+  const copies = regroup(known.map((o) => ({ ...o, id: newId(), locked: undefined, page: curPage() || undefined })));
   edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
 }
 
@@ -458,7 +493,7 @@ export async function paste() {
   if (!known.length) { toast('The copied drawings are no longer in the library.', true); return; }
   await ensureNaturals(known);
   pasteN++;
-  const copies = regroup(known.map((o) => ({ ...o, id: newId(), x: G.r2(o.x + 5 * pasteN), y: G.r2(o.y + 5 * pasteN), locked: undefined })));
+  const copies = regroup(known.map((o) => ({ ...o, id: newId(), x: G.r2(o.x + 5 * pasteN), y: G.r2(o.y + 5 * pasteN), locked: undefined, page: curPage() || undefined })));
   edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
 }
 
