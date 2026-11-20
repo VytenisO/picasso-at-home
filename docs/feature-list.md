@@ -453,7 +453,7 @@ niche.
 | Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | HAVE |  | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc, R/Shift+R turn, H/V mirror, Ctrl+G/Ctrl+Shift+G group |
 | Shortcut list in the help dialog kept in sync | HAVE |  | the help dialog's list is built from the same table as the tooltips |
 | Rebind shortcuts | HAVE |  | Preferences, Keyboard: click a key and press the new one; the old key is then free |
-| First-run setup wizard (connect, park, calibrate, pen height) | TODO | P3 | |
+| First-run setup wizard (connect, park, calibrate, pen height) | HAVE |  | Help, Setup guide: connect (checks the board), park at S, calibrate, pen height, paper and a first plot, each with a button to the control; opens by itself once on a never-calibrated machine |
 
 ## 19. Integration
 

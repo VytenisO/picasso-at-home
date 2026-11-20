@@ -83,7 +83,8 @@ class App:
                 "plotter": hardware.LAST if authed else None,
                 "machine_cfg": {"travel": cfg.get("travel_mm"), "signs": {a: cfg["axis"][a].get("sign", 1) for a in ("x", "y")},
                                 "limits": cfg.get("limits") or {}, "ceilings": CEILINGS,
-                                "steps_per_mm": cfg.get("steps_per_mm")} if authed else None}
+                                "steps_per_mm": cfg.get("steps_per_mm"), "measured": cfg.get("measured")}
+                if authed else None}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new

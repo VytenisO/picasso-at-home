@@ -16,7 +16,7 @@ import { initConsole, addEvents, resetConsole } from './console.js';
 import { initWs, showWs } from './ws.js';
 import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
 import { initMachine, reloadConfig } from './machine.js';
-import { initMenuBar } from './menubar.js';
+import { initMenuBar, maybeWizard } from './menubar.js';
 
 let stream = null;
 
@@ -37,6 +37,7 @@ async function boot() {
 // Everything that can differ between server runs (simulator or hardware, machine, pens, catalogue).
 async function loadServerInfo(me) {
   set({ me });
+  setTimeout(maybeWizard, 500);
   $('logoutBtn').hidden = !me.auth_required;
   $('modeBadge').textContent = me.sim ? 'Simulator' : 'Hardware';
   $('modeBadge').className = 'badge ' + (me.sim ? 'sim' : 'hw');

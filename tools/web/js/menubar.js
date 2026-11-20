@@ -61,6 +61,7 @@ const MENUS = [
   ['Help', [
     ['How plotting works, shortcuts', () => $('helpDlg').showModal(), '?'],
     ["What's this? (then click a control)", () => whatsThis(), 'Shift+F1'],
+    ['Setup guide (first run)', () => openWizard()],
     ['Download the log', () => { location.href = '/api/log/download'; }],
     ['Diagnostic bundle', () => { location.href = '/api/diagnostics'; }],
   ]],
@@ -204,7 +205,56 @@ function initPrefs() {
   $('prefsKeysReset').onclick = () => { prefs('keys', {}); renderKeys(); };
 }
 
+// ---- first-run setup guide: each step explains, and its button takes you to the control that does it
+const WIZ = [
+  ['Connect', 'Plug the plotter in by USB and switch it on. Check asks the board for its firmware and shows whether the server can talk to it.',
+    'Check the plotter', async () => {
+      const { api } = await import('./api.js');
+      try {
+        const r = await api('/api/plotter');
+        return r.ok ? `Found${r.port ? ' on ' + r.port : ''}: ${r.firmware || r.message || 'the board answers'}.` : `Not found: ${r.message || 'no answer'}. Check the cable and power.`;
+      } catch (e) { return e.message; }
+    }],
+  ['Park at S', "The plotter has no switches, so it knows where it is only from where you leave it. Switch the motors off (Machine, Release), push the carriage by hand to the paper's top-left corner, pen up. That point is S; every run starts and ends there.",
+    'Open Machine control', () => { closeWiz(); tab('machine')(); }],
+  ['Calibrate the distances', 'Steps per mm decide whether 100 mm on screen is 100 mm on paper. Under Machine, Calibration: draw a test line, measure it with a ruler, type the length; repeat for Y. Do it once per machine, and again if a belt is changed.',
+    'Open Calibration', () => { closeWiz(); focus('#calLen', 'machine')(); }],
+  ['Pen height', "Pen up must clear the paper and pen down must touch it lightly. Tools, Pen height test moves only the pen; a too-low pen-down can gouge the paper, so set it by hand with a pen mounted.",
+    'Open the pen height test', () => { closeWiz(); tab('tools')(); setTimeout(() => {
+      const d = [...document.querySelectorAll('#toolList details')].find((x) => /pen height/i.test(x.textContent));
+      if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); }
+    }, 100); }],
+  ['Paper and a first plot', 'Under Machine, Paper, set the sheet (or measure it with the pen). Then Library, upload a drawing, Preview, Simulate to watch it on the screen, and Plot.',
+    'Open Paper', () => { closeWiz(); focus('#paperForm', 'machine')(); }],
+];
+let wizAt = 0;
+function closeWiz() { $('wizDlg').close(); prefs('wizardSeen', true); }
+function renderWiz() {
+  const [head, text, act] = WIZ[wizAt];
+  $('wizStepNo').textContent = `Step ${wizAt + 1} of ${WIZ.length}`;
+  $('wizHead').textContent = head; $('wizText').textContent = text; $('wizAct').textContent = act;
+  $('wizResult').textContent = '';
+  $('wizBack').disabled = wizAt === 0;
+  $('wizNext').textContent = wizAt === WIZ.length - 1 ? 'Done' : 'Next';
+}
+export function openWizard(at = 0) {
+  wizAt = at; renderWiz();
+  if (!$('wizDlg').open) $('wizDlg').showModal();
+}
+function initWizard() {
+  $('wizAct').onclick = async () => { const r = await WIZ[wizAt][3](); if (typeof r === 'string') $('wizResult').textContent = r; };
+  $('wizBack').onclick = () => { wizAt = Math.max(0, wizAt - 1); renderWiz(); };
+  $('wizNext').onclick = () => { if (wizAt === WIZ.length - 1) closeWiz(); else { wizAt++; renderWiz(); } };
+  $('wizClose').onclick = closeWiz;
+}
+// opens by itself once per browser on a machine that has never been calibrated
+export function maybeWizard() {
+  const c = state.me && state.me.machine_cfg;
+  if (c && !c.measured && !prefs('wizardSeen')) openWizard();
+}
+
 export function initMenuBar() {
+  initWizard();
   buildMenuBar();
   initPrefs();
   initRebind();
