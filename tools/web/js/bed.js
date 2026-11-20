@@ -868,6 +868,15 @@ export const viewPrefs = () => ({ grid: 10, snapGrid: false, dir: false, nudge: 
 
 function initViewMenu() {
   const btn = $('viewBtn'), menu = $('viewMenu');
+  window.addEventListener('plotter-prefs', () => { loadView(); redraw(); status(); set({ units: viewPrefs().units || 'mm' }); });
+  loadView();
+  const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked,
+    nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked,
+    units: $('vUnits').value }); redraw(); status(); set({ units: $('vUnits').value }); };
+  initViewMenuRest(btn, menu, save);
+}
+
+function loadView() {
   const v = viewPrefs();
   $('vGrid').value = String(v.grid);
   $('vSnapGrid').checked = v.snapGrid;
@@ -876,9 +885,9 @@ function initViewMenu() {
   $('vSnapPx').value = String(v.snapPx);
   $('vLockGuides').checked = v.lockGuides;
   $('vUnits').value = v.units || 'mm';
-  const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked,
-    nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked,
-    units: $('vUnits').value }); redraw(); status(); set({ units: $('vUnits').value }); };
+}
+
+function initViewMenuRest(btn, menu, save) {
   for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides', 'vUnits']) $(id).onchange = save;
   const show = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };

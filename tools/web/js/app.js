@@ -16,6 +16,7 @@ import { initConsole, addEvents, resetConsole } from './console.js';
 import { initWs, showWs } from './ws.js';
 import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
 import { initMachine, reloadConfig } from './machine.js';
+import { initMenuBar } from './menubar.js';
 
 let stream = null;
 
@@ -72,6 +73,7 @@ function initOnce() {
   initMachine();
   initTheme();
   initKeys();
+  initMenuBar();
   on('job', followJob);
 }
 

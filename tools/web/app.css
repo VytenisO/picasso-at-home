@@ -426,3 +426,23 @@ button.danger-text { color: var(--err); }
 .ctx-menu button:hover:not(:disabled), .ctx-menu button:focus-visible { background: var(--info-bg); }
 .ctx-menu kbd { font: 11px var(--mono); color: var(--muted); }
 .ctx-menu hr { border: none; border-top: 1px solid var(--line); margin: 4px 2px; }
+
+/* menu bar */
+.menu-bar { display: flex; gap: 2px; margin-left: 8px; }
+.menu { position: relative; }
+.menu-top { background: none; border: 0; padding: 4px 9px; border-radius: 6px; color: inherit; font: inherit; cursor: pointer; }
+.menu-top:hover, .menu-top[aria-expanded="true"] { background: var(--hover, rgba(127,127,127,.15)); }
+.menu-list { position: absolute; top: 100%; left: 0; z-index: 60; min-width: 230px; padding: 4px; background: var(--panel, var(--bg));
+  border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.2); display: flex; flex-direction: column; }
+.menu-list[hidden] { display: none; }
+.menu-list button { display: flex; justify-content: space-between; gap: 16px; background: none; border: 0; text-align: left;
+  padding: 6px 10px; border-radius: 5px; color: inherit; font: inherit; cursor: pointer; }
+.menu-list button:hover, .menu-list button:focus-visible { background: var(--hover, rgba(127,127,127,.15)); }
+.menu-list kbd { color: var(--muted); font-size: 11px; }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+body.simple .adv { display: none !important; }
+body.whats-this, body.whats-this * { cursor: help !important; }
+.keys-table { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.keys-table td { padding: 3px 8px; font-size: 13px; }
+.keys-table td:last-child { white-space: nowrap; text-align: right; }
+body.whats-this [disabled] { pointer-events: none; }

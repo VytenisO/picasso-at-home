@@ -20,5 +20,6 @@ export function initWs() {
   for (const b of document.querySelectorAll('.ws-switch button')) b.onclick = () => showWs(b.dataset.ws);
   window.addEventListener('hashchange', () => showWs(location.hash.slice(1)));
   const want = location.hash.slice(1);
-  showWs(want === 'prepare' || want === 'plot' ? want : prefs('ws') === 'prepare' ? 'prepare' : 'plot');
+  const first = prefs('startWs') || prefs('ws');
+  showWs(want === 'prepare' || want === 'plot' ? want : first === 'prepare' ? 'prepare' : 'plot');
 }

@@ -25,6 +25,7 @@
 <div id="appView" hidden>
 <header class="topbar">
   <span class="brand">Pen plotter</span>
+  <nav class="menu-bar hide-narrow" id="menuBar" aria-label="Menu"></nav>
   <nav class="ws-switch" role="tablist" aria-label="Workspace">
     <button role="tab" id="wsBtn-prepare" data-ws="prepare" aria-selected="false" title="Turn an image, model or text into a drawing (1)">Prepare</button>
     <button role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place the drawing on the bed and plot it (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
@@ -733,6 +734,39 @@
     <p id="padInfo" class="hint"></p>
     <canvas id="padCanvas" aria-label="Writing pad: what you draw here is drawn on the paper"></canvas>
   </div>
+</dialog>
+
+<dialog id="prefsDlg" aria-labelledby="prefsTitle">
+  <form method="dialog" id="prefsForm" class="dlg">
+    <h2 id="prefsTitle">Preferences</h2>
+    <p class="hint">Kept in this browser. The View menu above the bed shows the same view settings.</p>
+    <div class="field-row">
+      <label class="field"><span>Lengths in</span><select name="units"><option value="mm">mm</option><option value="in">inches</option></select></label>
+      <label class="field"><span>Open on</span><select name="startWs"><option value="">the page used last</option>
+        <option value="plot">Plot</option><option value="prepare">Prepare</option></select></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Grid</span><select name="grid"><option value="0">Off</option><option value="1">1 mm</option>
+        <option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
+      <label class="field"><span>Nudge (mm)</span><select name="nudge"><option value="0.1">0.1</option><option value="0.5">0.5</option>
+        <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select></label>
+      <label class="field"><span>Snap distance</span><select name="snapPx"><option value="0">Off</option><option value="4">4 px</option>
+        <option value="7">7 px</option><option value="12">12 px</option></select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="snapGrid"> Moves snap to the grid (else to 0.5 mm)</label>
+    <label class="check"><input type="checkbox" name="dir"> Show path direction and start points after a preview</label>
+    <label class="check"><input type="checkbox" name="lockGuides"> Lock the guides</label>
+    <label class="check" title="Hides the planning fine-tuning, line tools, macros, the EBB command line and backups; nothing is switched off"><input type="checkbox" name="simple"> Simple mode: hide the advanced options</label>
+    <h3>Keyboard</h3>
+    <p class="hint">Click a key and press the new one. The old key then does nothing.</p>
+    <div class="keys-table"><table><tbody id="prefsKeys"></tbody></table></div>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <button type="button" id="prefsCancel">Cancel</button>
+      <span class="spacer"></span>
+      <button type="button" id="prefsKeysReset" class="link">All keys back to the defaults</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="helpDlg" aria-labelledby="helpTitle">

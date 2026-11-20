@@ -69,11 +69,11 @@ niche.
 | Collapse side panels to maximise the bed | HAVE |  | View, Hide side panels, or the backslash key; remembered in this browser |
 | Reset panel layout | TODO | P3 | only once panels can be resized or moved |
 | Resizable panels | TODO | P3 | |
-| Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | TODO | P2 | home for the commands below; the panels stay |
+| Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | HAVE |  | `menubar.js`: each item presses the existing control, so it is disabled under the same conditions; hidden on narrow screens |
 | Right-click context menu on bed and objects | HAVE | | objects: edit, turn, mirror, order, fit, zoom; empty bed: paste, select all, guides, fit |
 | Tooltips that show the shortcut | HAVE |  | every control a key presses gets the key in its tooltip, from the shortcut table (shortcuts.js) |
-| Context help (`?` on a control opens its help) | TODO | P3 | |
-| Simple / advanced mode (hide advanced options) | TODO | P3 | |
+| Context help (`?` on a control opens its help) | HAVE |  | Help, What's this? (Shift+F1): the next click on any control, disabled ones too, shows its explanation |
+| Simple / advanced mode (hide advanced options) | HAVE |  | Preferences: Simple mode hides planning fine-tuning, line tools, macros, the EBB command line and backups |
 | Language switch, right-to-left layout | SKIP | | one user |
 | Second editor window | SKIP | | a second browser tab does it |
 
@@ -448,11 +448,11 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | UI preferences in local storage (theme, tab, console) | HAVE | | |
-| Preferences page (units, grid, nudge, snapping, defaults) | TODO | P2 | |
+| Preferences page (units, grid, nudge, snapping, defaults) | HAVE |  | Edit, Preferences: units, start page, grid, nudge, snapping, guides, simple mode, keys |
 | Shortcuts: `?` `P` Space `Shift+S` `+ - 0` arrows Esc | HAVE | | |
 | Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | HAVE |  | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc, R/Shift+R turn, H/V mirror, Ctrl+G/Ctrl+Shift+G group |
 | Shortcut list in the help dialog kept in sync | HAVE |  | the help dialog's list is built from the same table as the tooltips |
-| Rebind shortcuts | TODO | P3 | |
+| Rebind shortcuts | HAVE |  | Preferences, Keyboard: click a key and press the new one; the old key is then free |
 | First-run setup wizard (connect, park, calibrate, pen height) | TODO | P3 | |
 
 ## 19. Integration
