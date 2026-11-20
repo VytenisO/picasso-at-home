@@ -26,6 +26,7 @@ from .config import LIMITS
 
 MAX_OBJECTS = 64
 SVG_NS = "http://www.w3.org/2000/svg"
+HEX = re.compile(r"#[0-9a-fA-F]{6}")
 # Attributes of an embedded file's root <svg> that place it, rather than style its content.
 ROOT_ONLY = {"width", "height", "viewBox", "x", "y", "version", "preserveAspectRatio", "id", "baseProfile"}
 
@@ -79,6 +80,8 @@ def clean_objects(raw, known_files):
         })
         if o.get("locked") is True:
             out[-1]["locked"] = True
+        if o.get("guide") is True:             # shown on the bed for lining things up, never plotted
+            out[-1]["guide"] = True
         seam = o.get("seam")
         # the start point for closed shapes, as fractions of the object's box, so it moves with the object
         if isinstance(seam, list) and len(seam) == 2 and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in seam):
@@ -138,7 +141,7 @@ def _doc_scale(root):
     return min(w_mm / vw, h_mm / vh), vx, vy
 
 
-def compose(objects, files, bed):
+def compose(objects, files, bed, remap=None):
     """-> SVG bytes: every object's drawing, transformed into a bed-sized document in machine mm.
 
     files: {file id: (svg path, geometry)}. Later objects come later in the file, so with one layer they plot
@@ -166,7 +169,40 @@ def compose(objects, files, bed):
             inner.append(copy.deepcopy(child))
         if o.get("ink"):
             recolor(inner, o["ink"])
+        if remap:
+            remap_colors(inner, remap)
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def clean_remap(raw):
+    """Layer recolouring from the settings: {"#rrggbb": "#rrggbb"}, at most 64 entries. Raises DocError."""
+    if raw in (None, {}):
+        return {}
+    if not isinstance(raw, dict) or len(raw) > 64:
+        raise DocError("Layer colours: a list of at most 64 old to new colours.")
+    out = {}
+    for k, v in raw.items():
+        if not (isinstance(k, str) and isinstance(v, str) and HEX.fullmatch(k) and HEX.fullmatch(v)):
+            raise DocError("Layer colours must be #rrggbb.")
+        if k.lower() != v.lower():
+            out[k.lower()] = v.lower()
+    return out
+
+
+def remap_colors(group, remap):
+    """Stroke and fill colours found in remap change to the new colour; lines that set none inherit black."""
+    from plot_svg import normalize_color
+    if "#000000" in remap and not (group.get("stroke") or "").strip():
+        group.set("stroke", remap["#000000"])          # what inherits black from the top level
+    for el in group.iter():
+        for prop in ("stroke", "fill"):
+            n = normalize_color(el.get(prop))
+            if n in remap:
+                el.set(prop, remap[n])
+        st = el.get("style")
+        if st:
+            el.set("style", _STYLE_COLOR.sub(lambda m: m.group(1) + remap[normalize_color(m.group(2))]
+                                             if normalize_color(m.group(2)) in remap else m.group(0), st))
 
 
 _STYLE_COLOR = re.compile(r"((?:^|;)\s*(?:stroke|fill)\s*:\s*)([^;]+)")
@@ -259,7 +295,7 @@ class DocStore:
                                        "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
                                        "keep_motors", "simplify", "corner_starts", "inner_first", "approach",
                                        "start_delay", "end_delay", "trace_shape", "trace_repeat", "notes", "overlaps",
-                                       "origin", "origin_anchor")}
+                                       "origin", "origin_anchor", "recolor", "paper_profile")}
         if keep.get("notes") is not None:
             keep["notes"] = str(keep["notes"])[:2000]
         with self.lock:

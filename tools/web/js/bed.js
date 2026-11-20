@@ -585,6 +585,9 @@ function openMenu(clientX, clientY, mm) {
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
     item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
+    D.selected().every((o) => o.guide)
+      ? item('Plot it (not a guide)', () => D.editSel((objs) => { for (const o of objs) delete o.guide; }, { allowLocked: true }))
+      : item('Make it a guide (shown, never plotted)', () => D.editSel((objs) => { for (const o of objs) o.guide = true; }, { allowLocked: true })),
     item('Clear the start point', () => setSeam(null), state.sel.length === 1 && !!(D.selected()[0] || {}).seam), ...tail,
   ] : [
     item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'), item('Select all', () => D.selectAll(), true, 'Ctrl+A'), sep(),
@@ -602,6 +605,8 @@ function openMenu(clientX, clientY, mm) {
   menu.querySelector('button:not(:disabled)')?.focus();
 }
 
+const GUIDE_INK = '#19a7c8';
+
 function drawObject(o, { px, layers, pens, hide }) {
   const n = state.naturals[o.file];
   if (!n) {           // geometry still loading: the box only
@@ -615,9 +620,13 @@ function drawObject(o, { px, layers, pens, hide }) {
   const out = Array.isArray(only) && only.length && only.some((id) => state.doc.objects.some((x) => x.id === id)) && !only.includes(o.id);
   ctx.save();
   ctx.transform(...mt);
-  drawInk(ctx, o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css, hide,
-    alpha: (state.previewStale || draft ? 0.75 : 1) * (out ? 0.4 : 1), lineScale: k });
+  drawInk(ctx, o.guide ? inked(n, GUIDE_INK) : o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css, hide,
+    alpha: o.guide ? 0.6 : (state.previewStale || draft ? 0.75 : 1) * (out ? 0.4 : 1), lineScale: k, ink: o.guide ? false : undefined });
   ctx.restore();
+  if (o.guide) {                    // a guide: thin cyan lines in a dashed box, never plotted
+    ctx.setLineDash([5 * px, 3 * px]); ctx.strokeStyle = GUIDE_INK; ctx.lineWidth = px;
+    poly(G.corners(o)); ctx.stroke(); ctx.setLineDash([]);
+  }
 }
 
 // The drawing with every layer in one colour (an object moved to another layer). Kept per colour, so the ink
@@ -894,6 +903,7 @@ function initViewMenuRest(btn, menu, save) {
   document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });
   menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { show(false); btn.focus(); } });
   $('vPanels').onclick = () => { togglePanels(); show(false); };
+  $('vResetPanels').onclick = () => { import('./ws.js').then((m) => m.resetPanels()); show(false); };
   setPanels(!!prefs('noPanels'));
 }
 

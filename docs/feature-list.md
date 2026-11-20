@@ -67,8 +67,8 @@ niche.
 | Phone layout with bottom tab bar | HAVE | | below 900 px; Prepare stacks preview, recipe and result |
 | Dark/light/system theme | HAVE | | `app.js` |
 | Collapse side panels to maximise the bed | HAVE |  | View, Hide side panels, or the backslash key; remembered in this browser |
-| Reset panel layout | TODO | P3 | only once panels can be resized or moved |
-| Resizable panels | TODO | P3 | |
+| Reset panel layout | HAVE |  | View menu and Edit menu: Reset the panel layout; double-click a panel edge for its default width |
+| Resizable panels | HAVE |  | drag a side panel's inner edge (200 px to 40% of the window), kept per workspace |
 | Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | HAVE |  | `menubar.js`: each item presses the existing control, so it is disabled under the same conditions; hidden on narrow screens |
 | Right-click context menu on bed and objects | HAVE | | objects: edit, turn, mirror, order, fit, zoom; empty bed: paste, select all, guides, fit |
 | Tooltips that show the shortcut | HAVE |  | every control a key presses gets the key in its tooltip, from the shortcut table (shortcuts.js) |
@@ -94,7 +94,7 @@ niche.
 | Show pen width (stroke drawn at the pen's real width) | HAVE |  | Ink view draws each layer at its pen's width_mm |
 | Show path direction and start points | HAVE |  | View: a dot at each stroke's start and an arrowhead halfway along, in plot order, after a preview (up to 4000 strokes); the scrubber limits it to the strokes so far |
 | Show travel (pen-up) moves | HAVE | | Travel toggle on the scrubber bar, T |
-| Fast low-detail rendering for huge drawings | TODO | P3 | |
+| Fast low-detail rendering for huge drawings | HAVE |  | above 150k points, each zoom level drops points closer than about a screen pixel (`ink.js`) |
 | Camera image of the bed as background | SKIP | | no camera; see section 15 |
 
 ## 3. Files, projects and library
@@ -234,11 +234,11 @@ niche.
 | Pen-swap pause between layers naming the pen | HAVE | | |
 | Show/hide a layer in the view without dropping it from the plot | HAVE |  | Layers: Hide/Show on each card, this browser only; enable still decides what plots |
 | Reorder layers (pen order) | HAVE | | Layers: arrows change the pen order; pen changes follow it |
-| Rename, recolour layers | PART | P3 | rename (shown at the pen change and in Run); no recolour |
+| Rename, recolour layers | HAVE |  | Layers: the swatch is a colour picker; recolouring to another layer's colour merges them; Reset colours |
 | Move objects to another layer (colour palette) | HAVE | | Arrange, Colour: the bed's ink colours as swatches, or any colour; Own colours undoes it. The object's lines are recoloured when the bed is composed |
 | Merge layers that share a pen (one swap fewer) | HAVE |  | layers set to the same pen plot one after the other with no pen-change pause, and the swap count says so; put them next to each other in the pen order |
 | Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
-| Non-plotting guide layer | PART | P3 | guide lines; no guide shapes |
+| Non-plotting guide layer | HAVE |  | guide lines, and right-click any object: Make it a guide (drawn cyan and dashed, never plotted) |
 | Passes per layer (repeat strokes) | HAVE | | 1 to 5; each stroke again right away, an open one back over itself |
 | Pressure step per pass | HAVE |  | Layers, More: Per pass, each extra pass lighter or heavier by this much |
 | Layer mode: line | HAVE | | the only mode today |
@@ -368,7 +368,7 @@ niche.
 | Pen profiles (name, colour, speed, pressure) | HAVE | | read-only, `config/pens.json` |
 | Pen library editor: create, edit, duplicate, delete | HAVE |  | Machine, Pens: New, Edit, Duplicate, Delete |
 | Pen fields: line width, best hatch spacing, dwell, notes | HAVE |  | line width, colour, speed, pressure, best hatch spacing, dwell, notes |
-| Paper profiles (size, type, notes), paired with pens | PART | P3 | Job, Paper: standard sheet sizes (A4, A5, A6, Letter, postcard, portrait A4/A5) or custom; no paper types, notes or pen pairing |
+| Paper profiles (size, type, notes), paired with pens | HAVE |  | Job, Paper: saved papers with size, type, notes and suitable pens; warns when a layer uses an unlisted pen |
 | Link a layer to a pen profile (retune updates the job) vs copy values | HAVE |  | choosing a pen leaves the layer's speed and pressure empty: they follow the pen profile (shown as placeholders), so retuning the pen changes every job using it; a value typed on the layer wins |
 | Export / import pen library | HAVE |  | Machine, Pens: Export the pens (JSON), Import pens (merged in, the old file kept) |
 | Stroke and circle test sheet | HAVE | | |
@@ -460,8 +460,8 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | HTTP API used by the UI | HAVE | | `ui-design.md` |
-| Documented API for scripts (upload, preview, start) | PART | P3 | table exists in `ui-design.md` |
-| Inkscape extension: send the current drawing to the plotter | TODO | P3 | |
+| Documented API for scripts (upload, preview, start) | HAVE |  | `docs/api.md`, with `tools/plotter_client.py` as the tested reference |
+| Inkscape extension: send the current drawing to the plotter | PART | P3 | `tools/inkscape/`: the upload and put-on-bed part is tested against the simulator; not yet run inside Inkscape |
 | Login | SKIP | | decided: the tailnet is the boundary |
 
 ## 20. Registration and large work

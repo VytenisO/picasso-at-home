@@ -452,6 +452,7 @@
       <label class="check"><input type="checkbox" id="vLockGuides"> Lock the guides (no dragging)</label>
       <label class="field"><span>Show lengths in</span><select id="vUnits"><option value="mm">mm</option><option value="in">inches</option></select></label>
       <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
+      <button type="button" id="vResetPanels" title="Side panels back to their default widths">Reset the panel layout</button>
     </div>
     <div class="scrub" id="scrubBar" hidden>
       <button class="icon" id="travelBtn" aria-pressed="false" title="Show the pen-up moves (T)">Travel</button>
@@ -703,6 +704,12 @@
             <label class="field"><span>Width (mm)</span><input name="paper_w" type="number" step="1" min="20"></label>
             <label class="field"><span>Height (mm)</span><input name="paper_h" type="number" step="1" min="20"></label>
           </div>
+          <div class="row">
+            <select id="paperProf" aria-label="Paper profile" title="A saved paper: size, type, notes and the pens that suit it"></select>
+            <button type="button" id="paperProfSave" title="Keep this size with a type, notes and the pens that suit it">Save as a paper...</button>
+            <button type="button" id="paperProfDel" class="link" title="Delete the chosen paper profile">Delete</button>
+          </div>
+          <p class="hint" id="paperProfNote"></p>
         </details>
       </form>
     </section>

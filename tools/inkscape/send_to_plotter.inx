@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Send to the pen plotter</name>
+  <id>picasso_at_home.send_to_plotter</id>
+  <param name="server" type="string" gui-text="Plotter server">http://robotlab:8080</param>
+  <param name="name" type="string" gui-text="Name in the library (empty: the document's name)"></param>
+  <param name="selection" type="bool" gui-text="Only the selected objects">false</param>
+  <param name="bed" type="bool" gui-text="Also put it on the bed (replacing what is there)">false</param>
+  <param name="password" type="string" gui-text="Password (only if the server asks)"></param>
+  <effect needs-live-preview="false">
+    <object-type>all</object-type>
+    <effects-menu><submenu name="Export"/></effects-menu>
+  </effect>
+  <script><command location="inx" interpreter="python">send_to_plotter.py</command></script>
+</inkscape-extension>

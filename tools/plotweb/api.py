@@ -247,6 +247,10 @@ class App:
             raise ApiError(400, str(ex))
         if not objs:
             raise ApiError(400, "The bed is empty. Add a drawing from the Library.")
+        objs = [o for o in objs if not o.get("guide")]
+        if not objs:
+            raise ApiError(400, "Everything on the bed is a guide, and guides are not plotted. Right-click a drawing "
+                                "and choose Plot it (not a guide).")
         rs = raw_doc.get("settings") if isinstance(raw_doc.get("settings"), dict) else {}
         if isinstance(rs.get("only"), list) and rs["only"]:
             objs = [o for o in objs if o["id"] in rs["only"]]
@@ -295,7 +299,7 @@ class App:
         machine_bytes = self.s.machine_path.read_bytes()
         bed = self.s.bed_from(machine_bytes)
         try:
-            svg_bytes = document.compose(objs, files, bed)
+            svg_bytes = document.compose(objs, files, bed, document.clean_remap(rs.get("recolor")))
         except (document.DocError, ET.ParseError) as ex:
             raise ApiError(400, f"Could not put the drawings together: {ex}")
         try:
@@ -1921,6 +1925,21 @@ class Handler(BaseHTTPRequestHandler):
     def r_position_delete(self):
         self.send(200, {"positions": self.app.list_delete("positions", str(self.json_body().get("name") or ""))})
 
+    def r_papers(self):
+        self.send(200, {"papers": self.app.list_get("papers")})
+
+    def r_paper_save(self):
+        b = self.json_body()
+        for k in ("width", "height"):
+            v = b.get(k)
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or not 20 <= v <= 1000:
+                raise ApiError(400, f"Paper {k}: 20 to 1000 mm.")
+        self.send(200, {"papers": self.app.list_put("papers", b, {"width": "num", "height": "num", "type": "text",
+                                                                  "notes": "text", "pens": "text"})})
+
+    def r_paper_delete(self):
+        self.send(200, {"papers": self.app.list_delete("papers", str(self.json_body().get("name") or ""))})
+
     def r_macros(self):
         self.send(200, {"macros": self.app.list_get("macros")})
 
@@ -1975,6 +1994,7 @@ ROUTES_GET = {
     "/api/plotter/ports": (Handler.r_ports, True),
     "/api/positions": (Handler.r_positions, True),
     "/api/macros": (Handler.r_macros, True),
+    "/api/papers": (Handler.r_papers, True),
     "/api/stats": (Handler.r_stats, True),
     "/api/pens/export": (Handler.r_pens_export, True),
     "/api/plotter/doctor": (Handler.r_doctor, True),
@@ -1996,6 +2016,8 @@ ROUTES_POST = {
     "/api/restore": (Handler.r_settings_restore, True),
     "/api/plotter/port": (Handler.r_port_set, True),
     "/api/positions/save": (Handler.r_position_save, True),
+    "/api/papers/save": (Handler.r_paper_save, True),
+    "/api/papers/delete": (Handler.r_paper_delete, True),
     "/api/positions/delete": (Handler.r_position_delete, True),
     "/api/macros/save": (Handler.r_macro_save, True),
     "/api/macros/delete": (Handler.r_macro_delete, True),

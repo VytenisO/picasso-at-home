@@ -16,7 +16,8 @@ let anchor = prefs('anchor') || [0, 0];
 
 export function initWorkspace() {
   const f = $('placeForm');
-  f.addEventListener('change', fromJobForm);
+  f.addEventListener('change', (e) => { if (e.target.id !== 'paperProf') fromJobForm(e); });
+  initPaperProf();
   // the saved positions (Machine) as start points, fetched when the list is opened
   f.origin.addEventListener('pointerdown', async () => {
     try {
@@ -664,6 +665,7 @@ function fillJobForm() {
   f.overlaps.checked = !!st.overlaps;
   set_('approach', st.approach || 0); set_('start_delay', st.start_delay || 0); set_('end_delay', st.end_delay || 0);
   f.paper_custom.checked = !!st.paper;
+  if (document.activeElement !== $('paperProf')) renderPaperProf();
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
   f.paper_w.disabled = f.paper_h.disabled = !st.paper || jobActive();
@@ -725,6 +727,8 @@ function fromJobForm(e) {
   } else {
     patch.paper = f.paper_custom.checked ? { width: num('paper_w'), height: num('paper_h') } : null;
   }
+  const prof = papers.find((p) => p.name === st.paper_profile);      // a different size is no longer that paper
+  if (prof && !(patch.paper && patch.paper.width === prof.width && patch.paper.height === prof.height)) patch.paper_profile = null;
   D.setSettings(patch, { coalesce: 'job-' + (e && e.target.name) });
 }
 
@@ -738,6 +742,75 @@ function layerRows() {
   const rows = fileLayers.map((fl, i) => ({ fl, i, s: (st.layers || []).find((x) => x.key === fl.key) || { key: fl.key, enabled: true } }));
   const rank = (r) => (r.s.rank === null || r.s.rank === undefined ? r.i : r.s.rank);
   return rows.sort((a, b) => rank(a) - rank(b) || a.i - b.i);
+}
+
+// ---- paper profiles: a size with a paper type, notes and the pens that suit it (kept on the server)
+let papers = [];
+async function loadPapers() {
+  try { papers = (await api('/api/papers')).papers; } catch (e) { papers = []; }
+  renderPaperProf();
+}
+function renderPaperProf() {
+  const sel = $('paperProf'), st = state.doc ? state.doc.settings : {};
+  sel.replaceChildren(el('option', { value: '', text: papers.length ? 'Saved papers...' : 'No saved papers yet' }),
+    ...papers.map((p) => el('option', { value: p.name, text: `${p.name} (${p.width} x ${p.height}${p.type ? ', ' + p.type : ''})` })));
+  const cur = papers.find((p) => p.name === st.paper_profile);
+  sel.value = cur ? cur.name : '';
+  $('paperProfDel').disabled = !cur;
+  const pens = cur && cur.pens ? cur.pens.split(',').map((x) => x.trim()).filter(Boolean) : [];
+  const used = (st.layers || []).filter((y) => y.enabled !== false && y.pen).map((y) => y.pen);
+  const off = pens.length ? [...new Set(used.filter((p) => !pens.includes(p)))] : [];
+  $('paperProfNote').textContent = cur ? [cur.notes, pens.length ? `Pens for this paper: ${pens.join(', ')}.` : '',
+    off.length ? `Not listed for this paper: ${off.join(', ')}.` : ''].filter(Boolean).join(' ') : '';
+  $('paperProfNote').classList.toggle('warn', off.length > 0);
+}
+function initPaperProf() {
+  $('paperProf').onchange = () => {
+    const p = papers.find((x) => x.name === $('paperProf').value);
+    if (!p) { D.edit((d) => { d.settings.paper_profile = null; }); return; }
+    D.edit((d) => { d.settings.paper = { width: p.width, height: p.height }; d.settings.paper_profile = p.name; });
+  };
+  $('paperProfSave').onclick = async () => {
+    const f = $('placeForm'), m = state.me.machine;
+    const w = f.paper_custom.checked ? Number(f.paper_w.value) : m.paper[2], h = f.paper_custom.checked ? Number(f.paper_h.value) : m.paper[3];
+    const name = await askText('Save as a paper', `${w} x ${h} mm. A name:`, '', 'Next');
+    if (!name) return;
+    const type = await askText('Paper type', 'e.g. Bristol 250 g, watercolour, kraft (optional):', '', 'Next');
+    if (type === null) return;
+    const pens = await askText('Pens for this paper', 'Pen profile names that work on it, separated by commas (optional):',
+      Object.keys(state.me.pens || {}).join(', '), 'Next');
+    if (pens === null) return;
+    const notes = await askText('Notes', 'Anything to remember (optional):', '', 'Save');
+    if (notes === null) return;
+    try {
+      papers = (await post('/api/papers/save', { name, width: w, height: h, type, pens, notes })).papers;
+      D.edit((d) => { d.settings.paper = { width: w, height: h }; d.settings.paper_profile = name.trim(); });
+      toast('Paper saved.');
+    } catch (e) { toast(e.message, true); }
+  };
+  $('paperProfDel').onclick = async () => {
+    const nm = $('paperProf').value;
+    if (!nm || !await ask('Delete the paper?', `The profile ${nm} goes; drawings keep their size.`, 'Delete')) return;
+    try { papers = (await post('/api/papers/delete', { name: nm })).papers; D.edit((d) => { d.settings.paper_profile = null; }); } catch (e) { toast(e.message, true); }
+  };
+  loadPapers();
+}
+
+// Recolour a layer: a colour map applied when the bed is put together. The layer's own settings follow it.
+function recolorLayer(fl, to) {
+  const from = (fl.color || '').toLowerCase();
+  if (!from || from === to) return;
+  D.edit((d) => {
+    const map = { ...(d.settings.recolor || {}) };
+    for (const k of Object.keys(map)) if (map[k] === from) map[k] = to;      // an earlier recolour goes on to the new one
+    map[from] = to;
+    for (const k of Object.keys(map)) if (map[k] === k) delete map[k];
+    d.settings.recolor = Object.keys(map).length ? map : null;
+    const label = fl.key.slice(fl.key.indexOf('|') + 1), nk = `${to}|${label}`;
+    const ly = (d.settings.layers || []).find((y) => y.key === fl.key);
+    if (ly && !(d.settings.layers || []).some((y) => y.key === nk)) ly.key = nk;
+  });
+  toast('Layer recoloured. Preview again to see the pens; Reset colours (under the layers) undoes every recolour.');
 }
 
 function renderLayers() {
@@ -797,8 +870,10 @@ function renderLayers() {
     const on_ = el('input', { type: 'checkbox', disabled: locked, 'aria-label': `Plot layer ${n + 1}` });
     on_.checked = s.enabled !== false;
     on_.onchange = () => upd(fl.key, { enabled: on_.checked });
-    const swatch = el('span', { class: 'swatch' });
-    swatch.style.background = fl.color || '#888';
+    const swatch = el('input', { type: 'color', class: 'swatch swatch-pick', value: fl.color || '#888888', disabled: locked,
+      title: 'Recolour this layer: every line of this colour on the bed takes the new one (the same colour as another layer merges them)',
+      'aria-label': `Colour of layer ${n + 1}` });
+    swatch.onchange = () => recolorLayer(fl, swatch.value.toLowerCase());
     const name = el('input', { class: 'layer-name', maxlength: 40, placeholder: fl.name, 'aria-label': `Name of layer ${n + 1}`,
       disabled: locked, title: 'A name for this layer (shown at the pen change)' });
     name.value = s.name || '';
@@ -824,6 +899,10 @@ function renderLayers() {
           onclick: () => { const c = prefs('layerClip'); if (c) upd(fl.key, { pen: c.pen && pens[c.pen] ? c.pen : null, speed: c.speed, pressure: c.pressure, passes: c.passes }); } })),
       layerMore(fl, s, locked, upd));
   }));
+  if (state.doc.settings.recolor) {
+    list.append(el('button', { type: 'button', class: 'link', text: 'Reset colours', disabled: locked,
+      title: 'Every layer back to the colours in its drawings', onclick: () => D.edit((d) => { d.settings.recolor = null; }) }));
+  }
   list.append(el('button', { type: 'button', id: 'legendBtn', text: 'Add a pen legend', disabled: locked,
     title: 'Single-line text listing each layer and its pen, placed at the bottom-left of the canvas', onclick: () => addLegend(rows) }));
 }

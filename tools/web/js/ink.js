@@ -22,6 +22,39 @@ export function layerPaths(pv) {
   return hit;
 }
 
+// Huge drawings: the same paths with points closer than about one screen pixel dropped (each stroke keeps its ends),
+// built once per zoom level. Below LOD_POINTS every point is drawn.
+const LOD_POINTS = 150000;
+const lodCache = new WeakMap();   // plan data -> Map(level -> paths)
+const pointCount = new WeakMap();
+function lodPaths(pv, px) {
+  let n = pointCount.get(pv);
+  if (n === undefined) { n = 0; for (const s of pv.strokes || []) n += s.pts.length; pointCount.set(pv, n); }
+  const level = n < LOD_POINTS ? -1 : Math.max(0, Math.min(8, Math.floor(Math.log2(px / 0.05))));
+  if (level < 0) return layerPaths(pv);
+  let m = lodCache.get(pv);
+  if (!m) { m = new Map(); lodCache.set(pv, m); }
+  if (m.has(level)) return m.get(level);
+  const tol = 0.05 * 2 ** level, t2 = tol * tol;
+  const by = new Map();
+  for (const s of pv.strokes || []) {
+    const key = `${s.l}|${s.p ?? ''}`;
+    if (!by.has(key)) by.set(key, new Path2D());
+    const p = by.get(key), pts = s.pts;
+    let [lx, ly] = pts[0];
+    p.moveTo(lx, ly);
+    for (let i = 1; i < pts.length; i++) {
+      const [x, y] = pts[i];
+      if (i < pts.length - 1 && (x - lx) ** 2 + (y - ly) ** 2 < t2) continue;
+      p.lineTo(x, y); lx = x; ly = y;
+    }
+    if (pts.length === 1) p.lineTo(lx + 0.01, ly);
+  }
+  const out = [...by.entries()].map(([k, path]) => { const [l, pr] = k.split('|'); return [Number(l), path, pr === '' ? null : Number(pr)]; });
+  m.set(level, out);
+  return out;
+}
+
 // Dark inks are drawn in the theme's text colour so they stay visible on a dark-mode sheet.
 function readable(hex, css) {
   if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return css('--ink');
@@ -55,7 +88,7 @@ export function drawInk(ctx, pv, { px, layers, pens, css, alpha = 1, ink = inkMo
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  for (const [l, path, pr] of layerPaths(pv)) {
+  for (const [l, path, pr] of lodPaths(pv, px)) {
     const k = layerInk(pv, l, layers, pens, css);
     if (hide && hide.has(k.key)) continue;           // hidden in the view only; it still plots
     ctx.globalAlpha = alpha * (k.off ? 0.15 : ink ? 0.92 : 1) * (pr ? 1 - 0.7 * Math.min(1, pr / 0.9) : 1);

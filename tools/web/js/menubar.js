@@ -34,6 +34,7 @@ const MENUS = [
     ['Undo', press('#undoBtn'), 'Ctrl+Z'], ['Redo', press('#redoBtn'), 'Ctrl+Shift+Z'], null,
     ['Duplicate', press('#xfBox [data-act=dup]'), 'Ctrl+D'], ['Remove from the bed', press('#xfBox [data-act=del]'), 'Del'], null,
     ['Preferences...', () => openPrefs()],
+    ['Reset the panel layout', () => import('./ws.js').then((m) => m.resetPanels())],
   ]],
   ['Arrange', [
     ['Group', press('#xfBox [data-act=group]'), 'Ctrl+G'], ['Ungroup', press('#xfBox [data-act=ungroup]'), 'Ctrl+Shift+G'],
