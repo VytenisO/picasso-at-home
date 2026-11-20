@@ -79,6 +79,10 @@ def clean_objects(raw, known_files):
         })
         if o.get("locked") is True:
             out[-1]["locked"] = True
+        seam = o.get("seam")
+        # the start point for closed shapes, as fractions of the object's box, so it moves with the object
+        if isinstance(seam, list) and len(seam) == 2 and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in seam):
+            out[-1]["seam"] = [round(float(seam[0]), 4), round(float(seam[1]), 4)]
         grp = str(o.get("grp") or "")
         if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", grp):
             out[-1]["grp"] = grp
@@ -153,6 +157,8 @@ def compose(objects, files, bed):
         outer = ET.SubElement(root, f"{{{SVG_NS}}}g", {
             "id": f"obj-{o['id']}", "data-obj": str(n),
             "transform": f"matrix({a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g} {f:.9g})"})
+        if o.get("seam"):                   # in machine mm: the nearest vertex of each closed stroke starts there
+            outer.set("data-seam", f"{o['x'] + o['seam'][0] * o['w']:.3f} {o['y'] + o['seam'][1] * o['h']:.3f}")
         attrs = {k: v for k, v in src.attrib.items() if k not in ROOT_ONLY and not k.startswith("{")}
         attrs["transform"] = f"scale({s:.9g}) translate({-vx:.9g} {-vy:.9g})"
         inner = ET.SubElement(outer, f"{{{SVG_NS}}}g", attrs)
@@ -185,7 +191,7 @@ def bed_key(objects, settings):
     """Hash of what decides the plot order, without the resume point: a stopped plot can resume only on the same
     bed. Objects as validated by clean_objects."""
     st = {k: v for k, v in (settings or {}).items() if k not in ("start_at", "guides")}    # guides are never plotted
-    raw = json.dumps({"o": [{k: o.get(k) for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy", "ink")} for o in objects],
+    raw = json.dumps({"o": [{k: o.get(k) for k in ("file", "x", "y", "w", "h", "rot", "fx", "fy", "ink", "seam")} for o in objects],
                       "s": st}, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -252,7 +258,7 @@ class DocStore:
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
                                        "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
                                        "keep_motors", "simplify", "corner_starts", "inner_first", "approach",
-                                       "start_delay", "end_delay", "trace_shape", "trace_repeat", "notes")}
+                                       "start_delay", "end_delay", "trace_shape", "trace_repeat", "notes", "overlaps")}
         if keep.get("notes") is not None:
             keep["notes"] = str(keep["notes"])[:2000]
         with self.lock:

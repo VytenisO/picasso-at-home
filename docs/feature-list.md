@@ -210,12 +210,12 @@ niche.
 | Trim at intersections (click to delete a piece) | HAVE |  | Line tools, Trim: lines are split where they cross; the clicked piece goes |
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
 | Close nearly closed paths within a tolerance | HAVE |  | Line tools, Close nearly closed lines |
-| Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
+| Remove duplicate and overlapping lines | HAVE |  | Job, Path planning: exact repeats are skipped; Remove overlapping lines leaves out the parts of a stroke that run along an earlier one of the same pen (0.1 mm) |
 | Simplify paths (tolerance, before/after node count) | HAVE |  | Prepare clean-up step Simplify with the point count in Result; Job, Path planning: Simplify (mm) for the plot itself, with the points in the plan |
 | Smooth / fit arcs | PART | P3 | Line tools, Smooth (Chaikin corner cutting); no arc fitting |
 | Break apart into separate paths | HAVE |  | Arrange, Break apart: every stroke becomes its own object (and library drawing) where it was; one undo step; at most 64 objects on the bed |
 | Reverse path direction | HAVE |  | Arrange, Reverse: each stroke from its other end, last stroke first; only shows with Shorter pen-up travel off, since planning picks direction itself |
-| Set start point of a closed path | PART | P3 | planning starts each closed path at the vertex nearest the pen; no manual seam |
+| Set start point of a closed path | HAVE |  | right-click an object: Start closed shapes here (moves with the object); otherwise the nearest vertex or a corner |
 | Offset (in, out, both; round/miter/bevel corners) | HAVE | | Arrange, Offset: outward or inward, round, sharp or cut corners; lines get a band (shapely; python3-shapely on robotlab) |
 | Booleans: union/weld, subtract, intersect | HAVE | | Arrange: union, subtract (others from the first), intersect; the result replaces the selection as a new library drawing |
 | Cut shapes with a closed shape | HAVE |  | Line tools: the first object selected cuts the others (keep outside or keep inside); the cutter stays |
@@ -244,7 +244,7 @@ niche.
 | Layer mode: line | HAVE | | the only mode today |
 | Layer mode: hatch fill (angle, spacing in mm, crosshatch, back-and-forth or one direction) | HAVE | | Layers, Filled shapes: per fill colour; spacing exact (the job default still scales by darkness) |
 | Layer mode: contour fill (inward offsets, spacing) | HAVE | | `fill.contour_rings`: exact distance transform on a capped grid, then marching squares; stdlib only |
-| Fill grouping: all shapes together / per group / per shape | TODO | P2 | travel and pen lifts |
+| Fill grouping: all shapes together / per group / per shape | HAVE |  | Fills: Fill order, all of an ink together, each object, or each shape finished before the next |
 | Hatch overscan (start/end outside, clipped) | HAVE |  | as an inset instead: Filled shapes, Inset stops fill lines short of the edge, so the blob at each end stays inside (drawing past the edge would mark the paper) |
 | Skip empty gaps in fills without lifting | HAVE |  | Filled shapes, Bridge: fill lines whose ends are this close are drawn as one stroke, pen down across |
 | Angle increment per pass | HAVE |  | Filled shapes (hatch): Passes and Turn per pass |

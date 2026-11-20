@@ -614,6 +614,7 @@
         <label class="field" title="Points closer than this to a straight line are dropped: fewer, longer moves. 0 keeps every point."><span>Simplify (mm, 0-2)</span><input name="simplify" type="number" min="0" max="2" step="0.01"></label>
         <label class="check"><input type="checkbox" name="corner_starts"> Start closed shapes at a corner (a seam is less visible there)</label>
         <label class="check"><input type="checkbox" name="inner_first"> Inner shapes first (the paper has not been touched around them yet)</label>
+        <label class="check" title="Where a stroke runs along an earlier stroke of the same pen, that part is left out: no double inking where shapes share an edge"><input type="checkbox" name="overlaps"> Remove overlapping lines</label>
         <div class="field-row">
           <label class="field" title="Arrive at every stroke start from up-left, this far out: the same last move each time takes up gear backlash. 0 = off"><span>Approach (mm)</span><input name="approach" type="number" min="0" max="10" step="0.5"></label>
           <label class="field" title="Wait before the first stroke (seconds)"><span>Delay before (s)</span><input name="start_delay" type="number" min="0" max="60" step="1"></label>

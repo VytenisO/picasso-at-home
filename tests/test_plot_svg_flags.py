@@ -37,6 +37,22 @@ class TestFlags(unittest.TestCase):
         _, metas, _, _ = load_svg(str(svg), False)
         self.assertEqual([m["color"] for m in metas], ["#2463a6", "#2463a6", "#111111", "#000000"])
 
+    def test_touching_strokes_join_and_overlaps_go(self):
+        svg = self.tmp / "j.svg"
+        svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="10mm" viewBox="0 0 40 10">'
+                       '<path d="M0 5 L10 5" stroke="#000"/><path d="M10 5 L20 5" stroke="#000"/>'
+                       '<path d="M5 5 L15 5" stroke="#000"/></svg>')
+        pv = self.tmp / "pv.json"
+
+        def summary(*extra):
+            rc, out = run(svg, "--mode", "dry", "--x0", "20", "--y0", "20", "--preview-json", pv, *extra)
+            self.assertEqual(rc, 0, out)
+            return json.loads(pv.read_text())["summary"]
+        s = summary()
+        self.assertEqual(s["strokes"], 2)                 # the first two touch end to end: one stroke
+        s = summary("--overlaps")
+        self.assertEqual((s["strokes"], round(s["drawing_mm"])), (1, 20))
+
     def test_stroke_speed_is_used_and_capped(self):
         def est(attr):
             svg = self.tmp / "sp.svg"

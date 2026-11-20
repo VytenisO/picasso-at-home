@@ -536,6 +536,20 @@ function status() {
 // ---- context menu
 let menu = null;
 
+// The start point for the closed shapes of the selected object: kept as fractions of its box, so it moves with it.
+function setSeam(mm) {
+  const o = D.selected()[0];
+  if (!o) return;
+  if (mm && (mm[0] < o.x || mm[0] > o.x + o.w || mm[1] < o.y || mm[1] > o.y + o.h)) {
+    toast('Right-click inside the object, where its outlines should start.', true); return;
+  }
+  D.editSel((objs) => {
+    if (mm) objs[0].seam = [(mm[0] - o.x) / o.w, (mm[1] - o.y) / o.h];
+    else delete objs[0].seam;
+  }, { allowLocked: true });
+  toast(mm ? 'Closed outlines of this object start at their point nearest here.' : 'Start point cleared.');
+}
+
 function closeMenu() { if (menu) { menu.remove(); menu = null; } }
 
 function openMenu(clientX, clientY, mm) {
@@ -569,7 +583,9 @@ function openMenu(clientX, clientY, mm) {
     item('Turn left', () => D.rotateSel(-90)), item('Turn right', () => D.rotateSel(90)),
     item('Mirror H', () => D.mirrorSel('x')), item('Mirror V', () => D.mirrorSel('y')), sep(),
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
-    item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'), ...tail,
+    item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
+    item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
+    item('Clear the start point', () => setSeam(null), state.sel.length === 1 && !!(D.selected()[0] || {}).seam), ...tail,
   ] : [
     item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'), item('Select all', () => D.selectAll(), true, 'Ctrl+A'), sep(),
     item('Vertical guide here', () => setGuides([...guides(), { axis: 'x', at: mm[0] }])),

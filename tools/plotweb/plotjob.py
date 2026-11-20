@@ -84,6 +84,7 @@ def validate(raw, bed, pens, layer_keys):
     out["trace_shape"] = ts
     out["trace_repeat"] = raw.get("trace_repeat") is True
     out["inner_first"] = raw.get("inner_first") is True
+    out["overlaps"] = raw.get("overlaps") is True
     out["approach"] = _num(raw, "approach", 0, 10, 0, False, "Approach")
     out["start_delay"] = _num(raw, "start_delay", 0, 60, 0, False, "Delay before the first stroke")
     out["end_delay"] = _num(raw, "end_delay", 0, 60, 0, False, "Delay after the last stroke")
@@ -175,6 +176,10 @@ def validate_fills(raw):
             e["angle_step"] = _num(f, "angle_step", 0, 180, 0, False, f"Fill {i + 1} angle step")
             e["inset"] = _num(f, "inset", 0, 5, 0, False, f"Fill {i + 1} inset")
             e["bridge"] = _num(f, "bridge", 0, 5, 0, False, f"Fill {i + 1} bridge")
+            grp = f.get("group") or "all"
+            if grp not in ("all", "object", "shape"):
+                raise SettingsError(f"fill {i + 1}: group must be all, object or shape")
+            e["group"] = grp
         out[f["key"]] = e
     return [out[k] for k in sorted(out)]
 
@@ -248,6 +253,8 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv.append("--trace-repeat")
     if v.get("inner_first"):
         argv.append("--inner-first")
+    if v.get("overlaps"):
+        argv.append("--overlaps")
     for k, flag in (("approach", "--approach"), ("start_delay", "--start-delay"), ("end_delay", "--end-delay")):
         if v.get(k):
             argv += [flag, f"{v[k]:g}"]

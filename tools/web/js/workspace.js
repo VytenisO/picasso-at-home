@@ -644,6 +644,7 @@ function fillJobForm() {
   f.trace_repeat.checked = !!st.trace_repeat;
   f.sim_speed_ui.value = String(prefs('simSpeed') || '');
   f.inner_first.checked = !!st.inner_first;
+  f.overlaps.checked = !!st.overlaps;
   set_('approach', st.approach || 0); set_('start_delay', st.start_delay || 0); set_('end_delay', st.end_delay || 0);
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
@@ -668,6 +669,7 @@ function fromJobForm(e) {
   patch.trace_repeat = f.trace_repeat.checked || null;
   prefs('simSpeed', f.sim_speed_ui.value ? Number(f.sim_speed_ui.value) : null);
   patch.inner_first = f.inner_first.checked || null;
+  patch.overlaps = f.overlaps.checked || null;
   for (const [k, hi, label] of [['approach', 10, 'Approach'], ['start_delay', 60, 'Delay before'], ['end_delay', 60, 'Delay after']]) {
     const v = num(k) || 0;
     if (!(v >= 0 && v <= hi)) { toast(`${label}: 0 to ${hi}.`, true); f[k].value = st[k] || 0; return; }
@@ -925,6 +927,13 @@ function renderFills() {
         parts.push(el('div', { class: 'row' }, chk('cross', 'Cross-hatch', 'A second pass at right angles', false),
           chk('zigzag', 'Back and forth', 'Join the lines into zigzags (fewer pen lifts). Off: every line the same way.', true)));
       }
+      const grp = el('select', { disabled: locked, 'aria-label': 'Fill order' },
+        ...[['all', 'All fills of this ink together'], ['object', 'Finish each object before the next'], ['shape', 'Finish each shape before the next']]
+          .map(([v, t]) => el('option', { value: v, text: t })));
+      grp.value = f.group || 'all';
+      grp.onchange = () => upd(ink.key, { group: grp.value === 'all' ? null : grp.value });
+      parts.push(el('label', { class: 'field', title: 'The order of fill lines: one shape at a time keeps wet ink from being crossed again soon' },
+        el('span', { text: 'Fill order' }), grp));
       parts.push(el('div', { class: 'row' }, chk('own_layer', 'Own layer', 'The fill plots as a layer of its own, so it can take its own pen (a marker for the fill, a fineliner for the outline)', false)));
     }
     return el('div', { class: 'layer fill-ink' }, ...parts);

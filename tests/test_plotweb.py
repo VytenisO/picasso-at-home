@@ -940,6 +940,31 @@ class TestDocument(SimServer):
             with urllib.request.urlopen(self.base + path) as resp:
                 self.assertIn("attachment", resp.headers["Content-Disposition"])
 
+    def test_04s_start_point_fill_order_overlaps(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="40mm" viewBox="0 0 40 40">'
+               b'<path d="M0 0 L40 0 L40 40 L0 40 Z" stroke="#000" fill="none"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "sq.svg", "X-Params": "{}"})
+        fid = d["file"]["id"]
+        first = lambda pv: pv["strokes"][pv["order"][0]]["pts"][0]  # noqa: E731
+        plain = first(self.doc_preview([self.obj(fid, 100, 50, 40, 40)]))
+        seamed = first(self.doc_preview([self.obj(fid, 100, 50, 40, 40, seam=[1, 1])]))
+        self.assertEqual([round(v) for v in seamed], [140, 90])           # starts at the corner nearest the point
+        self.assertNotEqual([round(v) for v in plain], [140, 90])
+        moved = first(self.doc_preview([self.obj(fid, 60, 50, 40, 40, seam=[1, 1])]))
+        self.assertEqual([round(v) for v in moved], [100, 90])            # the point moves with the object
+        pv = self.doc_preview([self.obj(fid, 100, 50, 40, 40), self.obj(fid, 100, 50, 40, 40, id="b")], {"overlaps": True})
+        self.assertEqual(pv["summary"]["strokes"], 1)                     # the second square lies on the first
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": [self.obj(fid, 100, 50, 40, 40)],
+                                                             "settings": {"fills": [{"key": "#000000|", "mode": "hatch", "group": "bogus"}]}}})
+        self.assertEqual(code, 400, d)
+        fid = self.upload("filled.svg")
+        objs = [self.obj(fid, 80, 40, 50, 50), self.obj(fid, 150, 40, 50, 50)]
+        code, d = self.call("GET", "/api/doc")
+        for grp in ("object", "shape"):
+            pv = self.doc_preview(objs, {"fill": 2, "fills": [{"key": k["key"], "mode": "hatch", "spacing": 2, "group": grp}
+                                                             for k in self.doc_preview(objs, {"fill": 2})["summary"]["fill_inks"]]})
+            self.assertGreater(pv["summary"]["strokes"], 4)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

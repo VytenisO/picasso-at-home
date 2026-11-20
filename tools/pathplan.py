@@ -26,7 +26,7 @@ def corner_vertices(s, min_turn=30.0):
     return out
 
 
-def order_block(strokes, idxs, cur, cell=4.0, closed_tol=0.1, corners=False):
+def order_block(strokes, idxs, cur, cell=4.0, closed_tol=0.1, corners=False, seams=None):
     """Order the strokes idxs from position cur. Strokes are changed in place (reversed or turned to start at a
     vertex; with corners, a corner vertex when the path has one). -> (order, position after the last stroke)."""
     if not idxs:
@@ -37,6 +37,9 @@ def order_block(strokes, idxs, cur, cell=4.0, closed_tol=0.1, corners=False):
         ks = range(len(s) - 1) if is_closed(s, closed_tol) else ((0, len(s) - 1) if len(s) > 1 else (0,))
         if corners and is_closed(s, closed_tol):
             ks = corner_vertices(s) or ks
+        if seams and seams.get(i) is not None and is_closed(s, closed_tol):     # a chosen seam: start there
+            sx, sy = seams[i]
+            ks = [min(range(len(s) - 1), key=lambda k: (s[k][0] - sx) ** 2 + (s[k][1] - sy) ** 2)]
         for k in ks:
             x, y = s[k]
             grid.setdefault((math.floor(x / cell), math.floor(y / cell)), []).append((x, y, i, k))
@@ -103,6 +106,41 @@ def dedupe(strokes, metas, tol=0.05, closed_tol=0.1):
         out_s.append(s)
         out_m.append(m)
     return out_s, out_m, len(strokes) - len(out_s)
+
+
+def drop_overlaps(strokes, metas, tol=0.1):
+    """Parts of strokes that run along an earlier stroke of the same ink, pen and fill-ness (within tol mm) are cut
+    out; what is left of a stroke stays, in pieces. Needs shapely. -> (strokes, metas, mm removed)."""
+    try:
+        from shapely.geometry import LineString
+        from shapely.ops import unary_union
+        from shapely.strtree import STRtree
+    except ImportError:
+        return strokes, metas, None
+    lines = [LineString(s) if len(s) >= 2 else None for s in strokes]
+    bufs = [ln.buffer(tol, cap_style="flat") if ln is not None else None for ln in lines]
+    idx = [i for i, b in enumerate(bufs) if b is not None]
+    tree = STRtree([bufs[i] for i in idx])
+    key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), bool(m.get("fill")))  # noqa: E731
+    out_s, out_m, removed = [], [], 0.0
+    for i, (s, m) in enumerate(zip(strokes, metas)):
+        ln = lines[i]
+        if ln is None or ln.length == 0:
+            out_s.append(s)
+            out_m.append(m)
+            continue
+        cands = [idx[j] for j in tree.query(ln) if idx[j] < i and key(metas[idx[j]]) == key(m)]
+        if not cands:
+            out_s.append(s)
+            out_m.append(m)
+            continue
+        rest = ln.difference(unary_union([bufs[j] for j in cands]))
+        removed += ln.length - rest.length
+        for part in getattr(rest, "geoms", [rest]):
+            if part.geom_type == "LineString" and part.length > tol * 2:
+                out_s.append([tuple(p) for p in part.coords])
+                out_m.append(dict(m))
+    return out_s, out_m, removed
 
 
 def join_touching(paths, tol=0.2):

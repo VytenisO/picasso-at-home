@@ -606,10 +606,16 @@ def load_svg(path, ignore_unsupported):
                 cur["speed"] = min(MAX_SPEED, max(1.0, float(el.get("data-speed"))))   # a test cell's own speed
             except ValueError:
                 pass
+        if el.get("data-seam") is not None:
+            try:
+                sx_, sy_ = (float(v) for v in el.get("data-seam").split())
+                cur["seam"] = (sx_, sy_)        # machine mm: the composed bed document's own units
+            except ValueError:
+                pass
         if el.get("data-obj") is not None and el.get("data-obj").isdigit():
             cur["obj"] = int(el.get("data-obj"))          # which bed object (the web UI's composed document)
         meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                "obj": cur.get("obj"), "speed": cur.get("speed")}
+                "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -723,9 +729,11 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
     """Scale/offset to mm, join touching strokes (same ink and pen pressure only), simplify."""
     sp = [[(x * scale + dx, y * scale + dy) for x, y in p] for p in polys]
     merged, mmeta = [], []
+    # strokes join only within one ink, pen pressure, object, speed and filled shape
+    key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj"), m.get("speed"),  # noqa: E731
+                     m.get("shape"))
     for p, m in zip(sp, metas):
-        same_ink = merged and (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj"), m.get("speed")) == \
-                   (mmeta[-1].get("color"), mmeta[-1].get("layer"), mmeta[-1].get("pressure"))
+        same_ink = merged and key(m) == key(mmeta[-1])
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
         else:
@@ -1030,6 +1038,8 @@ def main():
                     help="trace mode: the drawing's box, its convex outline, or each object's box")
     ap.add_argument("--trace-repeat", action="store_true",
                     help="trace mode: go round again (up to 50 times) until RETURN or STOP, to line up paper")
+    ap.add_argument("--overlaps", action="store_true",
+                    help="leave out the parts of strokes that run along an earlier stroke of the same pen (needs shapely)")
     ap.add_argument("--corner-starts", action="store_true",
                     help="closed paths start at a corner (a turn of 30 degrees or more) when they have one")
     ap.add_argument("--inner-first", action="store_true",
@@ -1150,7 +1160,7 @@ def main():
         fill_inks.setdefault(k, {"key": k, "color": f["color"], "label": f["layer"], "shapes": 0})["shapes"] += 1
     if fills and (a.fill or fills_cfg):
         fpolys, fmetas = [], []
-        for f in fills:
+        for fi, f in enumerate(fills):
             rings = [[(x * scale, y * scale) for x, y in r] for r in f["rings"]]
             fc = fills_cfg.get(layer_key((f["color"], f["layer"])))
             try:
@@ -1184,7 +1194,8 @@ def main():
             flayer = f"{f['layer'] or color_label((f['color'], None))} fill" if fc and fc.get("own_layer") else f["layer"]
             for ln in lines:
                 fpolys.append(ln)
-                fmetas.append({"color": f["color"], "layer": flayer, "pressure": f["pressure"], "obj": f.get("obj")})
+                fmetas.append({"color": f["color"], "layer": flayer, "pressure": f["pressure"], "obj": f.get("obj"),
+                               "shape": fi + 1, "flayer": f["layer"]})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
         log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
             + (f" (default hatch {a.fill} mm, {a.fill_angle:g} deg)" if a.fill else "")
@@ -1198,6 +1209,10 @@ def main():
     if a.dedupe:
         strokes, metas, n_dup = pathplan.dedupe(strokes, metas)
         log(f"Duplicates     : {n_dup} stroke(s) repeated an earlier one and were dropped")
+    if a.overlaps:
+        strokes, metas, cut = pathplan.drop_overlaps(strokes, metas)
+        log("Overlaps       : " + ("shapely is missing, nothing removed" if cut is None
+                                   else f"{cut:.0f} mm of line that ran over an earlier stroke was left out"))
     groups = color_groups(metas)
     # Per-layer settings (web UI). Placement below uses ALL strokes, so switching a layer off never moves
     # the others; disabled layers are dropped from the plot afterwards.
@@ -1293,8 +1308,16 @@ def main():
     # Layers plot in their rank order (the operator can reorder pens); within a layer fills come before outlines.
     rank_of = [lset[gi].get("rank", gi) for gi in range(len(groups))]
     obj_of = (lambda i: metas[i].get("obj") or 0) if a.by_object else (lambda i: 0)
+
+    def fill_group(i):
+        """Fill strokes of an ink set to 'object' or 'shape' grouping finish one object or shape before the next."""
+        m = metas[i]
+        if not m.get("fill"):
+            return 0
+        g = (fills_cfg.get(layer_key((m.get("color"), m.get("flayer", m.get("layer"))))) or {}).get("group", "all")
+        return m.get("obj") or 0 if g == "object" else m.get("shape") or 0 if g == "shape" else 0
     order.sort(key=lambda i: ((rank_of[stroke_group[i]], stroke_group[i]) if by_layer else (0, 0), obj_of(i),
-                              not metas[i].get("fill")))
+                              not metas[i].get("fill"), fill_group(i)))
     # a stroke's own data-speed (test sheets) wins over its layer's speed, which wins over the job's
     speed_of = [metas[i].get("speed") or lset[stroke_group[i]].get("speed") or a.speed for i in range(len(strokes))]
     pen_s = a.pen_delay / 1000 + 0.15
@@ -1303,9 +1326,11 @@ def main():
         # Measured on the file order first, for the before/after readout. S is (-ox, -oy) in stroke coordinates.
         _, t_file, _, s_file = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in order], spmm, a.speed,
                                         a.travel_speed, pen_s, speeds=[speed_of[i] for i in order])
+        # a start point picked on the bed: in absolute mode stroke coordinates are machine mm already
+        seams = {i: metas[i]["seam"] for i in order if metas[i].get("seam")} if a.absolute else {}
         blocks, cur = [], (-ox, -oy)
         for i in order:     # one block per pen and per fill/outline run: those boundaries stay where they are
-            k = (stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")))
+            k = (stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")), fill_group(i))
             if not blocks or blocks[-1][0] != k:
                 blocks.append((k, []))
             blocks[-1][1].append(i)
@@ -1321,7 +1346,7 @@ def main():
                 bands = [by[k] for k in sorted(by)]
             for band in bands:
                 for tier in (depth_tiers(strokes, band) if a.inner_first else [band]):
-                    o, cur = pathplan.order_block(strokes, tier, cur, corners=a.corner_starts)
+                    o, cur = pathplan.order_block(strokes, tier, cur, corners=a.corner_starts, seams=seams)
                     order += o
         file_order = {"travel_mm": t_file, "est_seconds": s_file}
     if any((ls.get("passes") or 1) > 1 for ls in lset):
