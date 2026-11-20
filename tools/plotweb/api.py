@@ -73,7 +73,8 @@ class App:
         bed = self.s.bed()
         return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
                 "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch,
-                "features": {"shapes": shapes.available()}, "plotter": hardware.LAST if authed else None}
+                "features": {"shapes": shapes.available(), "homing": bool(self.s.machine().get("homing"))},
+                "plotter": hardware.LAST if authed else None}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
@@ -905,7 +906,7 @@ class App:
         if not path or not pathlib.Path(path).is_file():
             raise ApiError(500, "The sheet was generated but its SVG could not be found.", output=out)
         text = pathlib.Path(path).read_text(encoding="utf-8")
-        pen = p["pen"]
+        pen = p.get("pen")
         entry = self.lib.add_svg_text(text, pathlib.Path(path).name, kind="sheet", pen=pen, test=tool.id,
                                       notes=out)
         return {"ok": True, "file": {k: entry.get(k) for k in ("id", "name", "kind", "pen", "test")}, "output": out}
@@ -1672,6 +1673,16 @@ class Handler(BaseHTTPRequestHandler):
         self.app.ev.log("info", f"Pen profile {b.get('name')} saved.")
         self.send(200, {"me": self.app.me(True)})
 
+    def r_pens_export(self):
+        self.send(200, json.dumps(self.app.s.pens(), indent=1), "application/json; charset=utf-8",
+                  {"Content-Disposition": 'attachment; filename="pens.json"'})
+
+    def r_pens_import(self):
+        b = self.json_body()
+        n = self._config_edit(machinecfg.import_pens, b.get("pens"), b.get("replace") is True)
+        self.app.ev.log("info", f"Imported {n} pen profile{'s' if n != 1 else ''}.")
+        self.send(200, {"me": self.app.me(True), "imported": n})
+
     def r_pen_delete(self):
         name = self.json_body().get("name")
         self._config_edit(machinecfg.delete_pen, name)
@@ -1686,6 +1697,17 @@ class Handler(BaseHTTPRequestHandler):
         with self.app.runner.lock:
             strokes = list(self.app.runner.live_strokes)
         self.send(200, {"strokes": strokes})   # sent outside the lock: a slow client must never delay Stop
+
+    def r_live_save(self):
+        """The live page written so far (or the last session's) as a library drawing, where it was written."""
+        with self.app.runner.lock:
+            strokes = [s.get("pts") for s in self.app.runner.live_strokes if len(s.get("pts") or ()) >= 2]
+        if not strokes:
+            raise ApiError(400, "Nothing has been written on this page yet.")
+        text, b = shapes.svg_layers([("#000000", [[tuple(p) for p in s] for s in strokes])])
+        e = self.app.lib.add_svg_text(text, f"live-page-{time.strftime('%Y%m%d-%H%M')}.svg", kind="text")
+        self.app.ev.log("info", f"Saved the live page as {e['name']}: it can be plotted again from the bed.")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3)})
 
     def r_tool(self):
         self.send(200, self.app.run_tool(self.json_body()))
@@ -1773,6 +1795,7 @@ ROUTES_GET = {
     "/api/positions": (Handler.r_positions, True),
     "/api/macros": (Handler.r_macros, True),
     "/api/stats": (Handler.r_stats, True),
+    "/api/pens/export": (Handler.r_pens_export, True),
     "/api/plotter/doctor": (Handler.r_doctor, True),
     "/api/backup": (Handler.r_backup, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
@@ -1804,12 +1827,14 @@ ROUTES_POST = {
     "/api/shape_new": (Handler.r_shape_new, True),
     "/api/live/start": (Handler.r_live_start, True),
     "/api/live/send": (Handler.r_live_send, True),
+    "/api/live/save": (Handler.r_live_save, True),
     "/api/machine/start": (Handler.r_machine_start, True),
     "/api/machine/send": (Handler.r_machine_send, True),
     "/api/machine/calibrate": (Handler.r_calibrate, True),
     "/api/machine/paper": (Handler.r_paper, True),
     "/api/pens/save": (Handler.r_pen_save, True),
     "/api/pens/delete": (Handler.r_pen_delete, True),
+    "/api/pens/import": (Handler.r_pens_import, True),
     "/api/preview": (Handler.r_preview, True),
     "/api/doc": (Handler.r_doc_put, True),
     "/api/projects/save": (Handler.r_project_save, True),

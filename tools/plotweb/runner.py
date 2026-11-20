@@ -433,7 +433,14 @@ class JobRunner:
                 live["sport"] = bool(ev.get("sport"))
             elif kind == "resumed":
                 live["paper_change"] = False
+                live["paused"] = False
                 j["message"] = "Live writing: type the next line."
+            elif kind == "paused":
+                live["paper_change"] = True
+                live["paused"] = True
+                j["message"] = "Paused: nothing more is drawn until Continue. Lines typed now wait."
+            elif kind == "returned":
+                j["message"] = "Back at S, pen up. Type the next line to carry on where the writing was."
             elif kind == "page_full":
                 live["busy"] = False
                 j["message"] = "The page is full. Press New page, change the paper, and continue."
@@ -531,6 +538,8 @@ class JobRunner:
                     word = f"SPEED {num('speed', 1, 200):g}"
                 elif cmd == "sets":
                     word = "SETS"
+                elif cmd == "homesw":
+                    word = "HOMESW"
                 elif cmd == "quit":
                     word = "QUIT HERE" if args.get("here") else "QUIT"
                 else:
@@ -560,6 +569,10 @@ class JobRunner:
                 word = "NEWPAGE\n"
             elif cmd == "continue":
                 word = "CONTINUE\n"
+            elif cmd == "pause":
+                word = "PAUSE\n"
+            elif cmd == "home":
+                word = "HOME\n"
             elif cmd == "mirror":
                 clean = _clean_points(pts)
                 if phase not in ("start", "move", "end", "stroke") or clean is None:

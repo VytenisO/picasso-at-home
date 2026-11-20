@@ -103,19 +103,65 @@ def tone_svg(angle_note=True):
     return w, h, "".join(body)
 
 
+def square_svg(size):
+    """A square with both diagonals and a centre cross: equal diagonals mean the axes are square to each other;
+    their difference gives the skew. The sides check each axis's scale."""
+    m = MARGIN
+    s = size
+    body = ['<g fill="none" stroke="#000000" stroke-width="0.3">',
+            f'<path d="{path([(m, m), (m + s, m), (m + s, m + s), (m, m + s), (m, m)])}"/>',
+            f'<path d="{path([(m, m), (m + s, m + s)])}"/>', f'<path d="{path([(m + s, m), (m, m + s)])}"/>',
+            f'<path d="{path([(m + s / 2 - 4, m + s / 2), (m + s / 2 + 4, m + s / 2)])}"/>',
+            f'<path d="{path([(m + s / 2, m + s / 2 - 4), (m + s / 2, m + s / 2 + 4)])}"/>',
+            label(f"{s:g} mm square: measure both diagonals", m, m + s + 6, 2.5), "</g>"]
+    return s + 2 * m, s + 2 * m + 9, "".join(body)
+
+
+def backlash_svg():
+    """Pairs of short lines drawn towards each other from both sides, each pair meant to meet at a drawn reference
+    tick: a gap or overlap at the meeting point is the backlash of that axis. Plot with Shorter pen-up travel off,
+    so every line keeps its drawing direction."""
+    m, n, step, arm = MARGIN, 6, 8.0, 15.0
+    body = ['<g fill="none" stroke="#000000" stroke-width="0.3">']
+    cx = m + arm + 2
+    for k in range(n):                                  # X: left half drawn rightwards, right half drawn leftwards
+        y = m + 8 + k * step
+        body += [f'<path d="{path([(cx, y - 2), (cx, y + 2)])}"/>',
+                 f'<path d="{path([(cx - arm, y), (cx, y)])}"/>', f'<path d="{path([(cx + arm, y), (cx, y)])}"/>']
+    x0 = cx + arm + 15
+    cy = m + 8 + arm
+    for k in range(n):                                  # Y: top half drawn down, bottom half drawn up
+        x = x0 + k * step
+        body += [f'<path d="{path([(x - 2, cy), (x + 2, cy)])}"/>',
+                 f'<path d="{path([(x, cy - arm), (x, cy)])}"/>', f'<path d="{path([(x, cy + arm), (x, cy)])}"/>']
+    body.append(label("X", m, m + 4, 2.5) + label("Y", x0, m + 4, 2.5))
+    body.append("</g>")
+    return x0 + n * step + m, cy + arm + m, "".join(body)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pen", required=True)
     ap.add_argument("--pens-file", default=str(ROOT / "config" / "pens.json"))
     ap.add_argument("--out-dir", default=str(ROOT / "results" / "sheets"))
     ap.add_argument("--tone", action="store_true", help="the tone ramp instead of the grid")
+    ap.add_argument("--square", type=float, metavar="MM", help="the squareness sheet: a square this size with diagonals")
+    ap.add_argument("--backlash", action="store_true", help="the backlash sheet: lines drawn towards each other")
     ap.add_argument("--speeds", default="10,20,30,40", help="mm/s, comma separated, up to 8 (max 40)")
     ap.add_argument("--pressures", default="0,0.15,0.3,0.45", help="0..0.8, comma separated, up to 8")
     a = ap.parse_args()
     pens = json.loads(pathlib.Path(a.pens_file).read_text())
     if a.pen not in pens:
         sys.exit(f"unknown pen {a.pen!r}; known: {', '.join(sorted(pens))}")
-    if a.tone:
+    if a.square:
+        if not 20 <= a.square <= 200:
+            sys.exit("--square must be 20 to 200 mm")
+        w, h, body = square_svg(a.square)
+        kind = f"squareness {a.square:g} mm"
+    elif a.backlash:
+        w, h, body = backlash_svg()
+        kind = "backlash"
+    elif a.tone:
         w, h, body = tone_svg()
         kind = "tone ramp"
     else:
@@ -126,7 +172,7 @@ def main():
     out = pathlib.Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    svg_path = out / f"{'tone' if a.tone else 'grid'}_{a.pen}_{stamp}.svg"
+    svg_path = out / f"{'square' if a.square else 'backlash' if a.backlash else 'tone' if a.tone else 'grid'}_{a.pen}_{stamp}.svg"
     svg_path.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.2f}mm" height="{h:.2f}mm" '
                         f'viewBox="0 0 {w:.2f} {h:.2f}">{body}</svg>\n', encoding="utf-8")
     print(f"Wrote {svg_path}  ({w:.0f} x {h:.0f} mm, {kind}, pen {a.pen})")

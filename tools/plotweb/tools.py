@@ -78,6 +78,31 @@ REGISTRY = {t.id: t for t in [
     Tool("tone_sheet", "Tone ramp", "sheet", [PEN],
          lambda s, p: _script(s, "grid_test.py") + _sheet_common(s, p) + ["--tone"],
          help="Patches hatched from 0.3 to 3 mm apart, labelled: which spacing reads as which grey with this pen."),
+    Tool("square_sheet", "Squareness sheet", "sheet", [
+        PEN, {"key": "size", "label": "Square size", "type": "number", "default": 150, "min": 20, "max": 200, "step": 1,
+              "unit": "mm"},
+    ], lambda s, p: _script(s, "grid_test.py") + _sheet_common(s, p) + ["--square", f"{p.get('size') or 150:g}"],
+        help="A square with its diagonals: equal diagonals mean the axes are square; the sides check each axis's "
+             "scale against the calibration."),
+    Tool("backlash_sheet", "Backlash sheet", "sheet", [PEN],
+         lambda s, p: _script(s, "grid_test.py") + _sheet_common(s, p) + ["--backlash"],
+         help="Short lines drawn towards each other from both sides of a tick: a gap or overlap where they meet is the "
+              "backlash of that axis. Plot it with Shorter pen-up travel off (Job, Path planning)."),
+    Tool("lost_sheet", "Lost-steps sheet", "sheet", [
+        PEN, {"key": "minutes", "label": "Run time at stress speed", "type": "number", "default": 20, "min": 2,
+              "max": 120, "step": 1, "unit": "min"},
+    ], lambda s, p: _script(s, "lost_steps_test.py") + ["--out-dir", str(s.cache / "sheets"), "--config",
+                                                        str(s.machine_path), "--minutes", f"{p.get('minutes') or 20:g}"],
+        help="Long, jittery, fast moves that return to the same checkpoint mark: if later marks land away from the "
+             "first, steps were lost. Then Record the drift with Lost-steps result."),
+    Tool("lost_record", "Lost-steps result", "record", [
+        {"key": "dx", "label": "Last mark right of the first (negative: left)", "type": "number", "default": 0,
+         "min": -50, "max": 50, "step": 0.1, "unit": "mm"},
+        {"key": "dy", "label": "Last mark toward you (negative: away)", "type": "number", "default": 0,
+         "min": -50, "max": 50, "step": 0.1, "unit": "mm"},
+    ], lambda s, p: _script(s, "lost_steps_test.py") + ["--config", str(s.machine_path), "--out-dir",
+                                                        str(s.cache / "sheets"), "--analyse", f"{p['dx']:g}", f"{p['dy']:g}"],
+        help="Turns the measured drift of the last checkpoint into steps lost per metre."),
     Tool("stroke_record", "Record stroke results", "record", [
         PEN,
         _num("single", "Shortest single line", "mm", 0.1, 20, 0.05),

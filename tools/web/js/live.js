@@ -5,6 +5,7 @@ import { state, set, on, jobActive } from './store.js';
 import { $, el, toast } from './ui.js';
 import { confirmDialog } from './run.js';
 import { initPad } from './pad.js';
+import { refreshFiles } from './workspace.js';
 
 let fetched = '';
 let version = 0;      // a stroke response is applied only if no newer request was made
@@ -14,6 +15,15 @@ export function initLive() {
   $('liveSim').onclick = () => start(true);
   $('liveForm').onsubmit = (e) => { e.preventDefault(); send('text'); };
   $('liveNewPage').onclick = () => send('newpage');
+  $('livePause').onclick = () => send('pause');
+  $('liveHome').onclick = () => send('home');
+  $('liveSave').onclick = async () => {
+    try {
+      const r = await post('/api/live/save', {});
+      await refreshFiles();
+      toast(`${r.file.name} is in the Library: Add puts it on the bed where it was written.`);
+    } catch (e) { toast(e.message, true); }
+  };
   $('liveContinue').onclick = () => send('continue');
   $('liveFinish').onclick = () => send('quit');
   api('/api/fonts').then(fillFonts).catch(() => {});
@@ -88,6 +98,10 @@ function render() {
   $('liveWrite').disabled = j.state !== 'running' || hold;
   $('liveNewPage').disabled = j.state !== 'running' || hold;
   $('liveFinish').disabled = j.state !== 'running';
+  $('livePause').disabled = j.state !== 'running' || hold;
+  $('liveHome').disabled = j.state !== 'running' || !!(j.meta && j.meta.sport);
+  $('liveSave').disabled = !(l.strokes || l.lines);
+  $('liveContinue').textContent = l.paused ? 'Continue' : 'Paper changed: continue';
   const key = `${j.id}:${l.page}:${l.lines}:${l.strokes || 0}`;
   if (key !== fetched) {
     const v = ++version;

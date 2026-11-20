@@ -231,6 +231,9 @@
               <button id="liveNewPage" type="button">New page</button>
               <button id="liveContinue" type="button" class="primary" hidden>Paper changed: continue</button>
               <button id="liveFinish" type="button">Finish and return to S</button></div>
+            <div class="row"><button id="livePause" type="button" title="Nothing more is drawn until Continue; lines typed meanwhile wait">Pause</button>
+              <button id="liveHome" type="button" title="Pen up and back to S; the next line carries on where the writing was">Return to S</button>
+              <button id="liveSave" type="button" title="The page written so far as a drawing in the Library, to plot again from the bed">Save the page as a drawing</button></div>
           </form>
           <div class="row"><button id="padOpen" type="button">Open the writing pad (tablet or mouse)</button></div>
           <p id="liveSportNote" class="note err" hidden>SPORT MODE: the pad drives the plotter at up to 100 mm/s. Re-park the carriage afterwards.</p>
@@ -299,6 +302,7 @@
           </form>
           <div class="row">
             <button type="button" id="mcSetS" title="The pen is over the paper's top-left corner: make this S">Set S here</button>
+            <button type="button" id="mcHomeSw" hidden title="Find the homing switches, then go to S: the position is known without parking by hand">Home with switches</button>
           </div>
           <details class="mc-more">
             <summary>Saved positions</summary>
@@ -366,7 +370,10 @@
         <p class="hint">Each pen profile: its ink colour and line width (drawn that way in Ink view), and the speed and
           pressure a layer takes when you choose it. Test results recorded from the sheets are kept.</p>
         <ul id="penList" class="pens"></ul>
-        <button type="button" id="penNew">New pen</button>
+        <div class="row"><button type="button" id="penNew">New pen</button>
+          <a class="btn" href="/api/pens/export">Export the pens</a>
+          <button type="button" id="penImport">Import pens...</button>
+          <input type="file" id="penFile" accept=".json,application/json" hidden></div>
         <div id="penEdit"></div>
       </div>
     </section>

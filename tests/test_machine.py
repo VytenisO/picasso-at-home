@@ -195,6 +195,28 @@ class TestConfig(MachineServer):
         self.assertEqual(code, 200)
         self.assertTrue(rep["sim"])
 
+    def test_05_new_test_sheets_and_pen_import(self):
+        pen = next(iter(json.loads((self.tmp / "pens.json").read_text())))
+        for tool, params in (("square_sheet", {"pen": pen, "size": 80}), ("backlash_sheet", {"pen": pen}),
+                             ("lost_sheet", {"pen": pen, "minutes": 2})):
+            code, r = self.call("POST", "/api/tools/run", {"tool": tool, "params": params})
+            self.assertEqual(code, 200, (tool, r))
+            self.assertEqual(r["file"]["kind"], "sheet")
+        code, r = self.call("POST", "/api/tools/run", {"tool": "lost_record", "params": {"dx": 0.8, "dy": -1.2}})
+        self.assertEqual(code, 200, r)
+        self.assertIn("steps", r["output"])
+        with urllib.request.urlopen(self.base + "/api/pens/export") as resp:
+            pens = json.loads(resp.read())
+        pens["imported-pen"] = {"colour": "red", "width_mm": 0.4, "hatch_mm": 0.8, "dwell_ms": 100}
+        code, r = self.call("POST", "/api/pens/import", {"pens": {"imported-pen": pens["imported-pen"]}})
+        self.assertEqual(code, 200, r)
+        self.assertIn("imported-pen", r["me"]["pens"])
+        self.assertIn(pen, r["me"]["pens"])                      # merged, not replaced
+        code, r = self.call("POST", "/api/pens/import", {"pens": {"Bad Name": {}}})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/pens/import", {"pens": {"x": {"width_mm": 99}}})
+        self.assertEqual(code, 400)
+
     def test_03_pens(self):
         code, r = self.call("POST", "/api/pens/save", {"name": "fineliner", "pen": {
             "description": "0.3 fineliner", "colour": "blue", "colour_hex": "#2244AA", "width_mm": 0.3, "speed": 20}})

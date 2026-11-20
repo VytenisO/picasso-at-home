@@ -159,6 +159,29 @@ class TestApi(SimServer):
         self.assertGreater(len(d["strokes"]), n1 + 50)
         code, d = self.call("POST", "/api/live/send", {"job": "wrong", "cmd": "text", "text": "x"})
         self.assertEqual(code, 409)
+        # pause holds typed lines until continue; return goes to S; the page saves as a drawing
+        self.call("POST", "/api/live/send", {"job": job, "cmd": "pause"})
+        time.sleep(0.8)
+        _, st = self.call("GET", "/api/state")
+        self.assertTrue(st["job"]["live"].get("paused"))
+        lines = st["job"]["live"]["lines"]
+        self.call("POST", "/api/live/send", {"job": job, "cmd": "text", "text": "held"})
+        time.sleep(1.0)
+        _, st = self.call("GET", "/api/state")
+        self.assertEqual(st["job"]["live"]["lines"], lines)
+        self.call("POST", "/api/live/send", {"job": job, "cmd": "continue"})
+        end = time.time() + 30
+        while time.time() < end:
+            _, st = self.call("GET", "/api/state")
+            if st["job"]["live"]["lines"] > lines:
+                break
+            time.sleep(0.1)
+        self.assertGreater(st["job"]["live"]["lines"], lines)
+        code, d = self.call("POST", "/api/live/send", {"job": job, "cmd": "home"})
+        self.assertEqual(code, 200, d)
+        code, d = self.call("POST", "/api/live/save", {})
+        self.assertEqual(code, 200, d)
+        self.assertTrue(d["file"]["name"].startswith("live-page-"))
         code, d = self.call("POST", "/api/live/send", {"job": job, "cmd": "quit"})
         self.assertEqual(code, 200, d)
         st = self.wait_state(["complete", "error", "stopped"])

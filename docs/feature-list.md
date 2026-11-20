@@ -330,14 +330,14 @@ niche.
 | Raw EBB command line in the console | HAVE |  | Machine control, EBB command line: one command at a time; bootloader, reset, flash, configuration and servo setup refused; any command that can move or free the carriage makes the position unknown |
 | Live writing (font or own handwriting), new page, finish | HAVE | | `live.js`, `live_plot.py` |
 | Live writing: pressure field | HAVE |  | Tools, Live writing: Pressure 0-0.9 (empty = the configured pen-down) |
-| Live writing: pause and return | TODO | P3 | |
-| Replot a saved live session | TODO | P3 | |
+| Live writing: pause and return | HAVE |  | Live writing: Pause (lines typed meanwhile wait for Continue) and Return to S (the next line carries on where the writing was) |
+| Replot a saved live session | HAVE |  | Live writing: Save the page as a drawing, into the Library where it was written, to plot again from the bed |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
 | Crash homing: pen up, slow move past full travel into the upper-left stops, then travel to S | SKIP | | dropped 2026-11-18 after a supervised run on the machine (X, Y, then a full home with a dot): driving into the stops with the motor skipping for up to 30 s puts undue stress on the motors and the assembly. Code was in d80fe69, reverted |
 | Home button and "position unknown -> home" prompt | SKIP | | goes with crash homing |
 | Home one axis at a time | SKIP | | goes with crash homing |
 | Keep motors powered after a job (option) | HAVE |  | Job: Keep the motors on after a plot that ends normally; Machine control's Finish switches them off |
-| Switch homing (two microswitches on spare EBB inputs) | TODO | P3 | no grinding; check `PI` on 2.0.1; RB2 is taken by the pen-depth pot patch |
+| Switch homing (two microswitches on spare EBB inputs) | HAVE |  | Machine control, Home with switches: shown when machine.json has a homing block {x: {pin: B3}, y: {pin: B4}, active, speed}; creeps to each switch reading PI, finds it again slowly, then goes to S. Tested on the simulator only: no switches are fitted |
 | Limit switches during plots, alarm unlock, Z axis, rotary, dual head | SKIP | | not on this hardware |
 
 ## 13. Machine settings and calibration
@@ -348,8 +348,8 @@ niche.
 | Units mm / inch for display | HAVE |  | View, Show lengths in mm or inches (status line, selection, measure, plan size); typed values take either |
 | Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Machine tab: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
 | Paper edge calibration in the UI | PART | P2 | paper corner typed in, or jog to the corner and Set S here; no guided measurement |
-| Squareness and backlash test patterns | TODO | P3 | |
-| Lost-steps test in the UI | TODO | P3 | `lost_steps_test.py` CLI only |
+| Squareness and backlash test patterns | HAVE |  | Tools: Squareness sheet (square with diagonals), Backlash sheet (lines drawn towards each other) |
+| Lost-steps test in the UI | HAVE |  | Tools: Lost-steps sheet and Lost-steps result (the drift turned into steps per metre) |
 | Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
 | Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
@@ -366,11 +366,11 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Pen profiles (name, colour, speed, pressure) | HAVE | | read-only, `config/pens.json` |
-| Pen library editor: create, edit, duplicate, delete | PART | P3 | create, edit, rename, delete; no duplicate |
-| Pen fields: line width, best hatch spacing, dwell, notes | PART | P3 | line width, colour, speed, pressure, notes; hatch spacing and dwell are not fields |
+| Pen library editor: create, edit, duplicate, delete | HAVE |  | Machine, Pens: New, Edit, Duplicate, Delete |
+| Pen fields: line width, best hatch spacing, dwell, notes | HAVE |  | line width, colour, speed, pressure, best hatch spacing, dwell, notes |
 | Paper profiles (size, type, notes), paired with pens | PART | P3 | Job, Paper: standard sheet sizes (A4, A5, A6, Letter, postcard, portrait A4/A5) or custom; no paper types, notes or pen pairing |
 | Link a layer to a pen profile (retune updates the job) vs copy values | HAVE |  | choosing a pen leaves the layer's speed and pressure empty: they follow the pen profile (shown as placeholders), so retuning the pen changes every job using it; a value typed on the layer wins |
-| Export / import pen library | TODO | P3 | |
+| Export / import pen library | HAVE |  | Machine, Pens: Export the pens (JSON), Import pens (merged in, the old file kept) |
 | Stroke and circle test sheet | HAVE | | |
 | Infill (hatch spacing) test sheet | HAVE | | |
 | Pressure test sheet | HAVE | | |
@@ -379,7 +379,7 @@ niche.
 | Two-parameter grid test (e.g. speed x pressure) with value labels | HAVE |  | Tools, Speed x pressure grid: one cell per speed and pressure (patch, line, circle) at its own settings (data-speed, data-pressure), labelled, one run |
 | Place a test sheet anywhere on the paper | PART | P2 | placed like any drawing; add "fit in the free corner" |
 | Tone ramp test (hatch spacing -> perceived grey) | HAVE |  | Tools, Tone ramp: patches hatched 0.3 to 3 mm apart, labelled |
-| Test presets | TODO | P3 | |
+| Test presets | HAVE |  | Tools: each test's settings saved under a name and loaded back (per browser) |
 
 ## 15. Images and tracing
 

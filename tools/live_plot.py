@@ -236,6 +236,10 @@ def control_lines(q, flag, pending):
                 q.put(("quit",))
             elif word == "WRITE":
                 q.put(("write",))
+            elif word == "PAUSE":
+                q.put(("pause",))
+            elif word == "HOME":
+                q.put(("home",))
             elif word == "MIRROR":
                 phase, _, body = rest.partition(" ")
                 pts = parse_points(body) if phase in ("start", "move", "end", "stroke") else None
@@ -464,6 +468,21 @@ def main():
                 handle_mirror(item)
                 continue
             mirror.end()                            # anything else after a stroke that never ended: pen up first
+            if kind == "pause":
+                holding = True                      # nothing more is drawn until CONTINUE; lines typed meanwhile wait
+                s.emit("paused", page=s.page)
+                continue
+            if kind == "home":
+                if a.sport:
+                    s.emit("error", message="Return to S is not available in sport mode: the position cannot be trusted.")
+                    continue
+                if not p.pen_state:
+                    p.pen(True)
+                p.move_to(0, 0, a.travel_speed)
+                p.idle()
+                p.track(force=True)
+                s.emit("returned", page=s.page)
+                continue
             if kind == "continue":
                 if holding:
                     holding = False

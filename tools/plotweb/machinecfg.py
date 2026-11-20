@@ -12,7 +12,8 @@ import shutil
 from .config import LIMITS
 
 PEN_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,29}$")
-PEN_FIELDS = ("description", "colour", "colour_hex", "width_mm", "speed", "pressure", "expected_use", "notes")
+PEN_FIELDS = ("description", "colour", "colour_hex", "width_mm", "speed", "pressure", "expected_use", "notes",
+              "hatch_mm", "dwell_ms")
 
 
 class ConfigError(ValueError):
@@ -105,6 +106,10 @@ def save_pen(settings, name, fields, rename_from=None):
             v = _num(v, LIMITS["speed"]["min"], LIMITS["speed"]["max"], "Speed")
         elif k == "pressure":
             v = _num(v, 0, LIMITS["pressure"]["max"], "Pressure")
+        elif k == "hatch_mm":
+            v = _num(v, 0.2, 10, "Best hatch spacing")
+        elif k == "dwell_ms":
+            v = _num(v, 0, 3000, "Dwell")
         else:
             v = str(v)[:400]
         out[k] = v
@@ -186,6 +191,22 @@ def restore_bundle(settings, projects_dir, b, parts):
                 n += 1
         done.append(f"{n} project{'s' if n != 1 else ''}")
     return done
+
+
+def import_pens(settings, pens, replace=False):
+    """Pen profiles from an exported file: merged in (same names replaced), or replacing all. -> how many."""
+    if not isinstance(pens, dict) or not pens or len(pens) > 100:
+        raise ConfigError("That is not a pen library (a JSON object of pen profiles).")
+    for k, v in pens.items():
+        if not isinstance(k, str) or not PEN_NAME.match(k) or not isinstance(v, dict):
+            raise ConfigError(f"{str(k)[:30]!r} is not a valid pen profile.")
+        for f, lo, hi in (("width_mm", 0.05, 10), ("speed", LIMITS["speed"]["min"], LIMITS["speed"]["max"]),
+                          ("pressure", 0, LIMITS["pressure"]["max"]), ("hatch_mm", 0.2, 10), ("dwell_ms", 0, 3000)):
+            if v.get(f) is not None:
+                _num(v[f], lo, hi, f"{k}: {f}")
+    new = dict(pens) if replace else {**settings.pens(), **pens}
+    _write(settings, settings.pens_path, new)
+    return len(pens)
 
 
 def delete_pen(settings, name):

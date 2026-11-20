@@ -166,6 +166,7 @@ export function initMachine() {
   $('mcHome').onclick = () => send('home');
   $('mcPenUp').onclick = () => send('pen', { pen: 'up' });
   $('mcPenDown').onclick = () => send('pen', { pen: 'down' });
+  $('mcHomeSw').onclick = () => send('homesw');
   $('mcTouch').onclick = () => {
     const p = Number($('mcTouchP').value);
     if (!(p >= 0 && p <= 0.9)) { toast('Pressure: 0 (heaviest) to 0.9.', true); return; }
@@ -198,6 +199,17 @@ export function initMachine() {
   $('calSaveY').onclick = () => calSave('y');
   $('paperForm').onsubmit = savePaper;
   $('penNew').onclick = () => editPen(null);
+  $('penImport').onclick = () => $('penFile').click();
+  $('penFile').onchange = async () => {
+    const f = $('penFile').files[0];
+    $('penFile').value = '';
+    if (!f) return;
+    let pens;
+    try { pens = JSON.parse(await f.text()); } catch (e) { toast('That file is not JSON.', true); return; }
+    const n = pens && typeof pens === 'object' ? Object.keys(pens).length : 0;
+    if (!(await ask('Import pens', `${n} pen profile${n === 1 ? '' : 's'}: merged in, same names replaced. The current file is kept as a backup.`, 'Import'))) return;
+    try { const r = await post('/api/pens/import', { pens }); set({ me: r.me }); toast(`${r.imported} pens imported.`); } catch (e) { toast(e.message, true); }
+  };
   setBedClick((x, y) => {
     if (!armed || !machineRunning()) return false;
     armed = false;
@@ -266,6 +278,7 @@ function renderControl() {
   if (document.activeElement !== $('mcSpeed') && m.speed) $('mcSpeed').value = m.speed;
   const down = pos && pos.pen === 'down';
   $('mcSetS').disabled = !!down;
+  $('mcHomeSw').hidden = !(state.me && state.me.features && state.me.features.homing);
   $('mcPenUp').classList.toggle('primary', !!down);
 }
 
@@ -345,14 +358,16 @@ function renderPens() {
     const facts = [p.colour, p.width_mm ? `${p.width_mm} mm` : 'width not set', p.speed ? `${p.speed} mm/s` : null,
       p.pressure !== undefined && p.pressure !== null ? `pressure ${p.pressure}` : null].filter(Boolean).join(', ');
     return el('li', {}, el('div', { class: 'pen-head' }, sw, el('b', { text: name }), el('span', { class: 'spacer' }),
-      el('button', { class: 'icon', text: 'Edit', type: 'button', onclick: () => editPen(name) })),
+      el('button', { class: 'icon', text: 'Edit', type: 'button', onclick: () => editPen(name) }),
+      el('button', { class: 'icon', text: 'Duplicate', type: 'button', onclick: () => editPen(name, true) })),
     el('div', { class: 'meta', text: facts }),
     p.description ? el('div', { class: 'meta', text: p.description }) : null);
   }));
 }
 
-function editPen(name) {
+function editPen(name, copy = false) {
   const p = name ? state.me.pens[name] : {};
+  if (copy) name = null;              // a duplicate: the same fields under a new name, saved as a new pen
   const box = $('penEdit');
   const field = (label, input) => el('label', { class: 'field' }, el('span', { text: label }), input);
   const inp = (k, attrs = {}) => { const i = el('input', { name: k, ...attrs }); i.value = p[k] ?? ''; return i; };
@@ -361,7 +376,7 @@ function editPen(name) {
   const noHex = el('input', { type: 'checkbox', name: 'no_hex' });
   noHex.checked = !p.colour_hex;
   const nameIn = inp('pen_name', { maxlength: 30, pattern: '[a-z0-9][a-z0-9_-]*', required: true });
-  nameIn.value = name || '';
+  nameIn.value = name || (copy ? `${Object.keys(state.me.pens).find((k) => state.me.pens[k] === p) || 'pen'}-2` : '');
   const f = el('form', { class: 'pen-form' },
     field('Name (lowercase)', nameIn),
     field('Description', inp('description', { maxlength: 400 })),
@@ -373,6 +388,9 @@ function editPen(name) {
       field('Line width (mm)', inp('width_mm', { type: 'number', min: 0.05, max: 10, step: 0.05 })),
       field('Speed (mm/s)', inp('speed', { type: 'number', min: 1, max: state.me.limits.speed.max, step: 1 })),
       field('Pressure', inp('pressure', { type: 'number', min: 0, max: state.me.limits.pressure.max, step: 0.05 }))),
+    el('div', { class: 'field-row' },
+      field('Best hatch spacing (mm)', inp('hatch_mm', { type: 'number', min: 0.2, max: 10, step: 0.1 })),
+      field('Dwell (ms)', inp('dwell_ms', { type: 'number', min: 0, max: 3000, step: 50 }))),
     field('Notes', inp('notes', { maxlength: 400 })),
     el('div', { class: 'row' }, el('button', { class: 'primary', type: 'submit', text: name ? 'Save' : 'Add pen' }),
       el('button', { type: 'button', text: 'Cancel', onclick: () => box.replaceChildren() }),
@@ -385,7 +403,8 @@ function editPen(name) {
     e.preventDefault();
     const num = (k) => (f[k].value === '' ? null : Number(f[k].value));
     const pen = { description: f.description.value, colour: f.colour.value, colour_hex: f.no_hex.checked ? null : f.colour_hex.value,
-      width_mm: num('width_mm'), speed: num('speed'), pressure: num('pressure'), notes: f.notes.value };
+      width_mm: num('width_mm'), speed: num('speed'), pressure: num('pressure'), notes: f.notes.value,
+      hatch_mm: num('hatch_mm'), dwell_ms: num('dwell_ms') };
     try {
       const r = await post('/api/pens/save', { name: nameIn.value, pen, rename_from: name && name !== nameIn.value ? name : undefined });
       set({ me: r.me });

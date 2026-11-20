@@ -23,6 +23,7 @@ import json
 import math
 import pathlib
 import queue
+import re
 import signal
 import sys
 import threading
@@ -197,6 +198,58 @@ def main():
             elif word == "SPEED" and (v := nums(args, 1)) and 1 <= v[0] <= ps.MAX_TRAVEL_SPEED:
                 speed = v[0]
                 emit("speed", speed=speed)
+            elif word == "HOMESW":
+                # Switch homing: needs a "homing" block in machine.json naming the input pins of two switches at the
+                # machine's top-left stops. Creeps towards each switch, reading it after every half millimetre, backs
+                # off and finds it again slowly; then the position is known and the carriage goes to S.
+                hcfg = cfg.get("homing")
+                if not hcfg:
+                    emit("error", message="No homing switches are configured (machine.json has no homing block).")
+                    continue
+                if not p.pen_state:
+                    p.pen(True)
+                ok = True
+                for ax in (0, 1):
+                    pin = (hcfg.get("xy"[ax]) or {}).get("pin", "")
+                    m_ = re.fullmatch(r"([A-E])([0-7])", str(pin).upper())
+                    if not m_:
+                        emit("error", message=f"Homing: the {'XY'[ax]} pin must be like B3.")
+                        ok = False
+                        break
+                    active = int(hcfg.get("active", 0))
+
+                    def hit():
+                        if p.sim:          # the simulator's switch sits at machine zero
+                            return (sx if ax == 0 else sy) + p.pos[ax] / spmm[ax] <= 0.05
+                        out = p.cmd(f"PI,{m_.group(1)},{m_.group(2)}")
+                        v = re.findall(r"\d", out[0].split(",")[-1] if out else "")
+                        return bool(v) and int(v[-1]) == active
+
+                    def nudge(mm):
+                        d = [0, 0]
+                        d[ax] = round(mm * spmm[ax])
+                        p.move_to(p.pos[0] + d[0], p.pos[1] + d[1], float(hcfg.get("speed", 5)))
+                        p.idle()
+                    limit = (mx if ax == 0 else my) + 10
+                    went = 0.0
+                    while not hit() and went < limit:
+                        flag.check_stop()
+                        nudge(-0.5)
+                        went += 0.5
+                    if went >= limit:
+                        emit("error", message=f"Homing: no {'XY'[ax]} switch found within {limit:g} mm. Check its wiring.")
+                        ok = False
+                        break
+                    nudge(2.0)                       # back off, then find it again slowly for a repeatable edge
+                    went = 0.0
+                    while not hit() and went < 4:
+                        nudge(-0.1)
+                        went += 0.1
+                    p.pos[ax] = round((0.0 - (sx if ax == 0 else sy)) * spmm[ax])   # the switch is machine zero
+                if ok:
+                    go(sx, sy)
+                    emit("zeroed", x=sx, y=sy)
+                    emit("homed")
             elif word == "SETS":
                 if not p.pen_state:
                     emit("error", message="Lift the pen before setting S here.")
