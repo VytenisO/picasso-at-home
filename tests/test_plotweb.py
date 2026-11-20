@@ -884,6 +884,31 @@ class TestDocument(SimServer):
             code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": bad}})
             self.assertEqual(code, 400, bad)
 
+    def test_04q_text_edit_path_qr(self):
+        code, r = self.call("POST", "/api/text_single", {"text": "Hello", "xheight": 5, "tracking": 1})
+        self.assertEqual(code, 200, r)
+        fid = r["file"]["id"]
+        w1 = r["stats"]["size_mm"][0]
+        code, lib = self.call("GET", "/api/files")
+        e = next(f for f in lib["files"] if f["id"] == fid)
+        self.assertEqual(e["text_params"]["text"], "Hello")
+        code, r = self.call("POST", "/api/text_single", {"text": "Hello there", "xheight": 5, "replace": fid})
+        self.assertEqual((code, r["file"]["id"]), (200, fid))                   # edited in place: same drawing
+        self.assertGreater(r["stats"]["size_mm"][0], w1)
+        code, r = self.call("POST", "/api/text_single", {"text": "Squeeze", "xheight": 5, "fit": 20})
+        self.assertAlmostEqual(r["stats"]["size_mm"][0], 22, delta=0.2)          # 20 mm plus the 1 mm margins
+        code, r = self.call("POST", "/api/text_single", {"text": "x", "tracking": 50})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/text_path", {"text": "Wave", "xheight": 4, "pts": [[100, 50], [140, 60], [180, 50]]})
+        self.assertEqual(code, 200, r)
+        code, r = self.call("POST", "/api/text_path", {"text": "Far too long for this", "xheight": 6, "pts": [[0, 0], [10, 0]]})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/qr", {"text": "https://example.org", "module": 1, "pen": 0.4})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["modules"], 25)                                       # version 2
+        code, r = self.call("POST", "/api/qr", {"text": "x" * 300})
+        self.assertEqual(code, 400)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

@@ -1426,12 +1426,67 @@ class Handler(BaseHTTPRequestHandler):
             align = d.get("align") if d.get("align") in ("left", "center", "right") else "left"
             width = d.get("width")
             width = float(width) if width else None
-            svg, stats = hershey.svg(text, str(d.get("font") or "Hershey Sans"), xh, width, xh * 3.0, align)
-        except (TypeError, ValueError) as ex:
+            tracking = float(d.get("tracking") or 0)
+            if not -2 <= tracking <= 20:
+                raise ValueError("Letter spacing must be -2 to 20 mm.")
+            fit = float(d.get("fit") or 0) or None
+            if fit is not None and not 2 <= fit <= 1000:
+                raise ValueError("Fit to a width of 2 to 1000 mm.")
+            font_ = str(d.get("font") or "Hershey Sans")
+            svg, stats = hershey.svg(text, font_, xh, width, xh * 3.0, align, tracking=tracking, fit=fit)
+        except (TypeError, ValueError, KeyError) as ex:
             raise ApiError(400, str(ex))
+        params = {"text": text, "font": font_, "xheight": xh, "align": align, "tracking": tracking, "fit": fit}
         first = " ".join(text.split())[:20] or "text"
-        e = self.app.lib.add_svg_text(svg, f"text-{first}.svg", kind="text")
+        if d.get("replace"):                 # edit in place: same drawing, new letters; bed objects keep their place
+            e = self.app.lib.get(d["replace"])
+            if not e or e.get("kind") != "text":
+                raise ApiError(404, "That text is no longer in the library.")
+            self.app.lib.replace_svg(e["id"], svg.encode())
+            self.app.lib.update(e["id"], text_params=params)
+        else:
+            e = self.app.lib.add_svg_text(svg, f"text-{first}.svg", kind="text", text_params=params)
         self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "stats": stats})
+
+    def r_text_path(self):
+        """Single-line text along a path (machine mm), for the Line tools."""
+        import hershey
+        d = self.json_body()
+        try:
+            xh = float(d.get("xheight", 4.5))
+            if not 1.0 <= xh <= 40.0:
+                raise ValueError("Letter height must be between 1 and 40 mm.")
+            pts = [(float(x), float(y)) for x, y in (d.get("pts") or [])][:5000]
+            if len(pts) < 2:
+                raise ValueError("The path needs at least two points.")
+            text = str(d.get("text", ""))[:500]
+            polys = hershey.along_path(text, pts, str(d.get("font") or "Hershey Sans"), xh, float(d.get("tracking") or 0))
+        except (TypeError, ValueError, KeyError) as ex:
+            raise ApiError(400, str(ex))
+        text_, b = shapes.svg_layers([("#000000", polys)])
+        e = self.app.lib.add_svg_text(text_, f"path-text-{' '.join(text.split())[:16]}.svg", kind="shape")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3)})
+
+    def r_qr(self):
+        import qrgen
+        d = self.json_body()
+        try:
+            module = float(d.get("module", 1.0))
+            pen = float(d.get("pen", 0.4))
+            if not 0.3 <= module <= 10 or not 0.1 <= pen <= module:
+                raise ValueError("Module size 0.3 to 10 mm, pen width 0.1 mm up to the module size.")
+            text = str(d.get("text") or "")
+            if not text:
+                raise ValueError("Type what the code should hold.")
+            if d.get("kind") == "code128":
+                svg, size = qrgen.barcode_svg(text, module / 2.5, max(6.0, module * 12), pen)
+            else:
+                svg, size = qrgen.svg(text, module, pen)
+        except ValueError as ex:
+            raise ApiError(400, str(ex))
+        prefix = "barcode" if d.get("kind") == "code128" else "qr"
+        e = self.app.lib.add_svg_text(svg, f"{prefix}-{' '.join(text.split())[:20]}.svg", kind="shape")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "modules": size})
 
     def r_shape_new(self):
         """A rectangle, ellipse, polygon, star or clicked line as a library drawing, for the bed's Shape tool."""
@@ -1823,6 +1878,8 @@ ROUTES_POST = {
     "/api/text_art": (Handler.r_text_art, True),
     "/api/text_page": (Handler.r_text_page, True),
     "/api/text_single": (Handler.r_text_single, True),
+    "/api/text_path": (Handler.r_text_path, True),
+    "/api/qr": (Handler.r_qr, True),
     "/api/shapes": (Handler.r_shapes, True),
     "/api/shape_new": (Handler.r_shape_new, True),
     "/api/live/start": (Handler.r_live_start, True),

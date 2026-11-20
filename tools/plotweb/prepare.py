@@ -232,6 +232,35 @@ def _drop_short(d, p):
     return dict(d, polys=[d["polys"][i] for i in keep], metas=[d["metas"][i] for i in keep])
 
 
+def _weld(d, p):
+    """Overlapping closed outlines of one colour merged into one outline (letters of an outline font that touch).
+    Rings are sorted by nesting: even depth is solid, odd depth a hole, so the counters of letters stay open."""
+    from . import shapes
+    if not shapes.available():
+        raise PrepareError("Welding needs shapely on the server.")
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    import shapely
+    by, out_p, out_m = {}, [], []
+    for q, m in zip(d["polys"], d["metas"]):
+        if len(q) > 3 and math.dist(q[0], q[-1]) <= shapes.CLOSE_TOL:
+            by.setdefault((m.get("color"), m.get("layer")), ([], m))[0].append([tuple(pt) for pt in q])
+        else:
+            out_p.append(q)
+            out_m.append(m)
+    for rings, m in by.values():
+        polys = [shapely.make_valid(Polygon(r)) for r in rings]
+        polys = [g for g in polys if not g.is_empty and g.area > 1e-6]
+        depth = [sum(1 for j, h in enumerate(polys) if j != i and h.area > g.area and h.buffer(1e-6).contains(g))
+                 for i, g in enumerate(polys)]
+        solid = unary_union([g for g, dp in zip(polys, depth) if dp % 2 == 0])
+        holes = unary_union([g for g, dp in zip(polys, depth) if dp % 2 == 1])
+        for ln in shapes.outlines(solid.difference(holes) if not holes.is_empty else solid):
+            out_p.append([list(pt) for pt in ln])
+            out_m.append(dict(m))
+    return dict(d, polys=out_p, metas=out_m)
+
+
 def _join(d, p):
     tol, polys, metas = p["tolerance"], [], []
     for q, m in zip(d["polys"], d["metas"]):
@@ -411,6 +440,9 @@ STEPS = {s.id: s for s in [
         {"key": "min_mm", "label": "Shorter than", "type": "number", "default": 1.0, "min": 0.1, "max": 50,
          "step": 0.1, "unit": "mm"},
     ], _drop_short, "Specks and stray dots: each one costs a pen lift."),
+    Step("weld", "Weld overlapping outlines", "clean", ["image", "svg", "mesh", "none"], [], _weld,
+         "Closed shapes of one colour that overlap become one outline: letters of an outline font that touch are "
+         "drawn as one, with no lines inside."),
     Step("join", "Join touching strokes", "clean", ["image", "svg", "mesh", "none"], [
         {"key": "tolerance", "label": "Gap up to", "type": "number", "default": 0.5, "min": 0.05, "max": 5,
          "step": 0.05, "unit": "mm"},

@@ -1,7 +1,7 @@
 // The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
 // settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
 import { api, post } from './api.js';
-import { armPlace, armPoly, armFree } from './bed.js';
+import { armPlace, armPoly, armFree, setTextEdit } from './bed.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
@@ -307,6 +307,7 @@ async function lineTool(t) {
     });
   } else if (t === 'taper') openTaper();
   else if (t === 'along') copyAlong();
+  else if (t === 'text-path') textAlong();
   else if (t === 'pack') packCanvas();
 }
 
@@ -321,6 +322,30 @@ function openTaper() {
     lineOp('warp', { quad: [[cx - tw, cy - lh], [cx + tw, cy - rh], [cx + bw, cy + rh], [cx - bw, cy + lh]] });
   };
   d.showModal();
+}
+
+// The longest line of an object, in machine mm.
+function objectPath(o) {
+  const n = state.naturals[o.file];
+  if (!n || !n.strokes.length) return null;
+  const m = G.matrix(o, n.geom);
+  return n.strokes.reduce((a, s) => (s.pts.length > a.length ? s.pts : a), []).map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+}
+
+// Text along a path: single-line letters laid along the first selected object's longest line.
+async function textAlong() {
+  const sel = D.selected();
+  const path = sel.find((o) => o.id === state.sel[0]);
+  const pts = path && objectPath(path);
+  if (!pts) { toast('Select the path first.', true); return; }
+  const text = await askText('Text along a path', 'The text (single-line letters, 4 mm high; letter size: type e.g. "5|My text"):', '', 'Place');
+  if (!text) return;
+  const m = /^(\d+(?:\.\d+)?)\|(.*)$/.exec(text);
+  try {
+    const r = await post('/api/text_path', { text: m ? m[2] : text, xheight: m ? Number(m[1]) : 4, pts });
+    await refreshFiles();
+    await D.addFile(r.file.id, { at: [r.x, r.y] });
+  } catch (e) { toast(e.message, true); }
 }
 
 // Copy along a path: the first object selected is the path; the others are copied evenly along it.
@@ -461,6 +486,7 @@ function openArray() {
 // The bed's text tool: click where the text goes, type it, and it is added to the library and placed there.
 export function initTextTool() {
   initShapeTool();
+  setTextEdit((o) => editTextObject(o));
   const btn = $('textTool');
   btn.onclick = () => {
     const on = btn.getAttribute('aria-pressed') !== 'true';
@@ -495,7 +521,19 @@ function initShapeTool() {
           await D.addFile(r.file.id, { at: r.at || at });
         } catch (e) { toast(e.message, true); }
       };
-      if (p.kind === 'free') {
+      if (p.kind === 'qr' || p.kind === 'code128') {
+        const text = f.qrtext.value.trim();
+        if (!text) { toast('Type what the code should hold.', true); btn.setAttribute('aria-pressed', 'false'); return; }
+        toast('Click on the bed where its top-left corner goes.');
+        armPlace(async (x, y) => {
+          btn.setAttribute('aria-pressed', 'false');
+          try {
+            const r = await post('/api/qr', { text, kind: p.kind, module: Number(f.module.value), pen: Number(f.qrpen.value) });
+            await refreshFiles();
+            await D.addFile(r.file.id, { at: [x, y] });
+          } catch (e) { toast(e.message, true); }
+        });
+      } else if (p.kind === 'free') {
         toast('Drag on the bed to draw.');
         armFree((pts) => { if (pts) make({ kind: 'poly', pts, closed: false }); else btn.setAttribute('aria-pressed', 'false'); });
       } else if (p.kind === 'poly') {
@@ -511,22 +549,60 @@ function initShapeTool() {
   on('job', () => { btn.disabled = jobActive(); });
 }
 
-function placeText(x, y) {
+function placeText(x, y, edit = null) {
   $('textTool').setAttribute('aria-pressed', 'false');
   const d = $('textDlg'), f = $('textForm');
-  f.text.value = '';
+  const tp = edit ? edit.params : null;
+  f.text.value = tp ? tp.text : '';
+  if (tp) {
+    f.font.value = tp.font; f.xheight.value = tp.xheight; f.align.value = tp.align;
+    f.tracking.value = tp.tracking || 0; f.fit.value = tp.fit || '';
+  }
+  f.merge.checked = false; f.rows.value = ''; f.start.value = 1;
+  $('textDlgTitle').textContent = edit ? 'Edit the text' : 'Text on the bed';
+  f.merge.disabled = !!edit;
   d.returnValue = '';
   d.onclose = async () => {
     if (d.returnValue !== 'ok' || !f.text.value.trim()) return;
+    const base = { font: f.font.value, xheight: Number(f.xheight.value), align: f.align.value,
+      tracking: Number(f.tracking.value) || 0, fit: Number(f.fit.value) || null };
     try {
-      const r = await post('/api/text_single', { text: f.text.value, font: f.font.value, xheight: Number(f.xheight.value),
-        align: f.align.value });
-      await refreshFiles();
-      await D.addFile(r.file.id, { at: [x, y] });
+      if (edit) {
+        await post('/api/text_single', { ...base, text: f.text.value, replace: edit.file });
+        await refreshFiles();
+        toast('Text changed: every copy on the bed follows.');
+        return;
+      }
+      // one text, or one per line of the list: {n} counts from Start, {date} is today, {1} {2}... are the
+      // list's comma-separated columns
+      const rows = f.merge.checked ? f.rows.value.split('\n').map((r) => r.trim()).filter(Boolean).slice(0, 60) : [null];
+      if (f.merge.checked && !rows.length) { toast('Put one line per copy in the list.', true); return; }
+      const today = new Date().toISOString().slice(0, 10);
+      let yy = y;
+      for (const [k, row] of rows.entries()) {
+        const cols = row === null ? [] : row.split(',').map((c) => c.trim());
+        const text = f.text.value.replace(/\{n\}/g, String(Number(f.start.value || 1) + k)).replace(/\{date\}/g, today)
+          .replace(/\{(\d+)\}/g, (_, i) => cols[Number(i) - 1] ?? '');
+        const r = await post('/api/text_single', { ...base, text });
+        await refreshFiles();
+        const [w, h] = r.stats.size_mm;
+        const ax = base.align === 'center' ? x - w / 2 : base.align === 'right' ? x - w : x;
+        const ay = f.valign.value === 'middle' ? yy - h / 2 : f.valign.value === 'bottom' ? yy - h : yy;
+        await D.addFile(r.file.id, { at: [ax, ay] });
+        yy += h + 2;
+      }
     } catch (e) { toast(e.message, true); }
   };
   d.showModal();
   f.text.focus();
+}
+
+// Double-click on placed single-line text: edit it where it is.
+export function editTextObject(o) {
+  const e = state.files.find((x) => x.id === o.file);
+  if (!e || e.kind !== 'text' || !e.text_params) return false;
+  placeText(o.x, o.y, { file: e.id, params: e.text_params });
+  return true;
 }
 
 // ------------------------------------------------------------------ job settings

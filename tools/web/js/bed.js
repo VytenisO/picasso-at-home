@@ -25,6 +25,8 @@ let bedClick = () => false;        // the Machine tab's "click to go"
 let placeHook = null;              // one click on the bed, for the text tool
 
 export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
+let textEditHook = null;
+export function setTextEdit(fn) { textEditHook = fn; }
 
 // Space held down (with no job to pause): a drag pans the bed.
 let spaceHeld = false;
@@ -102,7 +104,13 @@ export function initBed() {
   cv.addEventListener('pointercancel', up);
   cv.addEventListener('wheel', wheel, { passive: false });
   cv.addEventListener('keydown', key);
-  cv.addEventListener('dblclick', () => { if (polyHook && polyPts.length >= 2) polyFinish(false); });
+  cv.addEventListener('dblclick', (e) => {
+    if (polyHook && polyPts.length >= 2) { polyFinish(false); return; }
+    if (!editable() || placeHook || freeHook) return;
+    const [px, py] = local(e);
+    const o = hitObject(px, py);
+    if (o && textEditHook) textEditHook(o);
+  });
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
   cv.addEventListener('pointerleave', () => { pointerMm = null; status(); redraw(); });
   document.addEventListener('pointerdown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);

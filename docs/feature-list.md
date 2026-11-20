@@ -421,15 +421,15 @@ niche.
 | Bundled fonts plus system fonts | HAVE | | |
 | Own handwriting in live writing | HAVE | | captured with the separate handwriting page |
 | Single-line (stroke) fonts | HAVE | | four Hershey fonts (sans, sans double, script, serif) in `tools/hershey/`; Prepare method Single-line text and the bed's Text tool |
-| Click-to-place text object on the bed, edit in place | PART | P3 | Text on the bed toolbar: click, type, placed there (via the library); no edit in place |
-| Letter spacing, line spacing, alignment (left/centre/right, top/middle/bottom) | PART | P3 | single-line text: line spacing and left/centre/right; no letter spacing |
-| Weld overlapping letters (outline fonts) | TODO | P3 | |
-| Text on a path | TODO | P3 | |
-| Fit text to a width (squeeze) | TODO | P3 | |
-| Font browser with favourites and search | TODO | P3 | |
+| Click-to-place text object on the bed, edit in place | HAVE |  | Text on the bed toolbar: click, type, placed; double-click placed text to edit it (the drawing changes in place, every copy follows) |
+| Letter spacing, line spacing, alignment (left/centre/right, top/middle/bottom) | HAVE |  | Text: letter spacing, left/centre/right and a top/middle/bottom anchor at the click; line spacing 3x the letter height |
+| Weld overlapping letters (outline fonts) | HAVE |  | Prepare clean-up step Weld overlapping outlines (letter counters stay open) |
+| Text on a path | HAVE |  | Line tools, Text along a path: single-line letters along the first selected object's longest line |
+| Fit text to a width (squeeze) | HAVE |  | Text: Fit to width squeezes or stretches to an exact width |
+| Font browser with favourites and search | HAVE |  | every font field has Browse: search the server's fonts, star favourites (listed first) |
 | Own handwriting as a text font outside live writing | SKIP |  | handwriting capture and synthesis moved to the separate handwriting-synth project (2026-11-19) |
-| Serial numbers, dates, CSV merge (variable text) | TODO | P3 | name tags, numbered cards |
-| QR / bar code generator | TODO | P3 | |
+| Serial numbers, dates, CSV merge (variable text) | HAVE |  | Text, Several from a list: one text per line, {n} counting from Start, {date}, {1} {2}... columns, stacked down from the click |
+| QR / bar code generator | HAVE |  | Shape tool: QR code (versions 1-10, level M) and Code 128 bar code, filled with lines at the pen width; both verified with a decoder |
 | Right-to-left text | SKIP | | |
 
 ## 17. Console, logs and diagnostics

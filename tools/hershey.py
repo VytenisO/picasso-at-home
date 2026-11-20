@@ -84,13 +84,15 @@ def lines_of(text, name, xheight, width_mm=None):
     return out
 
 
-def text_strokes(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=None, align="left"):
-    """-> (polylines in mm with the first baseline at y = 0, width, height). pitch: baseline distance in mm."""
+def text_strokes(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=None, align="left", tracking=0.0):
+    """-> (polylines in mm with the first baseline at y = 0, width, height). pitch: baseline distance in mm;
+    tracking: extra space after every letter, mm."""
     g, xh_units, base = font(name)
     k = xheight / xh_units
     pitch = pitch or xheight * 3.0
     lines = lines_of(text, name, xheight, width_mm)
-    widths = [sum((g.get(c, g["?"])[1] - g.get(c, g["?"])[0]) * k for c in ln) for ln in lines]
+    widths = [sum((g.get(c, g["?"])[1] - g.get(c, g["?"])[0]) * k + tracking for c in ln) - (tracking if ln else 0)
+              for ln in lines]
     box_w = width_mm if (width_mm and align != "left") else max(widths or [0])
     polys = []
     for n, ln in enumerate(lines):
@@ -100,15 +102,24 @@ def text_strokes(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=No
             left, right, strokes = g.get(c, g["?"])
             for s in strokes:
                 polys.append([(round(x + (px - left) * k, 3), round(y0 + (py - base) * k, 3)) for px, py in s])
-            x += (right - left) * k
+            x += (right - left) * k + tracking
     return polys, box_w, (len(lines) - 1) * pitch
 
 
-def svg(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=None, align="left", color="#000000"):
-    """A plottable SVG (mm) of the text, with a little margin. -> (svg text, stats)."""
-    polys, w, h = text_strokes(text, name, xheight, width_mm, pitch, align)
+def svg(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=None, align="left", color="#000000",
+        tracking=0.0, fit=None, polys=None):
+    """A plottable SVG (mm) of the text, with a little margin. fit: squeeze or stretch to this width (mm).
+    polys: ready strokes (text on a path) instead of laying out text. -> (svg text, stats)."""
+    if polys is None:
+        polys, w, h = text_strokes(text, name, xheight, width_mm, pitch, align, tracking)
     if not polys:
         raise ValueError("Nothing to draw: the text is empty or has no drawable letters.")
+    if fit:
+        xs = [p[0] for s in polys for p in s]
+        x0, span = min(xs), max(xs) - min(xs)
+        if span > 0:
+            kx = fit / span
+            polys = [[(round(x0 + (x - x0) * kx, 3), y) for x, y in s] for s in polys]
     xs = [p[0] for s in polys for p in s]
     ys = [p[1] for s in polys for p in s]
     x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
@@ -121,6 +132,42 @@ def svg(text, name="Hershey Sans", xheight=4.5, width_mm=None, pitch=None, align
     length = sum(math.dist(a, b) for s in polys for a, b in zip(s, s[1:]))
     return out, {"strokes": len(polys), "lines": len(lines_of(text, name, xheight, width_mm)),
                  "size_mm": [round(W, 1), round(H, 1)], "length_mm": round(length, 1)}
+
+
+def along_path(text, path, name="Hershey Sans", xheight=4.5, tracking=0.0):
+    """Single-line text laid along a polyline (mm): each letter placed at its distance along the path and turned
+    with it. -> list of polylines, or ValueError when the path is too short."""
+    g, xh_units, base = font(name)
+    k = xheight / xh_units
+    seg = [math.dist(a, b) for a, b in zip(path, path[1:])]
+    total = sum(seg)
+
+    def at(dist):
+        for i, d in enumerate(seg):
+            if dist <= d or i == len(seg) - 1:
+                f = min(1.0, dist / d) if d else 0.0
+                (ax, ay), (bx, by) = path[i], path[i + 1]
+                return (ax + (bx - ax) * f, ay + (by - ay) * f), math.atan2(by - ay, bx - ax)
+            dist -= d
+        return path[-1], 0.0
+    polys, dist = [], 0.0
+    for c in " ".join(text.split()):
+        left, right, strokes = g.get(c, g["?"])
+        w = (right - left) * k
+        if dist + w > total + 1e-6:
+            raise ValueError(f"The path is {total:.0f} mm long; the text needs more. Use smaller letters.")
+        (cx, cy), ang = at(dist + w / 2)
+        co, si = math.cos(ang), math.sin(ang)
+        for s in strokes:
+            pts = []
+            for px, py in s:
+                u, v = (px - left) * k - w / 2, (py - base) * k
+                pts.append((round(cx + u * co - v * si, 3), round(cy + u * si + v * co, 3)))
+            polys.append(pts)
+        dist += w + tracking
+    if not polys:
+        raise ValueError("Nothing to draw: the text is empty.")
+    return polys
 
 
 def main(argv=None):

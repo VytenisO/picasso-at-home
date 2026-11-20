@@ -292,6 +292,8 @@ button.icon[aria-pressed="true"] { background: var(--info-bg); border-color: var
 .hist-menu small { color: var(--muted); margin-left: auto; }
 .workspace.no-panels > .panel { display: none; }
 .speed-live input { width: 100%; }
+.font-list { max-height: 50vh; overflow: auto; }
+.font-list .fav { min-height: 24px; padding: 0 6px; }
 .mini-list { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; font-size: 13px; }
 .mini-list li { display: flex; gap: 6px; align-items: center; }
 .mini-list li span { flex: 1; }

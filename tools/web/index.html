@@ -571,6 +571,7 @@
             <option value="mirror-line">Mirror about a line (two clicks)</option>
             <option value="true-size">True size from two points</option>
             <option value="along">Copy along a path (first selected)</option>
+            <option value="text-path">Text along a path (first selected)</option>
             <option value="pack">Pack onto the canvas</option></select>
           <span class="muted">Colour</span>
           <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
@@ -763,7 +764,21 @@
       <label class="field"><span>Letter height (mm)</span><input name="xheight" type="number" min="1" max="40" step="0.5" value="5"></label>
       <label class="field"><span>Align</span><select name="align"><option value="left">Left</option>
         <option value="center">Centre</option><option value="right">Right</option></select></label>
+      <label class="field" title="Where the click is, top to bottom"><span>Anchor</span><select name="valign"><option value="top">Top</option>
+        <option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
     </div>
+    <div class="field-row">
+      <label class="field"><span>Letter spacing (mm)</span><input name="tracking" type="number" min="-2" max="20" step="0.1" value="0"></label>
+      <label class="field" title="Squeeze or stretch the text to exactly this width (empty: natural width)"><span>Fit to width (mm)</span><input name="fit" type="number" min="2" max="1000" step="0.5" placeholder="natural"></label>
+    </div>
+    <details>
+      <summary>Several from a list (name tags, numbered cards)</summary>
+      <label class="check"><input type="checkbox" name="merge"> One text per line of the list, stacked down from the click</label>
+      <p class="hint">In the text: {n} is a running number from Start, {date} today's date, {1} {2}... the list's
+        comma-separated columns.</p>
+      <label class="field"><span>List (one line per copy, columns separated by commas)</span><textarea name="rows" rows="4" placeholder="Ada, Lovelace&#10;Alan, Turing"></textarea></label>
+      <label class="field"><span>Start</span><input name="start" type="number" min="0" max="100000" step="1" value="1"></label>
+    </details>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place text</button></div>
   </form>
 </dialog>
@@ -774,7 +789,13 @@
     <label class="field"><span>Shape</span><select name="kind">
       <option value="rect">Rectangle</option><option value="ellipse">Ellipse or circle</option>
       <option value="polygon">Polygon</option><option value="star">Star</option>
-      <option value="poly">Line by clicks</option><option value="free">Freehand (drag)</option></select></label>
+      <option value="poly">Line by clicks</option><option value="free">Freehand (drag)</option>
+      <option value="qr">QR code</option><option value="code128">Bar code (Code 128)</option></select></label>
+    <label class="field" data-for="qr code128"><span>What it holds (a link or text)</span><input name="qrtext" maxlength="213"></label>
+    <div class="field-row" data-for="qr code128">
+      <label class="field"><span>Module size (mm)</span><input name="module" type="number" min="0.3" max="10" step="0.1" value="1"></label>
+      <label class="field" title="The modules are filled with lines this far apart: a dark, crisp pen reads best"><span>Pen width (mm)</span><input name="qrpen" type="number" min="0.1" max="10" step="0.05" value="0.4"></label>
+    </div>
     <div class="field-row" data-for="rect ellipse polygon star">
       <label class="field"><span>Width (mm)</span><input name="w" type="number" min="1" max="500" step="0.5" value="40"></label>
       <label class="field"><span>Height (mm)</span><input name="h" type="number" min="1" max="500" step="0.5" value="40"></label>
@@ -787,6 +808,15 @@
     <p class="hint" data-for="poly">Then click on the bed for each point. Shift keeps 45 degree steps. Click the first point to
       close the shape; double-click or Enter finishes an open line; Esc cancels; Backspace removes the last point.</p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place</button></div>
+  </form>
+</dialog>
+
+<dialog id="fontDlg" aria-labelledby="fontDlgTitle">
+  <form method="dialog" class="dlg" id="fontForm">
+    <h2 id="fontDlgTitle">Fonts</h2>
+    <input id="fontSearch" type="search" placeholder="Search" aria-label="Search fonts" autocomplete="off">
+    <ul id="fontBrowse" class="mini-list font-list"></ul>
+    <div class="actions"><button value="cancel" formnovalidate>Close</button></div>
   </form>
 </dialog>
 
