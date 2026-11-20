@@ -559,7 +559,8 @@ class App:
             raise ApiError(400, "These objects have no lines to join.")
         return shapes.svg_layers(groups), before, after
 
-    LINE_OPS = ("close", "smooth", "hull", "fillet", "cut", "trim", "affine", "warp", "penwidth")
+    LINE_OPS = ("close", "smooth", "hull", "fillet", "cut", "trim", "affine", "warp", "penwidth", "arcs", "grid",
+                "set")
 
     def line_op(self, op, objs, body):
         """The bed's line tools. -> a new drawing (or several, see cut) replacing the objects it was made from."""
@@ -588,6 +589,28 @@ class App:
                     res = shapes.close_gaps(strokes, num("tolerance", 0.01, 20, "The gap", 1.0))
                 elif op == "smooth":
                     res = shapes.smooth(strokes, int(num("passes", 1, 5, "Passes", 2)))
+                elif op == "arcs":
+                    res = shapes.fit_arcs(strokes, num("tolerance", 0.01, 5, "The tolerance", 0.1))
+                elif op == "grid":
+                    g = body.get("grid")
+                    ok = (isinstance(g, list) and 2 <= len(g) <= 12 and all(isinstance(r, list) and len(r) == len(g[0])
+                          and 2 <= len(r) <= 12 for r in g) and all(isinstance(p, list) and len(p) == 2 and
+                          all(isinstance(v, (int, float)) and math.isfinite(v) for v in p) for r in g for p in r))
+                    if not ok:
+                        raise ApiError(400, "The deform grid must be 2 to 12 rows of 2 to 12 points.")
+                    res = shapes.grid_warp(strokes, [[(float(x), float(y)) for x, y in r] for r in g])
+                elif op == "set":
+                    # node editing: the edited strokes (machine mm, per colour) replace the object's
+                    new = body.get("strokes")
+                    ok = (isinstance(new, list) and 1 <= len(new) <= 5000 and all(
+                        isinstance(it, dict) and isinstance(it.get("pts"), list) and 2 <= len(it["pts"]) <= 20000 and
+                        all(isinstance(p, list) and len(p) == 2 and all(isinstance(v, (int, float)) and
+                            math.isfinite(v) and -1000 <= v <= 3000 for v in p) for p in it["pts"]) for it in new))
+                    if not ok:
+                        raise ApiError(400, "The edited lines are not valid.")
+                    cols = {c for c, _ in strokes}
+                    res = [((it.get("c") if it.get("c") in cols else strokes[0][0]),
+                            [(float(x), float(y)) for x, y in it["pts"]]) for it in new]
                 elif op == "hull":
                     res = shapes.hull(strokes)
                 elif op == "fillet":
@@ -645,6 +668,13 @@ class App:
             return self.line_op(op, objs, body)
         if op == "split":
             return {"ok": True, "pieces": self.split_objects(objs)}
+        if op == "strokes":                 # for node editing: the lines of one object in bed millimetres
+            if len(objs) != 1:
+                raise ApiError(400, "Edit the nodes of one object at a time.")
+            st = self.object_strokes(objs)
+            if sum(len(s) for _, s in st) > 20000:
+                raise ApiError(400, "Too many points to edit by hand (over 20000). Simplify it first.")
+            return {"ok": True, "strokes": [{"c": c, "pts": [[round(x, 3), round(y, 3)] for x, y in s]} for c, s in st]}
         if op == "reverse":
             strokes = self.object_strokes(objs)
             if not strokes:
@@ -1637,11 +1667,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_shape_new(self):
         """A rectangle, ellipse, polygon, star or clicked line as a library drawing, for the bed's Shape tool."""
+        body = self.json_body()
         try:
-            svg, name, at = shapes.make_shape(self.json_body())
+            svg, name, at = shapes.make_shape(body)
         except ValueError as ex:
             raise ApiError(400, str(ex))
-        e = self.app.lib.add_svg_text(svg, f"{name}.svg", kind="shape")
+        # the parameters stay with the drawing, so Edit shape can open them again (not for clicked lines)
+        params = None if body.get("kind") == "poly" else {k: body.get(k) for k in ("kind", "w", "h", "r", "n", "inner")
+                                                          if isinstance(body.get(k), (int, float, str))}
+        if body.get("replace"):
+            old = self.app.lib.get(str(body["replace"]))
+            if not old or not old.get("shape_params"):
+                raise ApiError(400, "That drawing is not an editable shape.")
+            try:
+                self.app.lib.replace_svg(old["id"], svg.encode())
+            except ValueError as ex:
+                raise ApiError(400, str(ex))
+            e = self.app.lib.update(old["id"], shape_params=params)
+            self.app.ev.emit("files")
+            return self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "at": at, "replaced": True})
+        e = self.app.lib.add_svg_text(svg, f"{name}.svg", kind="shape", shape_params=params)
         self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "at": at})
 
     # ---- routes: catalogue

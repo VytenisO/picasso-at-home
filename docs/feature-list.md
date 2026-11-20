@@ -167,7 +167,7 @@ niche.
 | Lock object (no move/resize/delete) | HAVE |  | Arrange Lock/Unlock: no handles, no drag, nudge, transform, shape operation or remove; colour and plot settings still change |
 | Make same width / height | HAVE |  | Arrange, Same width / Same height: as the first object selected, around each one's centre |
 | Two-point rotate/scale (match two points to two targets) | HAVE |  | Line tools, True size from two points: click two points, type their real distance; the drawing scales about the first. Full two-target matching is not there |
-| Warp (4-corner) and deform (grid) | PART | P3 | Line tools, Taper / warp: each edge of the box as a percentage (bilinear); no free corner dragging or grid deform |
+| Warp (4-corner) and deform (grid) | HAVE |  | Line tools: Taper / warp (edges as percentages) and Deform with a grid (2 to 8 points each way, dragged on the bed with a live preview) |
 | Edit locked while a job runs | HAVE | | |
 
 ## 6. Arrange
@@ -193,7 +193,7 @@ niche.
 |---|---|---|---|
 | Grid snap while dragging (0.5 mm), Shift disables | HAVE | | |
 | Grid snap spacing and toggle as a setting | HAVE |  | View: moves and resizes snap to the grid step instead of 0.5 mm |
-| Snap to object nodes, midpoints, centres, intersections | PART | P3 | object edges and centres while moving and while resizing an unturned box by an edge; no nodes or intersections |
+| Snap to object nodes, midpoints, centres, intersections | HAVE |  | moving a drawing: the point of it nearest the grab lands on another drawing's ends, corners, midpoints, centre or line crossings (View: Snap to points); edges and centres as before |
 | Snap to paper/canvas edges and centre | HAVE | | moving snaps edges and centre to canvas, paper, guides and other objects within 7 px; Alt: none |
 | Snap distance setting, modifier to disable | HAVE |  | View, Snap distance (off, 4, 7, 12 px); Alt while dragging turns it off |
 
@@ -202,17 +202,17 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Polyline tool (click nodes, Shift for 45 degree steps, close on start) | HAVE |  | Bed, Shape, Line by clicks: points on the 0.5 mm grid, Shift for 45 degree steps, click the first point to close, double-click or Enter to finish, Backspace drops a point, Esc cancels |
-| Bezier drawing (drag for handles) | TODO | P3 | |
+| Bezier drawing (drag for handles) | HAVE |  | Shape, Curve: click for corners, press and drag for smooth points; click the first point to close |
 | Rectangle (corner radius), ellipse, polygon, star | HAVE |  | Bed, Shape: size, corner radius, sides or points and inner radius, placed by a click; each becomes a library drawing (not editable as parameters afterwards) |
-| Shape properties stay editable (sides, radius) | TODO | P3 | |
+| Shape properties stay editable (sides, radius) | HAVE |  | rectangles, ellipses, polygons and stars keep their size, corner radius, sides and points: double-click or right-click Edit shape redraws every copy in place |
 | Freehand drawing on the bed | HAVE |  | Bed, Shape, Freehand: drag to draw one line, smoothed to 0.3 mm, kept as a drawing; the writing pad still plots live |
-| Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |
+| Node edit: move, add, delete, corner/smooth, break at node, delete segment | HAVE |  | Line tools or right-click: Edit nodes. Drag to move, double-click a line to add, Delete, Break here, Delete segment, Round corner, Undo; up to 4000 nodes |
 | Trim at intersections (click to delete a piece) | HAVE |  | Line tools, Trim: lines are split where they cross; the clicked piece goes |
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
 | Close nearly closed paths within a tolerance | HAVE |  | Line tools, Close nearly closed lines |
 | Remove duplicate and overlapping lines | HAVE |  | Job, Path planning: exact repeats are skipped; Remove overlapping lines leaves out the parts of a stroke that run along an earlier one of the same pen (0.1 mm) |
 | Simplify paths (tolerance, before/after node count) | HAVE |  | Prepare clean-up step Simplify with the point count in Result; Job, Path planning: Simplify (mm) for the plot itself, with the points in the plan |
-| Smooth / fit arcs | PART | P3 | Line tools, Smooth (Chaikin corner cutting); no arc fitting |
+| Smooth / fit arcs | HAVE |  | Line tools: Smooth (Chaikin) and Fit arcs (runs of points within a tolerance of a circle become that arc; corners stay) |
 | Break apart into separate paths | HAVE |  | Arrange, Break apart: every stroke becomes its own object (and library drawing) where it was; one undo step; at most 64 objects on the bed |
 | Reverse path direction | HAVE |  | Arrange, Reverse: each stroke from its other end, last stroke first; only shows with Shorter pen-up travel off, since planning picks direction itself |
 | Set start point of a closed path | HAVE |  | right-click an object: Start closed shapes here (moves with the object); otherwise the nearest vertex or a corner |

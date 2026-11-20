@@ -148,6 +148,82 @@ def warp(strokes, quad):
     return [(col, [f(x, y) for x, y in densify(s, 1.0)]) for col, s in strokes]
 
 
+def _circle(a, b, c):
+    d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]))
+    if abs(d) < 1e-12:
+        return None
+    sq = lambda p: p[0] * p[0] + p[1] * p[1]  # noqa: E731
+    x = (sq(a) * (b[1] - c[1]) + sq(b) * (c[1] - a[1]) + sq(c) * (a[1] - b[1])) / d
+    y = (sq(a) * (c[0] - b[0]) + sq(b) * (a[0] - c[0]) + sq(c) * (b[0] - a[0])) / d
+    return x, y, math.dist(a, (x, y))
+
+
+def _arc_pts(a, m, b, cx, cy, r, step):
+    """Points from a to b along the circle (cx, cy, r) through m."""
+    ta, tm, tb = (math.atan2(p[1] - cy, p[0] - cx) for p in (a, m, b))
+    def ccw(t0, t1):
+        return (t1 - t0) % (2 * math.pi)
+    sweep = ccw(ta, tb) if ccw(ta, tm) <= ccw(ta, tb) else -ccw(tb, ta)
+    n = max(2, int(abs(sweep) * r / step) + 1)
+    return [(cx + r * math.cos(ta + sweep * k / n), cy + r * math.sin(ta + sweep * k / n)) for k in range(n + 1)]
+
+
+def fit_arcs(strokes, tol=0.1, step=0.3):
+    """Runs of points that lie within tol of one circle become that arc, sampled every step mm: smooth curves
+    from jagged traced or scanned lines. Straight runs and corners stay as they are."""
+    out = []
+    for c, s in strokes:
+        pts = list(s)
+        if len(pts) < 4:
+            out.append((c, pts))
+            continue
+        res, i = [pts[0]], 0
+        while i < len(pts) - 1:
+            best = None
+            j = i + 3
+            while j < len(pts) and j - i < 400:
+                run = pts[i:j + 1]
+                circ = _circle(run[0], run[len(run) // 2], run[-1])
+                if not circ or circ[2] > 1e4:
+                    break
+                cx, cy, r = circ
+                if max(abs(math.dist(p, (cx, cy)) - r) for p in run) > tol:
+                    break
+                if max(math.dist(p, q) for p, q in zip(run, run[1:])) > 0.5 * r:   # far apart: corners, not a curve
+                    break
+                best = (j, circ, run[len(run) // 2])
+                j += 1
+            if best:
+                j, (cx, cy, r), m = best
+                res += _arc_pts(pts[i], m, pts[j], cx, cy, r, step)[1:]
+                i = j
+            else:
+                res.append(pts[i + 1])
+                i += 1
+        out.append((c, res))
+    return out
+
+
+def grid_warp(strokes, grid):
+    """Free-form deform: grid is rows x cols of points (machine mm) that the strokes' bounding box was split
+    into; each point may have been moved. Every stroke point follows the cell it lies in (bilinear)."""
+    rows, cols = len(grid), len(grid[0])
+    xs = [x for _, s in strokes for x, _ in s]
+    ys = [y for _, s in strokes for _, y in s]
+    x0, y0 = min(xs), min(ys)
+    w, h = max(max(xs) - x0, 1e-9), max(max(ys) - y0, 1e-9)
+
+    def f(x, y):
+        u, v = (x - x0) / w * (cols - 1), (y - y0) / h * (rows - 1)
+        i, j = min(int(v), rows - 2), min(int(u), cols - 2)
+        fu, fv = u - j, v - i
+        a, b, cc, d = grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]
+        tx, ty = a[0] + (b[0] - a[0]) * fu, a[1] + (b[1] - a[1]) * fu
+        bx, by = d[0] + (cc[0] - d[0]) * fu, d[1] + (cc[1] - d[1]) * fu
+        return tx + (bx - tx) * fv, ty + (by - ty) * fv
+    return [(col, [f(x, y) for x, y in densify(s, 1.0)]) for col, s in strokes]
+
+
 def hull(strokes):
     if shapely is None:
         raise ShapeError("The convex outline needs shapely on the server.")

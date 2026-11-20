@@ -310,6 +310,13 @@ async function lineTool(t) {
   const ask = async (title, text, def) => { const v = await askText(title, text, def, 'OK'); return v === null ? null : G.parseLength(v); };
   if (t === 'close') { const v = await ask('Close gaps', 'Close strokes whose ends are this close (mm):', '1'); if (v > 0) lineOp('close', { tolerance: v }); }
   else if (t === 'smooth') lineOp('smooth', { passes: 2 });
+  else if (t === 'arcs') { const v = await ask('Fit arcs', 'Points within this distance of a circle become that arc (mm):', '0.1'); if (v > 0) lineOp('arcs', { tolerance: v }); }
+  else if (t === 'nodes') (await import('./nodes.js')).nodeEdit();
+  else if (t === 'deform') {
+    const v = await askText('Deform with a grid', 'Grid points across and down (2 to 8):', '4', 'Start');
+    const n = Number(v);
+    if (Number.isInteger(n) && n >= 2 && n <= 8) (await import('./nodes.js')).gridDeform(n);
+  }
   else if (t === 'fillet') { const v = await ask('Round corners', 'Corner radius (mm), for closed shapes:', '2'); if (v > 0) lineOp('fillet', { radius: v }); }
   else if (t === 'hull') lineOp('hull', {}, { add: true });
   else if (t === 'cut-out' || t === 'cut-in') {
@@ -522,7 +529,7 @@ function openArray() {
 // The bed's text tool: click where the text goes, type it, and it is added to the library and placed there.
 export function initTextTool() {
   initShapeTool();
-  setTextEdit((o) => editTextObject(o));
+  setTextEdit((o) => editTextObject(o) || editShape(o));
   const btn = $('textTool');
   btn.onclick = () => {
     const on = btn.getAttribute('aria-pressed') !== 'true';
@@ -572,6 +579,11 @@ function initShapeTool() {
       } else if (p.kind === 'free') {
         toast('Drag on the bed to draw.');
         armFree((pts) => { if (pts) make({ kind: 'poly', pts, closed: false }); else btn.setAttribute('aria-pressed', 'false'); });
+      } else if (p.kind === 'bezier') {
+        toast('Click for corners, press and drag for smooth points. Enter finishes.');
+        import('./nodes.js').then((m) => m.bezierTool((pts, closed) => {
+          if (pts) make({ kind: 'poly', pts, closed }); else btn.setAttribute('aria-pressed', 'false');
+        }));
       } else if (p.kind === 'poly') {
         toast('Click the points. Enter or double-click finishes; Esc cancels.');
         armPoly((pts, closed) => { if (pts) make({ kind: 'poly', pts, closed }); else btn.setAttribute('aria-pressed', 'false'); });
@@ -634,6 +646,34 @@ function placeText(x, y, edit = null) {
 }
 
 // Double-click on placed single-line text: edit it where it is.
+// A rectangle, ellipse, polygon or star keeps its parameters: the Shape dialog opens with them and redraws the
+// same library drawing, so every copy on the bed changes and keeps its place.
+export function editShape(o) {
+  const e = state.files.find((x) => x.id === o.file);
+  if (!e || !e.shape_params) return false;
+  if (jobActive()) { toast('A job is running.', true); return true; }
+  const d = $('shapeDlg'), f = $('shapeForm'), sp = e.shape_params;
+  for (const k of ['kind', 'w', 'h', 'r', 'n', 'inner']) if (sp[k] !== undefined && f[k]) f[k].value = sp[k];
+  f.kind.dispatchEvent(new Event('change'));
+  const keep = [...f.kind.options].map((x) => [x, x.disabled]);
+  for (const [x] of keep) x.disabled = !['rect', 'ellipse', 'polygon', 'star'].includes(x.value);
+  $('shapeDlgTitle').textContent = 'Edit the shape';
+  d.returnValue = '';
+  d.onclose = async () => {
+    for (const [x, was] of keep) x.disabled = was;
+    $('shapeDlgTitle').textContent = 'Shape';
+    if (d.returnValue !== 'ok') return;
+    const p = { kind: f.kind.value, w: Number(f.w.value), h: Number(f.h.value), r: Number(f.r.value), n: Number(f.n.value), inner: Number(f.inner.value) };
+    try {
+      await post('/api/shape_new', { ...p, replace: e.id });
+      await refreshFiles();
+      toast('Shape changed (every copy of it on the bed).');
+    } catch (err) { toast(err.message, true); }
+  };
+  d.showModal();
+  return true;
+}
+
 export function editTextObject(o) {
   const e = state.files.find((x) => x.id === o.file);
   if (!e || e.kind !== 'text' || !e.text_params) return false;

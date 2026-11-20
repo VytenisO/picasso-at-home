@@ -27,6 +27,7 @@ let placeHook = null;              // one click on the bed, for the text tool
 
 export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
 window.__bedToMm = (px, py) => toMm(px, py);      // for dropping library drawings onto the bed
+window.__bedToPx = (x, y) => toPx(x, y);
 let textEditHook = null;
 export function setTextEdit(fn) { textEditHook = fn; }
 
@@ -108,6 +109,7 @@ export function initBed() {
   cv.addEventListener('keydown', key);
   cv.addEventListener('dblclick', (e) => {
     if (polyHook && polyPts.length >= 2) { polyFinish(false); return; }
+    if (pedit) { if (pedit.dbl) pedit.dbl(toMm(...local(e)), 6 / view.s); redraw(); return; }
     if (!editable() || placeHook || freeHook) return;
     const [px, py] = local(e);
     const o = hitObject(px, py);
@@ -233,7 +235,7 @@ function render() {
     ctx.stroke(donePath(jp, n));
   } else if (!liveOn && state.doc) {
     const pv = state.preview;
-    if (pv && pv.strokes && pv.doc && !state.previewStale && !draft && D.pageCount() === 1) {
+    if (pv && pv.strokes && pv.doc && !state.previewStale && !draft && D.pageCount() === 1 && !pedit) {
       const order = pv.order || [];
       const k = state.scrub === null ? order.length : state.scrub;
       if (state.scrub !== null || (pv.summary && pv.summary.start_at > 0)) {
@@ -247,6 +249,7 @@ function render() {
       for (const o of objects()) drawObject(o, { px, layers, pens, hide });
     }
     if (editable()) overlays(px);
+    if (pedit) pedit.draw(ctx, px);
   }
   if (state.doc) drawGuides(px);
   if (freeHook && freePts && freePts.length > 1) {
@@ -460,9 +463,16 @@ function drawGuides(px) {
   ctx.beginPath();
   for (const s of snapLines) {
     if (s.axis === 'x') { ctx.moveTo(s.at, -1000); ctx.lineTo(s.at, m.bed[1] + 1000); }
-    else { ctx.moveTo(-1000, s.at); ctx.lineTo(m.bed[0] + 1000, s.at); }
+    else if (s.axis === 'y') { ctx.moveTo(-1000, s.at); ctx.lineTo(m.bed[0] + 1000, s.at); }
   }
   ctx.stroke();
+  for (const s of snapLines) {          // a node snap: a ring on the point and what kind of point it is
+    if (s.axis !== 'pt') continue;
+    const px = 1 / view.s;
+    ctx.beginPath(); ctx.arc(s.at[0], s.at[1], 5 * px, 0, 7); ctx.stroke();
+    ctx.fillStyle = css('--snap'); ctx.font = `${11 * px}px system-ui, sans-serif`;
+    ctx.fillText(s.kind, s.at[0] + 7 * px, s.at[1] - 7 * px);
+  }
   ctx.restore();
 }
 
@@ -584,6 +594,9 @@ function openMenu(clientX, clientY, mm) {
     item('Mirror H', () => D.mirrorSel('x')), item('Mirror V', () => D.mirrorSel('y')), sep(),
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
     item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
+    item('Edit nodes', () => import('./nodes.js').then((m) => m.nodeEdit()), state.sel.length === 1),
+    item('Edit shape...', () => import('./workspace.js').then((m) => m.editShape(D.selected()[0])),
+      state.sel.length === 1 && !!(state.files || []).find((f) => f.id === (D.selected()[0] || {}).file && f.shape_params)),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
     item('Tile across pages...', async () => {
       const t = await askText('Tile across pages', 'For a drawing larger than the canvas: one sheet per tile. Overlap between tiles (mm):', '10', 'Tile');
@@ -618,6 +631,7 @@ function openMenu(clientX, clientY, mm) {
 const GUIDE_INK = '#19a7c8';
 
 function drawObject(o, { px, layers, pens, hide }) {
+  if (pedit && pedit.hideId === o.id) return;          // being edited: the editor draws it
   const n = state.naturals[o.file];
   if (!n) {           // geometry still loading: the box only
     ctx.setLineDash([2 * px, 2 * px]); ctx.strokeStyle = css('--muted'); ctx.lineWidth = px;
@@ -762,6 +776,19 @@ function cursorFor(h) {
 
 function local(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 
+// ---- point editing: a hook (node edit, grid deform) gives handles; the bed hit-tests and drags them
+let pedit = null;
+export function setPointEdit(pe) { pedit = pe; drag = null; redraw(); }
+function peHit(px, py) {
+  if (!pedit) return null;
+  let best = null, bd = 8;
+  for (const h of pedit.handles()) {
+    const [hx, hy] = toPx(h.x, h.y), d = Math.hypot(hx - px, hy - py);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
 function down(e) {
   cv.focus();
   cv.setPointerCapture(e.pointerId);
@@ -776,6 +803,13 @@ function down(e) {
   const [mx, my] = toMm(px, py);
   closeMenu();
   if (e.button === 0 && spaceHeld) { drag = { mode: 'pan', start: [px, py], o: [view.ox, view.oy] }; cv.classList.add('dragging'); return; }
+  if (e.button === 0 && pedit) {
+    const h = peHit(px, py);
+    const k = pedit.down(h, [mx, my], e, 6 / view.s);     // a key to drag may come back for a point just made
+    if (h || k !== undefined) drag = { mode: 'pedit', key: h ? h.key : k };
+    redraw();
+    return;
+  }
   if (e.button === 0 && placeHook) { const f = placeHook; placeHook = null; cv.style.cursor = ''; f(mx, my); return; }
   if (e.button === 0 && freeHook) { freePts = [[G.r2(mx), G.r2(my)]]; cv.setPointerCapture(e.pointerId); return; }
   if (e.button === 0 && polyHook) {
@@ -831,6 +865,7 @@ function move(e) {
   pointerMm = [mx, my];
   lastPointerEvent = { shiftKey: e.shiftKey };
   if (polyHook) { redraw(); status(); return; }
+  if (drag && drag.mode === 'pedit' && pedit) { pedit.drag(drag.key, [mx, my], e); redraw(); return; }
   if (freeHook && freePts) {
     const last = freePts[freePts.length - 1];
     if (Math.hypot(mx - last[0], my - last[1]) >= 0.2) { freePts.push([G.r2(mx), G.r2(my)]); redraw(); }
@@ -894,7 +929,7 @@ function initViewMenu() {
   loadView();
   const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked,
     nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked,
-    units: $('vUnits').value }); redraw(); status(); set({ units: $('vUnits').value }); };
+    units: $('vUnits').value, nodes: $('vNodes').checked }); redraw(); status(); set({ units: $('vUnits').value }); };
   initViewMenuRest(btn, menu, save);
 }
 
@@ -907,10 +942,11 @@ function loadView() {
   $('vSnapPx').value = String(v.snapPx);
   $('vLockGuides').checked = v.lockGuides;
   $('vUnits').value = v.units || 'mm';
+  $('vNodes').checked = v.nodes !== false;
 }
 
 function initViewMenuRest(btn, menu, save) {
-  for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides', 'vUnits']) $(id).onchange = save;
+  for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides', 'vUnits', 'vNodes']) $(id).onchange = save;
   const show = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };
   document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });
@@ -960,9 +996,83 @@ function drawDirection(pv, k, px, hide) {
   ctx.restore();
 }
 
+// Node snapping: an object's line vertices, segment midpoints and its centre, in bed mm (at most ~4000 points).
+function objectNodes(o) {
+  const n = state.naturals[o.file];
+  const out = { pts: [], segs: [] };
+  const [cx, cy] = G.center(o);
+  out.pts.push([cx, cy, 'centre']);
+  if (!n || !n.strokes) return out;
+  const m = G.matrix(o, n.geom), T = ([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  const total = n.strokes.reduce((k, s) => k + s.pts.length, 0), step = Math.max(1, Math.ceil(total / 4000));
+  for (const st of n.strokes) {
+    const pts = st.pts.filter((_, i) => i % step === 0 || i === st.pts.length - 1).map(T);
+    pts.forEach((p, i) => {
+      out.pts.push([p[0], p[1], i === 0 || i === pts.length - 1 ? 'end' : 'node']);
+      if (i) {
+        const q = pts[i - 1];
+        out.pts.push([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, 'middle']);
+        out.segs.push([q, p]);
+      }
+    });
+  }
+  return out;
+}
+function segCross(a, b, c, d) {
+  const r = [b[0] - a[0], b[1] - a[1]], s = [d[0] - c[0], d[1] - c[1]], den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den, u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [a[0] + t * r[0], a[1] + t * r[1]] : null;
+}
+// -> {at: [x, y], kind} the nearest snap point to p within tol: other objects' nodes, or a crossing of their lines
+function nodeSnap(p, tol) {
+  const T = drag.nodeTargets;
+  let best = null, bd = tol * tol;
+  for (const q of T.pts) {
+    const d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2;
+    if (d < bd) { bd = d; best = { at: [q[0], q[1]], kind: q[2] }; }
+  }
+  if (best && best.kind !== 'middle') return best;
+  const near = T.segs.filter(([a, b]) => Math.min(a[0], b[0]) - tol <= p[0] && Math.max(a[0], b[0]) + tol >= p[0] &&
+    Math.min(a[1], b[1]) - tol <= p[1] && Math.max(a[1], b[1]) + tol >= p[1]);
+  for (let i = 0; i < near.length && i < 400; i++) {
+    for (let j = i + 1; j < near.length && j < 400; j++) {
+      const x = segCross(near[i][0], near[i][1], near[j][0], near[j][1]);
+      if (!x) continue;
+      const d = (x[0] - p[0]) ** 2 + (x[1] - p[1]) ** 2;
+      if (d < bd) { bd = d; best = { at: x, kind: 'crossing' }; }
+    }
+  }
+  return best;
+}
+
 function dragMove(sel, mx, my, e) {
   let dx = mx - drag.start[0], dy = my - drag.start[1];
   snapLines = [];
+  if (!e.altKey && (viewPrefs().snapPx ?? 7) > 0 && viewPrefs().nodes !== false) {
+    // the node of the dragged drawing nearest where it was grabbed lands on another drawing's node
+    const tol = (viewPrefs().snapPx ?? 7) / view.s;
+    if (drag.grip === undefined) {
+      const mine = drag.orig.filter((o) => drag.sel.includes(o.id)).flatMap((o) => objectNodes(o).pts);
+      let g = null, gd = (3 * tol) ** 2;
+      for (const q of mine) {
+        const d = (q[0] - drag.start[0]) ** 2 + (q[1] - drag.start[1]) ** 2;
+        if (d < gd) { gd = d; g = q; }
+      }
+      drag.grip = g;
+      const others = state.doc.objects.filter((o) => !drag.sel.includes(o.id) && D.onPage(o) && !o.guide).map(objectNodes);
+      drag.nodeTargets = { pts: others.flatMap((x) => x.pts), segs: others.flatMap((x) => x.segs) };
+    }
+    if (drag.grip) {
+      const hit = nodeSnap([drag.grip[0] + dx, drag.grip[1] + dy], tol);
+      if (hit) {
+        dx = hit.at[0] - drag.grip[0]; dy = hit.at[1] - drag.grip[1];
+        snapLines.push({ axis: 'pt', at: hit.at, kind: hit.kind });
+        for (const o of sel) { o.x += dx; o.y += dy; }
+        return;
+      }
+    }
+  }
   if (!e.altKey) {
     // Edges and centre snap to the canvas, the paper, guides and other objects; otherwise the corner lands on
     // the 0.5 mm grid. Alt: no snapping at all.
@@ -1027,6 +1137,13 @@ function dragGroupScale(sel, mx, my) {
 }
 
 function up(e) {
+  if (drag && drag.mode === 'pedit') {
+    drag = null;
+    pointers.delete(e.pointerId);
+    if (pedit && pedit.up) pedit.up();
+    redraw();
+    return;
+  }
   if (freeHook && freePts) {
     const f = freeHook, pts = rdp(freePts, 0.3);
     freeHook = null; freePts = null; cv.style.cursor = '';
@@ -1085,6 +1202,7 @@ function wheel(e) {
 }
 
 function key(e) {
+  if (pedit && pedit.key && pedit.key(e)) { e.preventDefault(); e.stopPropagation(); redraw(); return; }
   if (e.key === 'Tab' && editable() && !polyHook) { e.preventDefault(); D.selectNext(e.shiftKey ? -1 : 1); return; }
   if (polyHook) {
     if (e.key === 'Enter') { e.preventDefault(); polyFinish(false); }

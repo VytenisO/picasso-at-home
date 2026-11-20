@@ -1046,6 +1046,37 @@ class TestDocument(SimServer):
         self.assertEqual(round(s["drawing_mm"]), 50)
         self.assertEqual([round(v) for v in s["bbox_machine_mm"]], [100, 65, 150, 65])
 
+    def test_04y_node_edit_grid_arcs_shape_edit(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="40mm" viewBox="0 0 40 40">'
+               b'<path d="M0 0 L40 0 L40 40 L0 40 Z" stroke="#000" fill="none"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "ne.svg", "X-Params": "{}"})
+        o = self.obj(d["file"]["id"], 100, 50, 40, 40)
+        code, r = self.call("POST", "/api/shapes", {"op": "strokes", "objects": [o]})
+        self.assertEqual(code, 200, r)
+        pts = r["strokes"][0]["pts"]
+        self.assertEqual([round(v) for v in pts[2]], [140, 90])
+        pts[2] = [150, 100]
+        code, r = self.call("POST", "/api/shapes", {"op": "set", "objects": [o], "strokes": [{"c": "#000000", "pts": pts}]})
+        self.assertEqual(code, 200, r)
+        self.assertEqual((round(r["w"]), round(r["h"])), (50, 50))
+        grid = [[[100, 50], [140, 50]], [[100, 90], [160, 90]]]
+        code, r = self.call("POST", "/api/shapes", {"op": "grid", "objects": [o], "grid": grid})
+        self.assertEqual((round(r["w"]), round(r["h"])), (60, 40))
+        code, r = self.call("POST", "/api/shapes", {"op": "grid", "objects": [o], "grid": [[[1, 2]]]})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/shapes", {"op": "arcs", "objects": [o], "tolerance": 0.1})
+        self.assertEqual(code, 200, r)                                  # a square stays a square
+        self.assertEqual((round(r["w"]), round(r["h"])), (40, 40))
+        code, r = self.call("POST", "/api/shape_new", {"kind": "rect", "w": 30, "h": 20, "r": 0})
+        fid = r["file"]["id"]
+        code, r = self.call("POST", "/api/shape_new", {"kind": "star", "w": 40, "h": 40, "n": 6, "inner": 50, "replace": fid})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["file"]["id"], fid)                          # the same drawing, redrawn
+        code, lib = self.call("GET", "/api/files")
+        self.assertEqual(next(f for f in lib["files"] if f["id"] == fid)["shape_params"]["kind"], "star")
+        code, r = self.call("POST", "/api/shape_new", {"kind": "rect", "w": 10, "h": 10, "replace": d["file"]["id"]})
+        self.assertEqual(code, 400)                                     # an uploaded SVG is not an editable shape
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

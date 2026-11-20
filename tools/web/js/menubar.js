@@ -192,7 +192,7 @@ function initPrefs() {
   const f = $('prefsForm');
   f.onsubmit = (e) => {
     e.preventDefault();
-    prefs('view', { grid: Number(f.grid.value), snapGrid: f.snapGrid.checked, dir: f.dir.checked, nudge: Number(f.nudge.value),
+    prefs('view', { ...(prefs('view') || {}), grid: Number(f.grid.value), snapGrid: f.snapGrid.checked, dir: f.dir.checked, nudge: Number(f.nudge.value),
       snapPx: Number(f.snapPx.value), lockGuides: f.lockGuides.checked, units: f.units.value });
     prefs('simple', f.simple.checked);
     prefs('startWs', f.startWs.value || null);

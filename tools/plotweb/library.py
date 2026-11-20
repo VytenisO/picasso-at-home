@@ -13,7 +13,7 @@ from . import converters
 MAX_UPLOAD = 12 * 1024 * 1024
 PUBLIC = ("id", "name", "kind", "bytes", "uploaded", "svg", "orig", "conversion", "style", "mask", "vector",
           "pen", "test", "settings", "layers", "geom", "method", "recipe", "trashed", "replaced", "text_params",
-          "tags")
+          "tags", "shape_params")
 TRASH_DAYS = 30      # trashed drawings are deleted for good after this long
 
 

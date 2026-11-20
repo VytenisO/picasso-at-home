@@ -456,3 +456,6 @@ input.swatch-pick { width: 22px; height: 22px; padding: 0; border: 1px solid var
 .workspace.no-panels > .resizer { display: none; }
 @media (max-width: 900px) { .resizer { display: none; } }
 .pages button[aria-selected="true"] { font-weight: 600; }
+.pedit-bar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 25; display: flex; gap: 6px;
+  align-items: center; flex-wrap: wrap; padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); max-width: calc(100% - 24px); }

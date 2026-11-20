@@ -472,6 +472,7 @@
           <option value="0">Off</option><option value="4">4 px</option><option value="7">7 px</option><option value="12">12 px</option></select></label>
       </div>
       <label class="check"><input type="checkbox" id="vLockGuides"> Lock the guides (no dragging)</label>
+      <label class="check" title="While moving a drawing, the point of it nearest where you grabbed it lands on another drawing's corner, end, midpoint, centre or a crossing of its lines"><input type="checkbox" id="vNodes"> Snap to points of other drawings</label>
       <label class="field"><span>Show lengths in</span><select id="vUnits"><option value="mm">mm</option><option value="in">inches</option></select></label>
       <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
       <button type="button" id="vResetPanels" title="Side panels back to their default widths">Reset the panel layout</button>
@@ -625,7 +626,9 @@
           <button type="button" data-act="split" title="Every stroke becomes an object of its own (at most 64 on the bed)">Break apart</button>
           <button type="button" data-act="reverse" title="Draw every stroke from its other end, last stroke first. Only shows with Shorter pen-up travel off (Job, Path planning).">Reverse</button>
           <select id="lineTools" aria-label="Line tools"><option value="">Line tools...</option>
+            <option value="nodes">Edit nodes</option><option value="deform">Deform with a grid</option>
             <option value="close">Close nearly closed lines</option><option value="smooth">Smooth</option>
+            <option value="arcs">Fit arcs (smooth curves from jagged lines)</option>
             <option value="fillet">Round the corners</option><option value="hull">Convex outline around</option>
             <option value="cut-out">Cut with the first selected (keep outside)</option>
             <option value="cut-in">Keep inside the first selected</option>
@@ -922,7 +925,8 @@
     <label class="field"><span>Shape</span><select name="kind">
       <option value="rect">Rectangle</option><option value="ellipse">Ellipse or circle</option>
       <option value="polygon">Polygon</option><option value="star">Star</option>
-      <option value="poly">Line by clicks</option><option value="free">Freehand (drag)</option>
+      <option value="poly">Line by clicks</option><option value="bezier">Curve (click, drag for handles)</option>
+      <option value="free">Freehand (drag)</option>
       <option value="qr">QR code</option><option value="code128">Bar code (Code 128)</option></select></label>
     <label class="field" data-for="qr code128"><span>What it holds (a link or text)</span><input name="qrtext" maxlength="213"></label>
     <div class="field-row" data-for="qr code128">
@@ -938,6 +942,8 @@
     <label class="field" data-for="star"><span>Inner radius (% of outer)</span><input name="inner" type="number" min="5" max="95" step="1" value="45"></label>
     <p class="hint" data-for="rect ellipse polygon star">Then click on the bed where its top-left corner goes.</p>
     <p class="hint" data-for="free">Then drag on the bed to draw one line; it is smoothed a little (0.3 mm).</p>
+    <p class="hint" data-for="bezier">Then on the bed: click for a corner, press and drag for a smooth point (the drag sets its
+      handles). Click the first point to close; Enter finishes, Backspace removes the last point, Esc cancels.</p>
     <p class="hint" data-for="poly">Then click on the bed for each point. Shift keeps 45 degree steps. Click the first point to
       close the shape; double-click or Enter finishes an open line; Esc cancels; Backspace removes the last point.</p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place</button></div>
