@@ -94,6 +94,34 @@ def _crop(im, p):
     return im.crop(box)
 
 
+def _window(im, p):
+    """Brightness window: everything darker than low is black, lighter than high is white, stretched between."""
+    lo, hi = p["low"], max(p["high"], p["low"] + 1)
+    lut = [0 if v <= lo else 255 if v >= hi else round((v - lo) * 255 / (hi - lo)) for v in range(256)]
+    return im.point(lut * len(im.getbands()))
+
+
+def _mask(im, p):
+    """Keep only what lies inside an ellipse or a rectangle (inset from the edges, soft edge): outside turns white."""
+    Image, _, ImageFilter, _ = _pil()
+    from PIL import ImageDraw
+    w, h = im.size
+    ix, iy = w * p["inset"] / 100, h * p["inset"] / 100
+    m = Image.new("L", (w, h), 0)
+    box = (ix, iy, w - 1 - ix, h - 1 - iy)
+    if box[2] - box[0] < 4 or box[3] - box[1] < 4:
+        raise PrepareError("The mask leaves nothing: inset less.")
+    d = ImageDraw.Draw(m)
+    if p["shape"] == "ellipse":
+        d.ellipse(box, fill=255)
+    else:
+        d.rounded_rectangle(box, radius=min(w, h) * p["round"] / 200, fill=255)
+    if p["feather"]:
+        m = m.filter(ImageFilter.GaussianBlur(p["feather"]))
+    white = Image.new(im.mode, im.size, (255,) * len(im.getbands()) if len(im.getbands()) > 1 else 255)
+    return Image.composite(im, white, m)
+
+
 def _orient(im, p):
     Image, _, _, ImageOps = _pil()
     if p["rotate"] != "0":
@@ -333,6 +361,22 @@ STEPS = {s.id: s for s in [
         {"key": k, "label": f"{k.capitalize()}", "type": "number", "default": 0, "min": 0, "max": 45, "step": 1,
          "unit": "%", "slider": True} for k in ("left", "top", "right", "bottom")
     ], _crop),
+    Step("window", "Brightness window", "adjust", ["image"], [
+        {"key": "low", "label": "Black below", "type": "number", "default": 30, "min": 0, "max": 254, "step": 1,
+         "integer": True, "slider": True},
+        {"key": "high", "label": "White above", "type": "number", "default": 225, "min": 1, "max": 255, "step": 1,
+         "integer": True, "slider": True},
+    ], _window, "Only the tones between the two cutoffs count: darker is solid ink, lighter is paper."),
+    Step("mask", "Mask to a shape", "adjust", ["image"], [
+        {"key": "shape", "label": "Shape", "type": "select", "default": "ellipse",
+         "options": [["ellipse", "Ellipse (oval vignette)"], ["rect", "Rectangle"]]},
+        {"key": "inset", "label": "Inset", "type": "number", "default": 5, "min": 0, "max": 45, "step": 1, "unit": "%",
+         "slider": True},
+        {"key": "round", "label": "Corner rounding (rectangle)", "type": "number", "default": 10, "min": 0, "max": 100,
+         "step": 1, "unit": "%", "slider": True},
+        {"key": "feather", "label": "Soft edge", "type": "number", "default": 8, "min": 0, "max": 60, "step": 1,
+         "integer": True, "unit": "px"},
+    ], _mask, "Everything outside the shape becomes paper: a portrait in an oval, a picture with rounded corners."),
     Step("orient", "Rotate and mirror", "adjust", ["image"], [
         {"key": "rotate", "label": "Rotate", "type": "select", "default": "0", "options": ROTATE},
         {"key": "mirror", "label": "Mirror left to right", "type": "bool", "default": False},
@@ -355,8 +399,11 @@ STEPS = {s.id: s for s in [
     Step("hatch", "Shading by hatching", "method", ["image"], [WIDTH, THRESHOLD, LEVELS, DENSITY,
         {"key": "angle", "label": "Hatch angle", "type": "number", "default": 0, "min": 0, "max": 180, "step": 5,
          "unit": "deg", "slider": True, "help": "Turns every pass: the lightest is at 45 degrees plus this, the darker "
-                                                 "ones cross it."}, INKS, ONE_PEN, BLUR],
-         _raster("hatch", ("levels", "density", "angle")),
+                                                 "ones cross it."},
+        {"key": "tone_pressure", "label": "Lighter touch for lighter tones", "type": "number", "default": 0, "min": 0,
+         "max": 0.8, "step": 0.05, "help": "0 = off. Otherwise the lightest pass is drawn this much lighter (pen "
+                                           "pressure), the darkest at the full pen-down."}, INKS, ONE_PEN, BLUR],
+         _raster("hatch", ("levels", "density", "angle", "tone_pressure")),
          "Parallel lines where the picture is dark, crossed in the shadows.", "Trace an image"),
     Step("stipple", "Stipple dots", "method", ["image"], [WIDTH, THRESHOLD, DENSITY,
         {"key": "pattern", "label": "Pattern", "type": "select", "default": "diffusion",

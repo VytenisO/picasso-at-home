@@ -61,7 +61,7 @@ niche.
 | Prepare: recipe of chained steps (adjust, method, clean up; fill and pens as plot settings), saved with the result | HAVE | | reopen from the Library and re-tune; update in place or save as new |
 | Ink preview: pen colour and width, hatch fills, real size, stroke count, pen-down length, time | HAVE | | `ink.js`, shared by Prepare and Plot; Ink/Lines toggle. Pen widths default to 0.5 mm until `pens.json` has `width_mm` |
 | Prepare: recipe presets (named recipes to reuse on new sources) | HAVE |  | Prepare, Presets: save the recipe (steps, their settings, fill) under a name, apply it to a later source of the same kind, delete; kept on the server for every browser |
-| Prepare: undo for recipe edits | TODO | P3 | |
+| Prepare: undo for recipe edits | HAVE |  | Prepare toolbar Undo/Redo and Ctrl+Z / Ctrl+Shift+Z: steps, settings and name |
 | Bed view drawn to machine size with paper, inset canvas and start point S | HAVE | | `bed.js` |
 | Three-panel layout with console row | HAVE | | `index.html`, `app.css` |
 | Phone layout with bottom tab bar | HAVE | | below 900 px; Prepare stacks preview, recipe and result |
@@ -388,25 +388,25 @@ niche.
 | Convert styles: contour, line art, halftone, one-line | HAVE | | `image_to_svg.py` |
 | Parameters: inks, levels, width, threshold, density, blur, single pen | HAVE | | |
 | Live conversion preview with mask and stats | HAVE | | |
-| Side-by-side or overlay original vs result, synced zoom | PART | P3 | Prepare: Compare, Overlay with fade, Mask. Zoom is not synced between the panes |
+| Side-by-side or overlay original vs result, synced zoom | HAVE |  | Prepare: Compare and Mask follow the result's zoom and pan; Overlay with fade |
 | Brightness, contrast, gamma before converting | HAVE | | Prepare adjust step "Tone" |
 | Sharpen / denoise | HAVE | | Prepare adjust step |
 | Invert (light ink on dark paper) | HAVE | | Prepare adjust step |
-| Crop region | PART | P3 | Prepare crop step by edge percentages; no drag-a-box crop yet |
+| Crop region | HAVE |  | Prepare: drag a box on the picture in Compare, or the Crop step by edge percentages |
 | Rotate and mirror the image | HAVE | | Prepare adjust step |
-| Mask by a vector shape | TODO | P3 | |
+| Mask by a vector shape | HAVE |  | Prepare adjust step Mask to a shape: ellipse or rounded rectangle, inset, soft edge |
 | Centre-line trace (single stroke down a line) | HAVE | | Prepare method "Line art (centre lines)": Zhang-Suen thinning in `image_to_svg.py` |
 | Edge/sketch trace for photos of drawings | HAVE |  | Prepare method Photo of a drawing (centre lines): ink is what is darker than its neighbourhood by a set sensitivity, so uneven light drops out; then thinned to one stroke per line |
 | Ignore specks under N px | HAVE | | trace setting, plus the "Remove short strokes" clean-up step in mm |
 | Smoothness / simplify tolerance | HAVE | | trace setting and trace resolution, plus the "Simplify" clean-up step in mm |
-| Brightness window (lower and upper cutoff) | TODO | P3 | |
+| Brightness window (lower and upper cutoff) | HAVE |  | Prepare adjust step Brightness window |
 | Transparent PNG handled as background | HAVE | | Prepare flattens transparency onto white paper |
 | Dither styles drawn as stipple dots (error diffusion, ordered) | HAVE |  | Prepare method Stipple dots: Floyd-Steinberg (scattered) or 4x4 Bayer (regular), one pen tick per dot; density sets the cell size |
-| Variable pressure by tone | TODO | P3 | servo is coarse; hatch density is the main tone tool |
+| Variable pressure by tone | HAVE |  | Shading by hatching: Lighter touch for lighter tones (pen pressure per pass, darkest at full pen-down) |
 | Hatch angle per tone level / crosshatch for darks | HAVE |  | Shading by hatching: Hatch angle turns all passes (45 degrees plus it for the lightest, the darker ones cross); tone levels set the passes |
 | Image presets (named parameter sets) | HAVE |  | the Prepare presets: an image recipe saved with its adjustments, method and clean-up |
-| Save the processed (pre-vector) image | TODO | P3 | debugging the pipeline |
-| Batch convert many images | TODO | P3 | |
+| Save the processed (pre-vector) image | HAVE |  | Prepare result: Download the adjusted image |
+| Batch convert many images | HAVE |  | Prepare: Apply to more files, the recipe on up to 50 files of the same kind, each saved to the library |
 | Mesh view parameters (yaw, pitch, width) | HAVE | | add max height (CLI only) |
 | Turtletoy code (paste a turtletoy.net script, it draws) | HAVE | | Prepare, "Turtletoy code": runs in a worker with no network access (CSP plus removed globals), 30 s and 500k-point limits, slider comments become controls, clipped to the 200 x 200 canvas, size in mm; the result is an SVG source. Pen opacity ignored |
 | 3D model to depth map | SKIP | | depth engraving concept |

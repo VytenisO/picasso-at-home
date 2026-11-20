@@ -1644,7 +1644,7 @@ class Handler(BaseHTTPRequestHandler):
         ctype = "image/svg+xml" if kind == "svg" else "image/png"
         headers = dict(sandbox)
         if q.get("download"):
-            headers["Content-Disposition"] = 'attachment; filename="prepared.svg"'
+            headers["Content-Disposition"] = f'attachment; filename="prepared{".svg" if kind == "svg" else "-image.png"}"'
         self.send(200, p.read_bytes(), ctype, headers)
 
     # ---- routes: plotting

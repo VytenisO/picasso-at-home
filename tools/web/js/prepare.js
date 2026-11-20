@@ -79,6 +79,107 @@ export async function initPrepare() {
   } catch (e) { toast(e.message, true); }
   restore();
   initPresets();
+  $('prepUndo').onclick = prepUndo;
+  $('prepRedo').onclick = prepRedo;
+  $('prepBatch').onclick = () => $('prepBatchFile').click();
+  $('prepBatchFile').onchange = () => { const fs = [...$('prepBatchFile').files]; $('prepBatchFile').value = ''; if (fs.length) batchConvert(fs.slice(0, 50)); };
+  initDragCrop();
+}
+
+// ------------------------------------------------------------------ undo, batch, synced compare, drag crop
+// Undo for recipe edits: a snapshot of the steps, settings and name before each change.
+const pundo = [], predo = [];
+let plast = null;
+const psnap = () => JSON.stringify({ list: P.list.map(({ step, on: o, params }) => ({ step, on: o, params })), settings: P.settings, name: P.name });
+function trackUndo() {
+  const s = psnap();
+  if (plast !== null && s !== plast) { pundo.push(plast); if (pundo.length > 100) pundo.shift(); predo.length = 0; }
+  plast = s;
+  $('prepUndo').disabled = !pundo.length;
+  $('prepRedo').disabled = !predo.length;
+}
+function prepRestore(s) {
+  const d = JSON.parse(s);
+  P.list = d.list.filter((x) => byId[x.step]).map((x) => ({ ...x, uid: uid++ }));
+  P.settings = d.settings; P.name = d.name;
+  plast = s;
+  renderAll(); save(); schedule(0);
+  $('prepUndo').disabled = !pundo.length;
+  $('prepRedo').disabled = !predo.length;
+}
+export function prepUndo() { if (pundo.length) { predo.push(psnap()); prepRestore(pundo.pop()); } }
+export function prepRedo() { if (predo.length) { pundo.push(psnap()); prepRestore(predo.pop()); } }
+
+// Batch: the current recipe on several more files of the same kind, each saved to the library under its own name.
+async function batchConvert(files) {
+  const steps = P.list.map(({ step, on: o, params }) => ({ step, on: o, params }));
+  let done = 0;
+  for (const file of files) {
+    setBusy(`${done + 1} of ${files.length}: ${file.name}...`);
+    try {
+      const s = await api('/api/prepare/source', { method: 'POST', raw: file, headers: { 'X-Filename': encodeURIComponent(file.name) } });
+      if (s.source.kind !== kindNow()) { toast(`${file.name} is not the same kind of file as the source: skipped.`, true); continue; }
+      await post('/api/prepare/save', { recipe: { source: s.source.id, steps }, name: file.name.replace(/\.[^.]+$/, ''), replace: null,
+        settings: { fill: P.settings.fill, fill_angle: P.settings.fill_angle, layers: [] } });
+      done++;
+    } catch (e) { toast(`${file.name}: ${e.message}`, true); }
+  }
+  setBusy('');
+  await refreshFiles();
+  toast(`${done} of ${files.length} converted and saved to the library.`);
+}
+
+// Compare and Mask: the side picture follows the result's zoom and pan, so the same spot sits side by side.
+function syncSide() {
+  const img = $('prepSideImg'), r = P.result;
+  const on = (mode === 'compare' || mode === 'mask') && r && r.placement;
+  img.classList.toggle('synced', !!on);
+  if (!on) { img.style.cssText = ''; return; }
+  const pl = r.placement;
+  img.style.left = `${view.ox + pl.origin[0] * view.s}px`;
+  img.style.top = `${view.oy + pl.origin[1] * view.s}px`;
+  img.style.width = `${pl.size[0] * view.s}px`;
+  img.style.height = `${pl.size[1] * view.s}px`;
+}
+
+// Drag a box on the side picture (Compare): it becomes the crop, on top of any crop already there.
+function initDragCrop() {
+  const img = $('prepSideImg'), fig = $('prepSide');
+  let start = null, box = null;
+  img.addEventListener('pointerdown', (e) => {
+    if (mode !== 'compare' || !P.source || P.source.kind !== 'image') return;
+    if (P.list.some((s) => s.step === 'orient' && s.on !== false)) { toast('Drag-crop works before any rotation: remove Rotate and mirror first, or crop by numbers.', true); return; }
+    e.preventDefault();
+    img.setPointerCapture(e.pointerId);
+    const r = img.getBoundingClientRect();
+    start = { x: e.clientX, y: e.clientY, r };
+    box = el('div', { class: 'crop-box' });
+    fig.append(box);
+  });
+  img.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const f = fig.getBoundingClientRect();
+    const x0 = Math.min(start.x, e.clientX), y0 = Math.min(start.y, e.clientY);
+    Object.assign(box.style, { left: `${x0 - f.left}px`, top: `${y0 - f.top}px`, width: `${Math.abs(e.clientX - start.x)}px`, height: `${Math.abs(e.clientY - start.y)}px` });
+  });
+  img.addEventListener('pointerup', (e) => {
+    if (!start) return;
+    const r = start.r;
+    const fx = (v) => Math.max(0, Math.min(1, (v - r.left) / r.width)), fy = (v) => Math.max(0, Math.min(1, (v - r.top) / r.height));
+    const a = [fx(Math.min(start.x, e.clientX)), fy(Math.min(start.y, e.clientY)), fx(Math.max(start.x, e.clientX)), fy(Math.max(start.y, e.clientY))];
+    start = null; box.remove();
+    if (a[2] - a[0] < 0.05 || a[3] - a[1] < 0.05) return;
+    let c = P.list.find((s) => s.step === 'crop');
+    if (!c) { c = { uid: uid++, step: 'crop', on: true, params: { left: 0, top: 0, right: 0, bottom: 0 } }; P.list = byStage([...P.list, c]); }
+    const p = { left: 0, top: 0, right: 0, bottom: 0, ...c.params };
+    const kw = (100 - p.left - p.right) / 100, kh = (100 - p.top - p.bottom) / 100;     // the shown picture is already cropped
+    const clamp = (v) => Math.max(0, Math.min(45, Math.round(v)));
+    c.params = { left: clamp(p.left + a[0] * kw * 100), right: clamp(p.right + (1 - a[2]) * kw * 100),
+      top: clamp(p.top + a[1] * kh * 100), bottom: clamp(p.bottom + (1 - a[3]) * kh * 100) };
+    c.on = true;
+    renderRecipe(); save(); schedule(0);
+    toast('Cropped to the box. Edges stop at 45% each; fine-tune under Crop.');
+  });
 }
 
 // ------------------------------------------------------------------ presets
@@ -141,6 +242,7 @@ function restore() {
 }
 
 function save() {
+  trackUndo();
   prefs('prep', { source: P.source, list: P.list.map(({ step, on: o, params }) => ({ step, on: o, params })),
     memo: P.memo, settings: P.settings, name: P.name, replace: P.replace, replaceName: P.replaceName, turtle: P.turtle });
 }
@@ -506,6 +608,10 @@ function renderResult() {
   const dl = $('prepDownload');
   if (has) { dl.href = `/api/prepare/file?kind=svg&key=${r.key}&download=1`; dl.removeAttribute('aria-disabled'); }
   else { dl.removeAttribute('href'); dl.setAttribute('aria-disabled', 'true'); }
+  const di = $('prepDownloadImg');
+  di.hidden = !(has && r.image);
+  if (has && r.image) di.href = `/api/prepare/file?kind=png&key=${r.image}&download=1`;
+  $('prepBatch').disabled = !(has && P.source);
   $('prepSend').textContent = P.replace ? 'Update and open in Plot' : 'Send to Plot';
   $('prepReplaceNote').hidden = !P.replace;
   $('prepReplaceNote').textContent = P.replace ? `Updates ${P.replaceName || 'the drawing'} in the library and keeps its place on the bed. Save as new keeps the old one.` : '';
@@ -701,6 +807,7 @@ function redraw() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; rende
 
 function render() {
   if (!ctx || !state.me || !W) return;
+  syncSide();
   const m = state.me.machine;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
@@ -786,6 +893,9 @@ function jobDot() {
 }
 
 export function prepKey(e) {
+  const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+  if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) prepRedo(); else prepUndo(); return true; }
+  if ((e.ctrlKey || e.metaKey) && !typing && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); prepRedo(); return true; }
   if (e.target && e.target.id === 'turtleCode' && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault(); turtleDraw(); return true;
   }

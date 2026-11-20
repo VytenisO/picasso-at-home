@@ -397,7 +397,12 @@ HATCH_ANGLES = (45.0, 135.0, 0.0, 90.0)
 HATCH_TONES = (0.12, 0.35, 0.58, 0.8)      # a pass draws where the tone (0 paper .. 1 black) is above this
 
 
-def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0, angle=0.0):
+class PPoly(list):
+    """A polyline with its own pen pressure (data-pressure in the SVG)."""
+    pressure = None
+
+
+def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0, angle=0.0, tone_pressure=0.0):
     """Shading by hatching: one pass per tone step, each at its own angle, darker steps add more lines."""
     passes = levels - 1 if 2 <= levels <= 5 else len(HATCH_ANGLES)
     spacing_mm = 2.4 - 0.019 * density          # density 1..100 -> 2.4 .. 0.5 mm between lines
@@ -413,6 +418,11 @@ def hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels=0, angle=
         thr = HATCH_TONES[k] if passes == len(HATCH_ANGLES) else (k + 0.5) / passes * 0.9
         lines = fill.tone_runs(tone, w, h, spacing, (HATCH_ANGLES[k] + angle) % 180.0, thr, step=1.0,
                                min_run=max(1.0, 0.6 / mm_per_px))
+        if tone_pressure and passes > 1:     # the lightest pass the lightest touch, the darkest at full pen-down
+            pr = round(tone_pressure * (passes - 1 - k) / (passes - 1), 3)
+            lines = [PPoly(ln) for ln in lines]
+            for ln in lines:
+                ln.pressure = pr
         mid = thr + (1.0 - thr) / 2
         bands[band_of(mid, inks)].extend(lines)
     return bands
@@ -548,7 +558,8 @@ def svg_text(width_mm, height_mm, bands, inks, mm_per_px):
         for poly in polys:
             total_points += len(poly)
             d = "M " + " L ".join(f"{x * mm_per_px:.3f},{y * mm_per_px:.3f}" for x, y in poly)
-            paths.append(f'<path d="{d}"/>')
+            pr = getattr(poly, "pressure", None)
+            paths.append(f'<path d="{d}"' + (f' data-pressure="{pr:g}"' if pr else '') + '/>')
         total_paths += len(paths)
         parts.append(f'<g inkscape:groupmode="layer" inkscape:label="{esc(label)}" '
                      f'style="stroke:{color};fill:none">')
@@ -564,7 +575,7 @@ def svg_text(width_mm, height_mm, bands, inks, mm_per_px):
 def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
             simplify_px=0.6, min_len_px=2.0, style="contour", density=40,
             inks=1, mask=None, levels=0, max_width_mm=None, max_height_mm=None,
-            single_pen=False, pattern="diffusion", angle=0.0, sensitivity=18):
+            single_pen=False, pattern="diffusion", angle=0.0, sensitivity=18, tone_pressure=0.0):
     """Convert raster file -> layered SVG file. Returns a stats dict.
 
     levels>=2 posterises the grayscale into that many discrete tones before
@@ -597,7 +608,7 @@ def convert(src, dst, width_mm=120.0, threshold=140, blur=1.0, width_px=300,
     elif style == "lineart":
         bands = lineart_bands(w, h, pix, threshold, inks, simplify_px, min_len_px)
     elif style == "hatch":
-        bands = hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels, angle)
+        bands = hatch_bands(w, h, pix, threshold, inks, density, mm_per_px, levels, angle, tone_pressure)
     elif style == "stipple":
         bands = stipple_bands(w, h, pix, threshold, inks, density, pattern)
     elif style == "sketch":

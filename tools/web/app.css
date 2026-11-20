@@ -244,6 +244,9 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .prep-side { display: none; margin: 0; flex: 1; min-width: 0; min-height: 0; position: relative; background: var(--bg);
   border-right: 1px solid var(--line); align-items: center; justify-content: center; padding: 28px; }
 .prep-stage[data-mode="compare"] .prep-side, .prep-stage[data-mode="mask"] .prep-side { display: flex; }
+.prep-side { overflow: hidden; }
+.prep-side img.synced { position: absolute; max-width: none; max-height: none; object-fit: fill; }
+.crop-box { position: absolute; border: 2px dashed var(--accent); background: rgba(80, 140, 255, .12); pointer-events: none; }
 .prep-side img { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff; box-shadow: 0 3px 14px rgba(0,0,0,.18); }
 .prep-side figcaption { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted);
   background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 8px; border-radius: 6px; }

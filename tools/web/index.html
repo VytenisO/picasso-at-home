@@ -70,6 +70,8 @@
       </div>
       <label class="fade" id="prepFadeBox" title="How strongly the source shows under the result">Source
         <input type="range" id="prepFade" min="0" max="100" value="45" aria-label="Source opacity"></label>
+      <button class="icon" id="prepUndo" disabled title="Undo the last recipe change (Ctrl+Z)">Undo</button>
+      <button class="icon" id="prepRedo" disabled title="Redo (Ctrl+Shift+Z)">Redo</button>
       <span class="spacer"></span>
       <span id="prepBusy" class="busy-tag" aria-live="polite"></span>
       <button class="icon" id="prepInk" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
@@ -125,6 +127,9 @@
         <div class="row">
           <button id="prepSaveNew" disabled>Save as new</button>
           <a id="prepDownload" class="btn" aria-disabled="true">Download SVG</a>
+          <a id="prepDownloadImg" class="btn" hidden title="The picture after the adjustments, before it was turned into lines">Download the adjusted image</a>
+          <button id="prepBatch" type="button" disabled title="The same recipe on more files of this kind, each saved to the library">Apply to more files...</button>
+          <input id="prepBatchFile" type="file" multiple hidden>
           <span class="spacer"></span>
           <button id="prepReset" class="link" type="button">Start over</button>
         </div>
