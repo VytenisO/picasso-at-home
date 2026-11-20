@@ -1019,6 +1019,33 @@ class TestDocument(SimServer):
         self.call("POST", "/api/job/continue", {"job": r["job"], "pause": st["job"]["pause"]["id"]})
         self.wait_state(("complete",))
 
+    def test_04w_registration(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="10mm" viewBox="0 0 20 10">'
+               b'<path d="M0 0 L20 0 L20 10" stroke="#000" fill="none"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "rg.svg", "X-Params": "{}"})
+        objs = [self.obj(d["file"]["id"], 150, 80, 20, 10)]
+        bb = lambda st: [round(v, 1) for v in self.doc_preview(objs, st)["summary"]["bbox_machine_mm"]]  # noqa: E731
+        plain = bb({})
+        shifted = bb({"register": {"from": [[100, 50], [200, 50]], "to": [[105, 55], [205, 55]]}})
+        self.assertEqual(shifted, [v + 5 for v in plain])
+        turned = bb({"register": {"from": [[100, 50], [200, 50]], "to": [[100, 50], [100, 150]]}})
+        self.assertEqual(turned, [60.0, 100.0, 70.0, 120.0])           # a quarter turn about mark 1
+        code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {
+            "register": {"from": [[100, 50], [200, 50]], "to": [[100, 50], [180, 50]]}}}})
+        self.assertEqual(code, 400)                                     # 20% apart: the wrong marks
+        self.assertIn("5%", r["error"])
+
+    def test_04x_tile_clip(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="10mm" viewBox="0 0 100 10">'
+               b'<path d="M0 5 L100 5" stroke="#000"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "tl.svg", "X-Params": "{}"})
+        fid = d["file"]["id"]
+        # the right half of a 100 mm line, moved onto the canvas and cut to a 50 mm box
+        o = self.obj(fid, 50, 60, 100, 10, clip=[100, 50, 150, 80])
+        s = self.doc_preview([o])["summary"]
+        self.assertEqual(round(s["drawing_mm"]), 50)
+        self.assertEqual([round(v) for v in s["bbox_machine_mm"]], [100, 65, 150, 65])
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

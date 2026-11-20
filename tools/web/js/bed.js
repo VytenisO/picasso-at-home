@@ -585,6 +585,10 @@ function openMenu(clientX, clientY, mm) {
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
     item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
+    item('Tile across pages...', async () => {
+      const t = await askText('Tile across pages', 'For a drawing larger than the canvas: one sheet per tile. Overlap between tiles (mm):', '10', 'Tile');
+      if (t !== null && Number(t) >= 0) D.tileSel(Number(t));
+    }, state.sel.length === 1),
     item('Move to another page...', async () => {
       const t = await askText('Move to page', `Page number (1 to ${D.pageCount() + 1}; one more makes a new page):`, String(D.curPage() + 2), 'Move');
       const n = Number(t);
@@ -625,6 +629,9 @@ function drawObject(o, { px, layers, pens, hide }) {
   const only = state.doc.settings.only;
   const out = Array.isArray(only) && only.length && only.some((id) => state.doc.objects.some((x) => x.id === id)) && !only.includes(o.id);
   ctx.save();
+  if (o.clip) {                     // a tile: only its part of the drawing
+    ctx.beginPath(); ctx.rect(o.clip[0], o.clip[1], o.clip[2] - o.clip[0], o.clip[3] - o.clip[1]); ctx.clip();
+  }
   ctx.transform(...mt);
   drawInk(ctx, o.guide ? inked(n, GUIDE_INK) : o.ink ? inked(n, o.ink) : n, { px: px / k, layers, pens, css, hide,
     alpha: o.guide ? 0.6 : (state.previewStale || draft ? 0.75 : 1) * (out ? 0.4 : 1), lineScale: k, ink: o.guide ? false : undefined });

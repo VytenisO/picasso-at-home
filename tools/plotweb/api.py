@@ -257,6 +257,35 @@ class App:
             if not objs:
                 raise ApiError(400, "None of the objects chosen for plotting are on the bed. Plot all of them, "
                                     "or choose again.")
+        # Registration: two points of the design (where marks were plotted) and where those marks are now on
+        # re-inserted paper. The whole bed is shifted, turned and scaled to match.
+        reg = rs.get("register")
+        if reg:
+            try:
+                (ax_, ay_), (bx_, by_) = reg["from"]
+                (cx_, cy_), (dx_, dy_) = reg["to"]
+                ax_, ay_, bx_, by_, cx_, cy_, dx_, dy_ = (float(v) for v in (ax_, ay_, bx_, by_, cx_, cy_, dx_, dy_))
+            except (KeyError, TypeError, ValueError):
+                raise ApiError(400, "Registration needs two design points (from) and two measured points (to).")
+            d0, d1 = math.hypot(bx_ - ax_, by_ - ay_), math.hypot(dx_ - cx_, dy_ - cy_)
+            if d0 < 10 or d1 < 10:
+                raise ApiError(400, "The two registration marks must be at least 10 mm apart.")
+            k = d1 / d0
+            if not 0.95 <= k <= 1.05:
+                raise ApiError(400, f"The marks are {d1:.1f} mm apart now and {d0:.1f} mm in the design: more than 5% "
+                                    "off. Check that the right marks were measured.")
+            ang = math.atan2(dy_ - cy_, dx_ - cx_) - math.atan2(by_ - ay_, bx_ - ax_)
+            co, si = math.cos(ang) * k, math.sin(ang) * k
+
+            def reg_pt(x, y):
+                return cx_ + co * (x - ax_) - si * (y - ay_), cy_ + si * (x - ax_) + co * (y - ay_)
+            moved = []
+            for o in objs:
+                mx_, my_ = reg_pt(o["x"] + o["w"] / 2, o["y"] + o["h"] / 2)
+                w, h = o["w"] * k, o["h"] * k
+                moved.append(dict(o, x=round(mx_ - w / 2, 3), y=round(my_ - h / 2, 3), w=round(w, 3), h=round(h, 3),
+                                  rot=round((o["rot"] + math.degrees(ang)) % 360, 4)))
+            objs = moved
         # Start from: the job's anchor point (one of nine on the objects' box) at the carriage's position now or a
         # saved position, instead of where the objects sit on the bed.
         origin = str(rs.get("origin") or "")

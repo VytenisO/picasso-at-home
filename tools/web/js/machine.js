@@ -200,6 +200,20 @@ export function initMachine() {
   $('paperForm').onsubmit = savePaper;
   $('mcfgForm').onsubmit = saveMachineSettings;
   $('paperTL').onclick = () => paperCorner('tl');
+  $('regAdd').onclick = regAdd;
+  $('regA').onclick = () => regPoint(0);
+  $('regB').onclick = () => regPoint(1);
+  $('regUse').onclick = regUse;
+  $('regClear').onclick = async () => { const D = await import('./doc.js'); D.edit((d) => { d.settings.register = null; }); regMeasured = [null, null]; };
+  on(['doc', 'files', 'job'], renderReg);
+  $('ctrPt').onclick = ctrPoint;
+  $('ctrReset').onclick = () => { ctrPts = []; ctrAt = null; $('ctrNote').textContent = ''; $('ctrGo').disabled = $('ctrSave').disabled = true; };
+  $('ctrGo').onclick = () => { $('mcGoX').value = ctrAt.x.toFixed(1); $('mcGoY').value = ctrAt.y.toFixed(1); $('mcGoForm').requestSubmit(); };
+  $('ctrSave').onclick = async () => {
+    const name = await askText('Save the centre', `${ctrAt.x.toFixed(1)}, ${ctrAt.y.toFixed(1)} mm. A name:`, 'centre', 'Save');
+    if (!name) return;
+    try { positions = (await post('/api/positions/save', { name, x: ctrAt.x, y: ctrAt.y })).positions; renderLists(); toast('Saved: Job, Start from can put a drawing\'s centre there.'); } catch (e) { toast(e.message, true); }
+  };
   $('paperBR').onclick = () => paperCorner('br');
   $('penNew').onclick = () => editPen(null);
   $('penImport').onclick = () => $('penFile').click();
@@ -354,6 +368,75 @@ async function saveMachineSettings(e) {
     set({ me: r.me });
     toast('Machine settings saved. Preview again before plotting.');
   } catch (err) { toast(err.message, true); }
+}
+
+// ------------------------------------------------------------------ registration marks and the centre finder
+const REG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="8mm" height="8mm" viewBox="0 0 8 8">' +
+  '<path d="M4 0 L4 8 M0 4 L8 4" stroke="#000" fill="none"/><circle cx="4" cy="4" r="2" stroke="#000" fill="none"/></svg>';
+const REG_NAME = 'registration-mark';
+let regMeasured = [null, null];
+function regMarks() {
+  const ids = new Set((state.files || []).filter((f) => f.name.startsWith(REG_NAME)).map((f) => f.id));
+  return state.doc ? state.doc.objects.filter((o) => ids.has(o.file)) : [];
+}
+async function regAdd() {
+  if (regMarks().length >= 2) { toast('There are registration marks on the bed already.'); return; }
+  try {
+    let f = (state.files || []).find((x) => x.name.startsWith(REG_NAME));
+    if (!f) {
+      f = (await api('/api/files/upload', { method: 'POST', raw: new Blob([REG_SVG], { type: 'image/svg+xml' }),
+        headers: { 'X-Filename': `${REG_NAME}.svg`, 'X-Params': '{}' } })).file;
+      const { refreshFiles } = await import('./workspace.js');
+      await refreshFiles();
+    }
+    const D = await import('./doc.js');
+    const c = state.me.machine.canvas;
+    await D.addFile(f.id, { at: [c[0], c[1]] });
+    await D.addFile(f.id, { at: [c[2] - 8, c[3] - 8] });
+    toast('Two marks at opposite corners of the canvas. Plot them with the first pass.');
+  } catch (e) { toast(e.message, true); }
+}
+function regPoint(n) {
+  const p = carriage();
+  if (!p) { toast('Take control first, then jog the pen tip onto the mark.', true); return; }
+  regMeasured[n] = [p.x, p.y];
+  renderReg();
+}
+function renderReg() {
+  const marks = regMarks(), r = state.doc && state.doc.settings.register;
+  const ready = marks.length >= 2 && regMeasured[0] && regMeasured[1];
+  $('regUse').disabled = !ready || jobActive();
+  $('regClear').disabled = !r || jobActive();
+  const m = (p) => (p ? `${p[0].toFixed(1)}, ${p[1].toFixed(1)}` : 'not yet');
+  $('regNote').textContent = (marks.length < 2 ? 'No registration marks on the bed. ' : '') +
+    `Mark 1: ${m(regMeasured[0])}. Mark 2: ${m(regMeasured[1])}.` + (r ? ' This bed is registered.' : '');
+}
+async function regUse() {
+  const [a, b] = regMarks();
+  const ctr = (o) => [o.x + o.w / 2, o.y + o.h / 2];
+  const D = await import('./doc.js');
+  D.edit((d) => { d.settings.register = { from: [ctr(a), ctr(b)], to: [regMeasured[0], regMeasured[1]] }; });
+  toast('Registered. Preview: the whole bed now follows the marks. Remove the marks from the bed if they should not be drawn again.');
+}
+
+let ctrPts = [], ctrAt = null;
+function circle3(a, b, c) {
+  const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+  if (Math.abs(d) < 1e-6) return null;
+  const s = (p) => p[0] * p[0] + p[1] * p[1];
+  const x = (s(a) * (b[1] - c[1]) + s(b) * (c[1] - a[1]) + s(c) * (a[1] - b[1])) / d;
+  const y = (s(a) * (c[0] - b[0]) + s(b) * (a[0] - c[0]) + s(c) * (b[0] - a[0])) / d;
+  return { x, y, r: Math.hypot(a[0] - x, a[1] - y) };
+}
+function ctrPoint() {
+  const p = carriage();
+  if (!p) { toast('Take control first, then jog the pen tip to the edge.', true); return; }
+  ctrPts = [...ctrPts.slice(-2), [p.x, p.y]];
+  ctrAt = ctrPts.length === 3 ? circle3(...ctrPts) : null;
+  $('ctrNote').textContent = ctrPts.length < 3 ? `${ctrPts.length} of 3 points.`
+    : ctrAt ? `Centre ${ctrAt.x.toFixed(1)}, ${ctrAt.y.toFixed(1)} mm, diameter ${(2 * ctrAt.r).toFixed(1)} mm.`
+      : 'The three points are in a line: spread them around the edge.';
+  $('ctrGo').disabled = $('ctrSave').disabled = !ctrAt;
 }
 
 // ------------------------------------------------------------------ paper by measuring: jog to two corners

@@ -319,6 +319,27 @@
             <button type="button" id="posSave">Save this position...</button>
           </details>
           <details class="mc-more">
+            <summary>Register on marks already on the paper</summary>
+            <p class="hint">For a second pass on a sheet that came out: Add registration marks before the first plot.
+              With the sheet back in, jog the pen tip onto each mark and press its button; the next preview turns and
+              shifts the whole bed to match.</p>
+            <div class="row"><button type="button" id="regAdd">Add registration marks</button></div>
+            <div class="row"><button type="button" id="regA">Mark 1 is here</button>
+              <button type="button" id="regB">Mark 2 is here</button></div>
+            <div class="row"><button type="button" id="regUse" disabled>Use for this bed</button>
+              <button type="button" id="regClear" class="link">Clear the registration</button></div>
+            <p class="hint" id="regNote"></p>
+          </details>
+          <details class="mc-more">
+            <summary>Find the centre of a round object</summary>
+            <p class="hint">A plate, a coaster, a lid: jog the pen tip to three points on its edge, spread around it.</p>
+            <div class="row"><button type="button" id="ctrPt">Edge point is here</button>
+              <button type="button" id="ctrReset" class="link">Start again</button></div>
+            <p class="hint" id="ctrNote"></p>
+            <div class="row"><button type="button" id="ctrGo" disabled>Go to the centre</button>
+              <button type="button" id="ctrSave" disabled>Save it as a position</button></div>
+          </details>
+          <details class="mc-more">
             <summary>Macros</summary>
             <ul id="macroList" class="mini-list"></ul>
             <p class="hint">One command per line: GOTO x y, MOVE dx dy, PEN UP, PEN DOWN, HOME, TICK dx dy, SPEED v, WAIT ms.

@@ -468,8 +468,8 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Register on existing marks (two points: shift, rotate, scale) | TODO | P3 | jog to two marks; second pass on re-inserted paper. Position is software-tracked, so accuracy is limited by hand parking |
-| Tiled plotting larger than the bed (plot, shift paper, register) | TODO | P3 | |
-| Centre finder for round objects | TODO | P3 | |
+| Register on existing marks (two points: shift, rotate, scale) | HAVE |  | Machine, Register on marks: add two marks before the first pass, jog onto them on the re-inserted sheet; the bed is shifted, turned and scaled to match (refused when the spacing is more than 5% off). Accuracy is limited by hand parking and the tracked position |
+| Tiled plotting larger than the bed (plot, shift paper, register) | HAVE |  | right-click: Tile across pages, one sheet per tile with an overlap, each cut to the canvas; the plot holds for the next sheet |
+| Centre finder for round objects | HAVE |  | Machine, Find the centre: three edge points give the centre and diameter; go there or save it as a position (Start from can use it) |
 | Overhead webcam overlay, lens and alignment calibration | SKIP | | no camera; revisit if one is added (plot a registration pattern with the pen, detect it, compute the mapping) |
 | Feeder, rotary, cylinder and taper correction, galvo marking | SKIP | | not this hardware |

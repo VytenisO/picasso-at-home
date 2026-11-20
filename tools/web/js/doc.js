@@ -136,6 +136,39 @@ export function removePage() {
   });
   showPage(Math.max(0, p - 1));
 }
+// Tile one object that is larger than the canvas: one page per tile, each a copy moved so its part sits on the
+// canvas and cut to it. Neighbouring tiles share an overlap strip for lining the sheets up.
+export function tileSel(overlap) {
+  const o = selected()[0];
+  if (!o || state.sel.length !== 1) { toast('Select one drawing to tile.', true); return; }
+  if (o.rot % 360) { toast('Tiling works on an unturned drawing: turn it back to 0 first.', true); return; }
+  const c = G.canvasRect().canvas, cw = c[2] - c[0], ch = c[3] - c[1];
+  if (overlap * 2 >= Math.min(cw, ch)) { toast('The overlap is too large for the canvas.', true); return; }
+  const sx = cw - overlap, sy = ch - overlap;
+  const nx = Math.max(1, Math.ceil((o.w - overlap) / sx)), ny = Math.max(1, Math.ceil((o.h - overlap) / sy));
+  if (nx * ny === 1) { toast('It fits on one sheet already.'); return; }
+  // on the current page when the drawing was alone on the last one, else on new pages after the others
+  const alone = curPage() === pageCount() - 1 && !state.doc.objects.some((x) => x.id !== o.id && onPage(x));
+  const first = alone ? curPage() : pageCount();
+  if (first + nx * ny > 49 || state.doc.objects.length - 1 + nx * ny > 64) { toast(`${nx * ny} tiles is too many: make it smaller.`, true); return; }
+  edit((d) => {
+    d.objects = d.objects.filter((x) => x.id !== o.id);
+    let k = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const rx = i * sx, ry = j * sy;                       // the tile's corner inside the drawing
+      const rw = Math.min(cw, o.w - rx), rh = Math.min(ch, o.h - ry);
+      const t = { ...o, id: newId(), x: G.r2(c[0] - rx), y: G.r2(c[1] - ry), page: first + k || undefined, locked: true,
+        clip: [c[0], c[1], G.r2(c[0] + rw), G.r2(c[1] + rh)] };
+      delete t.g0;
+      d.objects.push(t);
+      k++;
+    }
+    d.settings.pages = first + nx * ny;
+  });
+  showPage(first);
+  toast(`${nx} x ${ny} tiles on pages ${first + 1} to ${first + nx * ny}, ${overlap} mm overlap. Each is locked so it stays lined up.`);
+}
+
 export function moveSelToPage(n) {
   editSel((objs, d) => {
     for (const o of objs) { if (n) o.page = n; else delete o.page; }

@@ -269,6 +269,46 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     return True
 
 
+def clip_rect(pts, box):
+    """The parts of a polyline inside box (x0, y0, x1, y1), each a polyline (Liang-Barsky per segment)."""
+    x0, y0, x1, y1 = box
+    out, cur = [], []
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        dx, dy, t0, t1 = bx - ax, by - ay, 0.0, 1.0
+        ok = True
+        for p_, q_ in ((-dx, ax - x0), (dx, x1 - ax), (-dy, ay - y0), (dy, y1 - ay)):
+            if abs(p_) < 1e-12:
+                if q_ < 0:
+                    ok = False
+                    break
+            else:
+                t = q_ / p_
+                if p_ < 0:
+                    t0 = max(t0, t)
+                else:
+                    t1 = min(t1, t)
+        if not ok or t0 > t1:
+            if len(cur) > 1:
+                out.append(cur)
+            cur = []
+            continue
+        p0 = (ax + t0 * dx, ay + t0 * dy)
+        p1 = (ax + t1 * dx, ay + t1 * dy)
+        if not cur or math.dist(cur[-1], p0) > 1e-9:
+            if len(cur) > 1:
+                out.append(cur)
+            cur = [p0]
+        cur.append(p1)
+        if t1 < 1.0:
+            out.append(cur)
+            cur = []
+    if len(cur) > 1:
+        out.append(cur)
+    if len(pts) == 1 and x0 <= pts[0][0] <= x1 and y0 <= pts[0][1] <= y1:
+        out.append(list(pts))
+    return out
+
+
 def extend_closed(s, mm):
     """A closed stroke drawn on past its start by mm (along its own first segments): closes the seam."""
     out, left = list(s), mm
@@ -641,10 +681,17 @@ def load_svg(path, ignore_unsupported):
                 pass
         if el.get("data-obj") is not None and el.get("data-obj").isdigit():
             cur["obj"] = int(el.get("data-obj"))          # which bed object (the web UI's composed document)
+        if el.get("data-clip") is not None:
+            try:
+                cl = tuple(float(v) for v in el.get("data-clip").split())
+                cur["clip"] = cl if len(cl) == 4 and cl[2] > cl[0] and cl[3] > cl[1] else None
+            except ValueError:
+                pass
         if el.get("data-page") is not None and el.get("data-page").isdigit():
             cur["page"] = int(el.get("data-page"))        # which sheet of a several-page project
         meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam"), "page": cur.get("page")}
+                "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam"), "page": cur.get("page"),
+                "clip": cur.get("clip")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -710,7 +757,7 @@ def load_svg(path, ignore_unsupported):
         if cur.get("fill") and el_rings and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
             fills.append({"rings": el_rings, "color": cur["fill"], "opacity": cur["fop"],
                           "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                          "obj": cur.get("obj"), "page": cur.get("page")})
+                          "obj": cur.get("obj"), "page": cur.get("page"), "clip": cur.get("clip")})
         for child in el:
             walk(child, cur, xform)
 
@@ -1257,7 +1304,7 @@ def main():
             for ln in lines:
                 fpolys.append(ln)
                 fmetas.append({"color": f["color"], "layer": flayer, "pressure": f["pressure"], "obj": f.get("obj"),
-                               "page": f.get("page"),
+                               "page": f.get("page"), "clip": f.get("clip"),
                                "shape": fi + 1, "flayer": f["layer"]})
         fstrokes, fmetas = prepare(fpolys, fmetas, a.simplify, a.join, 1.0, 0.0, 0.0)
         log(f"Fill           : {len(fills)} filled shape(s) -> {len(fstrokes)} fill strokes"
@@ -1266,6 +1313,15 @@ def main():
         for m in fmetas:
             m["fill"] = True
         strokes, metas = strokes + fstrokes, metas + fmetas      # inks keep the order of the outlines; fills are drawn first within an ink
+    if a.absolute and any(m.get("clip") for m in metas):
+        # tiles: an object's strokes are cut to its clip rectangle (machine mm); the parts outside are not drawn
+        cs, cm = [], []
+        for st_, m in zip(strokes, metas):
+            for piece in (clip_rect(st_, m["clip"]) if m.get("clip") else [st_]):
+                cs.append(piece)
+                cm.append(dict(m))
+        log(f"Clip           : {len(strokes)} strokes cut to their tiles -> {len(cs)}")
+        strokes, metas = cs, cm
     if not strokes:
         sys.exit("no drawable geometry found")
     n_dup = 0
