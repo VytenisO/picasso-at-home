@@ -313,7 +313,7 @@ niche.
 | Read-only plotter check (`V`) before hardware starts | HAVE | | `/api/plotter` also exists but the UI never calls it; show it |
 | Connection status in the top bar (simulator/hardware, link) | HAVE | | |
 | Plotter connection doctor (list ports, test `V`, likely causes) | HAVE |  | Machine, Diagnose the connection: serial ports with USB ids, the board (or its bootloader mode), the server user's groups and port access, the board's answer, and what to do |
-| Port auto-detect / picker | PART | P3 | auto-detect in `ebb_check.py`; no UI |
+| Port auto-detect / picker | HAVE |  | Machine, Plotter: found by its USB id, or a port picked from the list (kept on the server, used by every job) |
 | Position record: at start / moved / unknown | HAVE | | |
 | Jog pad: step size, speed, pen up, clamped to travel | HAVE | | Machine tab, Control: a machine job (`jog.py`); steps 0.1/1/10/50 mm, speed, arrow keys on the bed; clamped to the travel minus its edge margin |
 | Go to X/Y | HAVE | |  |
@@ -323,11 +323,11 @@ niche.
 | Short "pen touch" at layer pressure | HAVE |  | Machine control: Touch, pen down for under a second at a pressure, then up |
 | Motors off (release to park by hand) | HAVE | | Finish here / Finish at S switch the motors off; Stop too |
 | Set start here / re-zero here | HAVE | | Set S here: the carriage becomes S (pen over the paper corner) |
-| Saved positions (pen-swap spot, parking, paper corner) | TODO | P3 | |
+| Saved positions (pen-swap spot, parking, paper corner) | HAVE |  | Machine control, Saved positions: save where the carriage is under a name, Go back to it |
 | Start-from options: S, current position, saved origin, with 9-point job anchor | TODO | P2 | |
 | Live position shown on the bed during jogs | HAVE | | the carriage marker and the position pill follow every move |
-| Macros: saved command sequences as buttons | TODO | P3 | must mark position unknown if they move |
-| Raw EBB command line in the console | TODO | P3 | warn; mark position unknown after motion commands |
+| Macros: saved command sequences as buttons | HAVE |  | Machine control, Macros: GOTO, MOVE, PEN, HOME, TICK, SPEED, WAIT lines run as tracked moves, so the position stays known |
+| Raw EBB command line in the console | HAVE |  | Machine control, EBB command line: one command at a time; bootloader, reset, flash, configuration and servo setup refused; any command that can move or free the carriage makes the position unknown |
 | Live writing (font or own handwriting), new page, finish | HAVE | | `live.js`, `live_plot.py` |
 | Live writing: pressure field | HAVE |  | Tools, Live writing: Pressure 0-0.9 (empty = the configured pen-down) |
 | Live writing: pause and return | TODO | P3 | |
@@ -345,7 +345,7 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | PART | P2 | paper corner, size and margin, and steps/mm through calibration; travel and axis signs read-only; servo never (set by hand) |
-| Units mm / inch for display | TODO | P3 | mm is the native unit |
+| Units mm / inch for display | HAVE |  | View, Show lengths in mm or inches (status line, selection, measure, plan size); typed values take either |
 | Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Machine tab: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
 | Paper edge calibration in the UI | PART | P2 | paper corner typed in, or jog to the corner and Set S here; no guided measurement |
 | Squareness and backlash test patterns | TODO | P3 | |
@@ -353,7 +353,7 @@ niche.
 | Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
 | Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
-| Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
+| Lifetime stats (jobs, pen-down metres; pen wear) | HAVE |  | Machine, Lifetime: real jobs, hours, strokes, metres of line per pen (from each job's plan, by the share of strokes per layer) |
 | Firmware version shown | HAVE | | Machine tab, Plotter: version, port and time of the last answer; Check the plotter asks again (nothing moves) |
 | EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |
 | Pen positions put back after every EBB power-on or reset (3.x starts the servo at its own pen-up, 22565, past the top of this lift) | PART | P0 | `hardware.ServoGuard` deployed on robotlab 2026-11-19 (75fcd71; the board's QL marker read 1 after the restart). To do: switch the plotter off and on while watching the pen: at most a second of stall, then a slow move to pen-up and a "Plotter switched on or reset" line in the log |

@@ -96,6 +96,36 @@ class TestMachine(MachineServer):
         self.send(job, "quit")
         self.wait_state(("complete",))
 
+    def test_01c_raw_console_positions_macros(self):
+        job = self.start()
+        self.send(job, "raw", text="QS")
+        time.sleep(0.6)
+        for bad in ("BL", "SC,4,30000", "QS QS", "RB"):
+            code, r = self.call("POST", "/api/machine/send", {"job": job, "cmd": "raw", "args": {"text": bad}})
+            self.assertEqual(code, 409, bad)
+        self.send(job, "raw", text="SM,100,10,10")          # moves: the position becomes unknown
+        time.sleep(0.6)
+        code, st = self.call("GET", "/api/state")
+        self.assertTrue(st["job"]["machine"].get("unknown"))
+        self.assertTrue(any("QS" in x for x in st["job"]["machine"]["raw"]))
+        self.send(job, "quit")
+        st = self.wait_state(("complete",))
+        self.assertEqual(st["position"]["state"], "unknown")
+        code, r = self.call("POST", "/api/positions/save", {"name": "pen swap", "x": 300, "y": 20})
+        self.assertEqual(r["positions"][-1], {"name": "pen swap", "x": 300.0, "y": 20.0})
+        code, r = self.call("POST", "/api/positions/save", {"name": "far", "x": 5000, "y": 20})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/macros/save", {"name": "dot", "text": "PEN DOWN" + chr(10) + "WAIT 300" + chr(10) + "PEN UP"})
+        self.assertEqual(r["macros"][0]["name"], "dot")
+        code, r = self.call("POST", "/api/macros/delete", {"name": "dot"})
+        self.assertEqual(r["macros"], [])
+        code, r = self.call("GET", "/api/plotter/ports")
+        self.assertIn("ports", r)
+        code, r = self.call("POST", "/api/plotter/port", {"port": "bad port; rm"})
+        self.assertEqual(code, 400)
+        code, r = self.call("GET", "/api/stats")
+        self.assertIn("jobs", r)
+
     def test_02_finish_here_and_stop(self):
         job = self.start()
         self.pos_after(lambda: self.send(job, "move", dx=30, dy=30))

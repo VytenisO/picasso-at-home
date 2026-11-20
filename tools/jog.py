@@ -115,6 +115,7 @@ def main():
     p = ps.Plotter(cfg, pargs)
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     status, back = "complete", True
+    raw_moved = [False]
 
     def here():
         return sx + p.pos[0] / spmm[0], sy + p.pos[1] / spmm[1]
@@ -168,6 +169,22 @@ def main():
                 go(x, y)
                 p.pen(True)
                 emit("pen", pen="up")
+            elif word == "RAW" and args:
+                # one EBB command from the console; the server has refused the dangerous ones. Anything that can
+                # move the carriage leaves the position unknown.
+                text = args[0]
+                head = text.split(",")[0].upper()
+                p.idle()
+                try:
+                    reply = p.cmd(text) if not p.sim else ["OK (simulator)"]
+                except Exception as ex:   # noqa: BLE001
+                    reply = [str(ex)[:120]]
+                moved = head in ("SM", "XM", "HM", "LM", "LT", "L3", "T3", "EM", "ES", "CS")
+                if moved:
+                    raw_moved[0] = True
+                    emit("warning", message=f"{head} can move or free the carriage: its position is now unknown. "
+                                            "Re-park it at S before the next plot.")
+                emit("raw", text=text, reply=reply[:4], moved=moved)
             elif word == "TOUCH" and (v := nums(args, 2)) and 0 <= v[0] <= ps.MAX_PRESSURE and 100 <= v[1] <= 3000:
                 # a short pen-down at a pressure, then up: how hard a layer's setting presses, without drawing
                 p.set_pressure(v[0])
@@ -212,7 +229,9 @@ def main():
         x, y = here()
         print("__RESULT__:" + json.dumps({
             "status": status, "elapsed_s": 0, "end_mm": [round(x, 2), round(y, 2)],
-            "at_start": p.pos == [0, 0] and not status.startswith(("interrupted", "error")) and "FAILED" not in status}),
+            "unknown": raw_moved[0],
+            "at_start": not raw_moved[0] and p.pos == [0, 0] and not status.startswith(("interrupted", "error"))
+                        and "FAILED" not in status}),
             flush=True)
         emit("done", status=status)
     return 0 if status == "complete" else 1

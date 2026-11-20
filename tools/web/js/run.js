@@ -4,6 +4,7 @@ import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
 import { fileName, setStartAt, setSettings } from './doc.js';
+import * as G from './geom.js';
 
 const TITLES = {
   idle: 'Idle', starting: 'Starting', running: 'Plotting', pausing: 'Pausing', paused: 'Paused',
@@ -58,7 +59,7 @@ export function initRun() {
   document.querySelectorAll('.dlg-stop').forEach((b) => { b.onclick = stop; });
   on('job', () => document.querySelectorAll('.dlg-stop').forEach((b) => { b.hidden = !jobActive(); }));
   on(['job', 'position', 'link', 'me', 'lastEventAt'], renderStatus);
-  on(['job', 'preview', 'previewStale', 'previewing', 'doc', 'me', 'startAt'], renderRun);
+  on(['job', 'preview', 'previewStale', 'previewing', 'doc', 'me', 'startAt', 'units'], renderRun);
   $('startAtReset').onclick = () => setStartAt(0);
   $('resumeBtn').onclick = () => { const r = resumePoint(); if (r) setStartAt(r); };
   // a finished resumed plot: the next one starts from the beginning again
@@ -224,7 +225,7 @@ function renderRun() {
     const enabled = s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
     const fo = s.optimized && !s.start_at ? s.file_order : null;
     const rows = [
-      ['Size', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])})`],
+      ['Size', `${G.fmtLen(b[2] - b[0], false)} x ${G.fmtLen(b[3] - b[1])} at (${G.fmtLen(b[0], false)}, ${G.fmtLen(b[1], false)})`],
       ['Time', `about ${fmtTime(s.est_seconds)}` + (fo && fo.est_seconds - s.est_seconds > 1 ? ` (${fmtTime(fo.est_seconds)} in file order)` : '') +
         (pv.time_factor && Math.abs(pv.time_factor - 1) > 0.05 ? `; past plots ran ${Math.round(pv.time_factor * 100)}% of the estimate, so about ${fmtTime(s.est_seconds * pv.time_factor)}` : '') +
         (s.copies > 1 ? `; ${s.copies} copies, about ${fmtTime(s.est_seconds_all)} with no time for paper changes` : '')],

@@ -105,6 +105,14 @@ export function mirror(objs, axis, px, py) {
 export const norm = (deg) => Math.round((((deg % 360) + 360) % 360) * 1e6) / 1e6;
 export const r2 = (v) => Math.round(v * 100) / 100;
 
+// A length for display: mm, or inches when View says so. Typing works in either (parseLength).
+export function fmtLen(mm, unitLabel = true) {
+  let u = 'mm';
+  try { u = (JSON.parse(localStorage.getItem('plotter.view') || '{}').units) || 'mm'; } catch (e) { /* default */ }
+  if (u === 'in') return `${(mm / 25.4).toFixed(3)}${unitLabel ? ' in' : ''}`;
+  return `${r2(mm)}${unitLabel ? ' mm' : ''}`;
+}
+
 // A typed length: a number or simple arithmetic, with optional units (mm, cm, in or ", pt, px, deg).
 // '100/3' -> 33.33..., '2in' -> 50.8, '10cm + 5' -> 105. -> NaN when it cannot be read.
 const UNITS = { mm: 1, cm: 10, in: 25.4, '"': 25.4, pt: 25.4 / 72, px: 25.4 / 96, deg: 1 };

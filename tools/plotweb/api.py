@@ -54,6 +54,7 @@ class App:
         self._fill_layers = {}      # (svg hash, fill spacing, angle) -> (layer keys, layers)
         self.plans_lock = threading.Lock()
         self.hw_lock = threading.Lock()      # one read-only plotter check at a time, never during a job start
+        hardware.load_port_choice(settings)
         if not settings.sim:
             hardware.ServoGuard(settings, self.runner, self.hw_lock, self.ev.log).start()
         self.plan_dir = settings.cache / "plans"
@@ -296,6 +297,51 @@ class App:
                 new[ly["key"].split("|")[0]] = ly["pen"]
         if new != m:
             (self.s.cache / "pen_map.json").write_text(json.dumps(new, indent=1))
+
+    # ---- small JSON lists kept on the server: saved positions, macros
+    def _list_path(self, name):
+        return self.s.cache / f"{name}.json"
+
+    def list_get(self, name):
+        try:
+            d = json.loads(self._list_path(name).read_text())
+            return d if isinstance(d, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def list_put(self, name, item, fields):
+        nm = re.sub(r"\s+", " ", str(item.get("name") or "")).strip()[:40]
+        if not nm:
+            raise ApiError(400, "Give it a name.")
+        clean = {"name": nm}
+        for k, kind in fields.items():
+            v = item.get(k)
+            if kind == "num":
+                try:
+                    v = round(float(v), 3)
+                except (TypeError, ValueError):
+                    raise ApiError(400, f"{k} must be a number.")
+                if not -10 <= v <= 1000:
+                    raise ApiError(400, f"{k} is off the bed.")
+            else:
+                v = str(v or "")[:2000]
+            clean[k] = v
+        items = [x for x in self.list_get(name) if x.get("name") != nm] + [clean]
+        if len(items) > 50:
+            raise ApiError(400, "At most 50.")
+        p = self._list_path(name)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(items, indent=1))
+        tmp.replace(p)
+        return items
+
+    def list_delete(self, name, nm):
+        items = [x for x in self.list_get(name) if x.get("name") != nm]
+        p = self._list_path(name)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(items, indent=1))
+        tmp.replace(p)
+        return items
 
     def _push(self, title, text):
         """POST a message to the ntfy topic URL in web.json ("ntfy"). Best effort, off the job's thread."""
@@ -761,6 +807,8 @@ class App:
             argv += ["--pressure", f"{pressure:g}"]
         if sim:
             argv.append("--sim")
+        elif hardware.PORT_CHOICE:
+            argv += ["--port", hardware.PORT_CHOICE]
         ok, job_id = self.runner.reserve("live", "live", sim, {"font": font or f"handwriting ({writer})", "xheight": xh, "sport": sport})
         if not ok:
             raise ApiError(409, job_id)
@@ -790,6 +838,8 @@ class App:
         argv = [self.s.python, str(self.s.root / "tools" / "jog.py"), "--control", "--config", str(self.s.machine_path)]
         if sim:
             argv += ["--sim", "--sim-speed", f"{self.s.sim_speed:g}"]
+        elif hardware.PORT_CHOICE:
+            argv += ["--port", hardware.PORT_CHOICE]
         ok, job_id = self.runner.reserve("machine", "machine", sim, {"name": "machine control"})
         if not ok:
             raise ApiError(409, job_id)
@@ -1644,6 +1694,45 @@ class Handler(BaseHTTPRequestHandler):
         b = self.json_body()
         self._control(self.app.runner.pentest, b.get("job"), b.get("cmd"))
 
+    def r_ports(self):
+        try:
+            ports = [{"device": p.device, "id": f"{p.vid:04x}:{p.pid:04x}" if p.vid is not None else None,
+                      "description": p.description} for p in hardware.list_ports.comports()] if hardware.serial else []
+        except Exception:  # noqa: BLE001
+            ports = []
+        self.send(200, {"ports": ports, "chosen": hardware.PORT_CHOICE})
+
+    def r_port_set(self):
+        port = self.json_body().get("port") or None
+        if port is not None and (not isinstance(port, str) or len(port) > 120 or not re.fullmatch(r"[\w./:\\-]+", port)):
+            raise ApiError(400, "Not a serial port name.")
+        if self.app.runner.busy():
+            raise ApiError(409, "A job is running. Choose the port when it has ended.")
+        hardware.set_port_choice(self.app.s, port)
+        self.app.ev.log("info", f"Plotter port: {port or 'found automatically (the EBB USB id)'}.")
+        self.send(200, {"ok": True, "chosen": hardware.PORT_CHOICE})
+
+    def r_positions(self):
+        self.send(200, {"positions": self.app.list_get("positions")})
+
+    def r_position_save(self):
+        self.send(200, {"positions": self.app.list_put("positions", self.json_body(), {"x": "num", "y": "num"})})
+
+    def r_position_delete(self):
+        self.send(200, {"positions": self.app.list_delete("positions", str(self.json_body().get("name") or ""))})
+
+    def r_macros(self):
+        self.send(200, {"macros": self.app.list_get("macros")})
+
+    def r_macro_save(self):
+        self.send(200, {"macros": self.app.list_put("macros", self.json_body(), {"text": "text"})})
+
+    def r_macro_delete(self):
+        self.send(200, {"macros": self.app.list_delete("macros", str(self.json_body().get("name") or ""))})
+
+    def r_stats(self):
+        self.send(200, self.app.runner.lifetime())
+
     def r_history(self):
         self.send(200, {"jobs": self.app.runner.history()})
 
@@ -1680,6 +1769,10 @@ ROUTES_GET = {
     "/api/plotter": (Handler.r_plotter, True),
     "/api/files/trash": (Handler.r_trash, True),
     "/api/history": (Handler.r_history, True),
+    "/api/plotter/ports": (Handler.r_ports, True),
+    "/api/positions": (Handler.r_positions, True),
+    "/api/macros": (Handler.r_macros, True),
+    "/api/stats": (Handler.r_stats, True),
     "/api/plotter/doctor": (Handler.r_doctor, True),
     "/api/backup": (Handler.r_backup, True),
     "/api/prepare/steps": (Handler.r_prep_steps, True),
@@ -1695,6 +1788,11 @@ ROUTES_POST = {
     "/api/files/delete": (Handler.r_delete, True),
     "/api/files/rename": (Handler.r_rename, True),
     "/api/restore": (Handler.r_settings_restore, True),
+    "/api/plotter/port": (Handler.r_port_set, True),
+    "/api/positions/save": (Handler.r_position_save, True),
+    "/api/positions/delete": (Handler.r_position_delete, True),
+    "/api/macros/save": (Handler.r_macro_save, True),
+    "/api/macros/delete": (Handler.r_macro_delete, True),
     "/api/files/restore": (Handler.r_restore, True),
     "/api/files/purge": (Handler.r_purge, True),
     "/api/files/replace": (Handler.r_replace, True),

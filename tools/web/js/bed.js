@@ -514,10 +514,10 @@ export function zoomSelection() {
 function status() {
   const sel = state.doc ? state.doc.objects.filter((o) => state.sel.includes(o.id)) : [];
   const parts = [];
-  if (pointerMm) parts.push(`${pointerMm[0].toFixed(1)}, ${pointerMm[1].toFixed(1)} mm`);
+  if (pointerMm) parts.push(`${G.fmtLen(pointerMm[0], false)}, ${G.fmtLen(pointerMm[1])}`);
   if (sel.length) {
     const b = G.bounds(sel);
-    parts.push(`${sel.length > 1 ? sel.length + ' selected: ' : ''}${G.r2(b.x0)}, ${G.r2(b.y0)}  ${G.r2(b.w)} x ${G.r2(b.h)} mm`);
+    parts.push(`${sel.length > 1 ? sel.length + ' selected: ' : ''}${G.fmtLen(b.x0, false)}, ${G.fmtLen(b.y0, false)}  ${G.fmtLen(b.w, false)} x ${G.fmtLen(b.h)}`);
   }
   parts.push(`${Math.round(view.s / ((state.me && state.me.machine) ? 96 / 25.4 : 1) * 100)}%`);
   $('bedCoords').textContent = parts.join('   ');
@@ -640,8 +640,8 @@ function overlays(px) {
     ctx.font = `${12 * px}px system-ui, sans-serif`;
     const one = sel.length === 1 ? sel[0] : null;
     const label = (one
-      ? `${G.r2(one.w)} x ${G.r2(one.h)} mm${one.rot ? `, ${G.r2(one.rot)} deg` : ''}`
-      : `${sel.length} objects, ${G.r2(b.w)} x ${G.r2(b.h)} mm`) + (sel.some((o) => o.locked) ? '  (locked)' : '');
+      ? `${G.fmtLen(one.w, false)} x ${G.fmtLen(one.h)}${one.rot ? `, ${G.r2(one.rot)} deg` : ''}`
+      : `${sel.length} objects, ${G.fmtLen(b.w, false)} x ${G.fmtLen(b.h)}`) + (sel.some((o) => o.locked) ? '  (locked)' : '');
     ctx.fillText(label + (bad ? '  outside the canvas' : ''), b.x0, b.y0 - (one && !one.rot ? 5 : 5 + ROT_PX) * px);
   }
   if (drag && drag.mode === 'marquee' && drag.rect) {
@@ -839,9 +839,11 @@ function initViewMenu() {
   $('vNudge').value = String(v.nudge);
   $('vSnapPx').value = String(v.snapPx);
   $('vLockGuides').checked = v.lockGuides;
+  $('vUnits').value = v.units || 'mm';
   const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked,
-    nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked }); redraw(); };
-  for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides']) $(id).onchange = save;
+    nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked,
+    units: $('vUnits').value }); redraw(); status(); set({ units: $('vUnits').value }); };
+  for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides', 'vUnits']) $(id).onchange = save;
   const show = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };
   document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });

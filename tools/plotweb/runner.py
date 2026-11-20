@@ -12,6 +12,7 @@ import json
 import math
 import os
 import queue
+import re
 import signal
 import subprocess
 import threading
@@ -24,6 +25,10 @@ STOP_GRACE_S = 30.0      # plot_svg needs at most one move chunk (3 s) plus pen-
 KILL_GRACE_S = 15.0
 MIRROR_MAX_POINTS = 2000    # points in one pad message
 LIVE_MAX_POINTS = 150000   # points of written strokes kept for the page view
+
+
+# EBB commands the raw console refuses: bootloader, reset, flash writes, configuration and servo setup.
+RAW_BLOCKED = {"BL", "RB", "ST", "SN", "CU", "C", "SC", "S2", "SR", "CK", "SE"}
 
 
 def _new_job(job_id, kind, mode, sim, meta):
@@ -468,6 +473,11 @@ class JobRunner:
             elif kind == "zeroed":
                 m["zeroed"] = True
                 j["message"] = "S is set here: plots start from this point."
+            elif kind == "raw":
+                m.setdefault("raw", []).append(f"> {ev.get('text')}  ->  {' | '.join(ev.get('reply') or [])}")
+                m["raw"] = m["raw"][-30:]
+                if ev.get("moved"):
+                    m["unknown"] = True
         text = {"zeroed": "S set here: the tracked position is S again.", "warning": ev.get("message", ""),
                 "error": ev.get("message", "")}.get(kind)
         if text:
@@ -507,6 +517,14 @@ class JobRunner:
                     word = "PEN " + args["pen"].upper()
                 elif cmd == "tick":
                     word = f"TICK {num('dx', -20, 20):.3f} {num('dy', -20, 20):.3f}"
+                elif cmd == "raw":
+                    text = str(args.get("text") or "").strip()
+                    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,2}(,[-+0-9A-Za-z.]{0,12}){0,8}", text):
+                        raise ValueError("an EBB command is letters, then comma-separated values (no spaces)")
+                    if text.split(",")[0].upper() in RAW_BLOCKED:
+                        raise ValueError(f"{text.split(',')[0].upper()} is not allowed here: it can reset the board, "
+                                         "write its flash or drive the servo past its range")
+                    word = "RAW " + text
                 elif cmd == "touch":
                     word = f"TOUCH {num('pressure', 0, 0.9):g} {num('ms', 100, 3000):g}"
                 elif cmd == "speed":
@@ -708,7 +726,10 @@ class JobRunner:
                 else:
                     j.update(state="error", message=f"The plot stopped with an error: {status}. Pen up and motors "
                                                     "released if the cleanup ran; check the machine.")
-                if "FAILED" not in status:
+                if "FAILED" not in status and res.get("unknown"):
+                    self.position = {"state": "unknown", "at": None,
+                                     "note": "A raw command moved the carriage: re-park it by hand at S."}
+                elif "FAILED" not in status:
                     if res.get("at_start"):
                         self.position = {"state": "at_start", "at": res.get("end_mm"),
                                          "note": "At the start point by the board's step count. Steps lost to a "
@@ -741,6 +762,7 @@ class JobRunner:
             msg = j["message"]
         self._log({"complete": "info", "stopped": "warn"}.get(final, "error"), f"Job {job_id}: {final}. {msg}")
         self._history(j)
+        self._count_lifetime(j)
         if not j.get("sim"):
             self.notify(f"{j['meta'].get('name') or j['kind']}: {final}", msg)
         self._emit_state()
@@ -774,6 +796,42 @@ class JobRunner:
             return None
         r.sort()
         return round(r[len(r) // 2], 3)
+
+    def _count_lifetime(self, j):
+        """Running totals that outlive the 500-job history: real jobs, time, strokes, metres of line per pen."""
+        if j.get("sim") or j["kind"] not in ("plot", "live"):
+            return
+        p = self.s.cache / "lifetime.json"
+        try:
+            t = json.loads(p.read_text())
+        except (OSError, ValueError):
+            t = {}
+        prog = j.get("progress") or {}
+        t["jobs"] = t.get("jobs", 0) + 1
+        t["seconds"] = round(t.get("seconds", 0) + ((j["finished"] or time.time()) - j["started"]), 1)
+        t["strokes"] = t.get("strokes", 0) + int(prog.get("done") or 0)
+        sm = (self.preview or {}).get("summary") or {}
+        if sm.get("drawing_mm") and prog.get("strokes"):
+            frac = min(1.0, (prog.get("done") or 0) / prog["strokes"])
+            layers = [ly for ly in sm.get("layers") or [] if ly.get("enabled", True)]
+            total = sum(ly.get("strokes") or 0 for ly in layers) or 1
+            pens = t.setdefault("pen_mm", {})
+            for ly in layers:
+                k = ly.get("pen") or "pen not set"
+                pens[k] = round(pens.get(k, 0) + sm["drawing_mm"] * frac * (ly.get("strokes") or 0) / total, 1)
+        t.setdefault("since", time.strftime("%Y-%m-%d"))
+        try:
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps(t, indent=1))
+            tmp.replace(p)
+        except OSError:
+            pass
+
+    def lifetime(self):
+        try:
+            return json.loads((self.s.cache / "lifetime.json").read_text())
+        except (OSError, ValueError):
+            return {"jobs": 0, "seconds": 0, "strokes": 0, "pen_mm": {}}
 
     def history(self, limit=100):
         p = self.s.cache / "history.jsonl"

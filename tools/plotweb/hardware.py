@@ -4,6 +4,7 @@
   last_resort_safe()  after a job process had to be killed: pen up and motors off, best effort
   ServoGuard   after every power-on or reset: put this lift's pen positions into the board
 """
+import json
 import os
 import re
 import threading
@@ -25,10 +26,30 @@ def _remember(ok, message, port=None, firmware=None):
     return ok, message
 
 
+PORT_CHOICE = None   # a serial port picked in the Machine tab; None = find the EBB by its USB id
+
+
+def load_port_choice(settings):
+    global PORT_CHOICE
+    try:
+        PORT_CHOICE = json.loads((settings.cache / "port.json").read_text()).get("port") or None
+    except (OSError, ValueError, AttributeError):
+        PORT_CHOICE = None
+
+
+def set_port_choice(settings, port):
+    global PORT_CHOICE
+    PORT_CHOICE = port or None
+    (settings.cache / "port.json").write_text(json.dumps({"port": PORT_CHOICE}))
+
+
 def find_port():
     if serial is None:
         return None
-    return next((p.device for p in list_ports.comports() if (p.vid, p.pid) == EBB), None)
+    ports = list(list_ports.comports())
+    if PORT_CHOICE and any(p.device == PORT_CHOICE for p in ports):
+        return PORT_CHOICE
+    return next((p.device for p in ports if (p.vid, p.pid) == EBB), None)
 
 
 def precheck(sim):

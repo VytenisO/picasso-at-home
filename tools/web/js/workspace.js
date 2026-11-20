@@ -37,7 +37,7 @@ export function initWorkspace() {
     if (await ask('Clear the bed', 'Take every drawing off the bed? They stay in the Library, and Undo brings them back.', 'Clear')) D.clearBed();
   };
   on(['doc', 'preview', 'me'], fillJobForm);
-  on(['doc', 'sel', 'job', 'naturals'], renderArrange);
+  on(['doc', 'sel', 'job', 'naturals', 'units'], renderArrange);
   on(['doc', 'preview', 'job'], renderLayers);
   on(['doc', 'sel', 'files', 'job'], renderObjects);
   on(['projects', 'doc', 'job'], renderProjects);
@@ -145,7 +145,7 @@ function measure(sel) {
     }
   }
   if (!paths) return missing ? '' : 'No lines.';
-  return `${paths} path${paths === 1 ? '' : 's'}, ${len >= 1000 ? `${(len / 1000).toFixed(2)} m` : `${Math.round(len)} mm`} of line` +
+  return `${paths} path${paths === 1 ? '' : 's'}, ${len >= 1000 ? `${(len / 1000).toFixed(2)} m` : G.fmtLen(len)} of line` +
     (sel.some((o) => o.locked) ? '; locked' : '') + (sel.some((o) => o.grp) ? '; grouped' : '');
 }
 

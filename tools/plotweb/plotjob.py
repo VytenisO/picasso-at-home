@@ -270,6 +270,10 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv.append("--sim")
         if sim_speed:
             argv += ["--sim-speed", f"{sim_speed:g}"]
+    else:
+        from . import hardware
+        if hardware.PORT_CHOICE:            # a port picked in the Machine tab
+            argv += ["--port", hardware.PORT_CHOICE]
     return argv
 
 

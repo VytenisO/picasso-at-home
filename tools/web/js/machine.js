@@ -3,7 +3,7 @@
 // always works, and the position is counted from S because the firmware cannot report it.
 import { api, post } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
-import { $, el, toast, ask } from './ui.js';
+import { $, el, toast, ask, askText } from './ui.js';
 import { confirmDialog } from './run.js';
 import { setBedClick } from './bed.js';
 import { selectionAnchor } from './workspace.js';
@@ -23,8 +23,96 @@ function showHw(h) {
   $('hwInfo').className = h.ok ? 'hint' : 'note err';
 }
 
+// ------------------------------------------------------------------ port, positions, macros, raw, lifetime
+async function loadPorts() {
+  try {
+    const r = await api('/api/plotter/ports');
+    const sel = $('hwPort');
+    sel.replaceChildren(el('option', { value: '', text: 'Find it by its USB id (automatic)' }),
+      ...r.ports.map((p) => el('option', { value: p.device, text: `${p.device}${p.id ? ` (${p.id})` : ''}${p.description ? `, ${p.description}` : ''}` })));
+    if (r.chosen && !r.ports.some((p) => p.device === r.chosen)) sel.append(el('option', { value: r.chosen, text: `${r.chosen} (not connected now)` }));
+    sel.value = r.chosen || '';
+  } catch (e) { /* not available */ }
+}
+
+let positions = [], macros = [];
+async function loadLists() {
+  try { positions = (await api('/api/positions')).positions; macros = (await api('/api/macros')).macros; } catch (e) { return; }
+  renderLists();
+}
+
+function renderLists() {
+  const run = machineRunning();
+  $('posList').replaceChildren(...(positions.length ? positions.map((p) => el('li', {},
+    el('span', { text: `${p.name}: ${p.x}, ${p.y} mm` }),
+    el('button', { type: 'button', class: 'icon', text: 'Go', disabled: !run, onclick: () => send('goto', { x: p.x, y: p.y }) }),
+    el('button', { type: 'button', class: 'icon', text: 'Delete', onclick: async () => {
+      positions = (await post('/api/positions/delete', { name: p.name })).positions; renderLists();
+    } }))) : [el('li', { class: 'muted', text: 'None saved yet.' })]));
+  $('macroList').replaceChildren(...(macros.length ? macros.map((m) => el('li', {},
+    el('span', { text: m.name }),
+    el('button', { type: 'button', class: 'icon', text: 'Run', disabled: !run, onclick: () => runMacro(m) }),
+    el('button', { type: 'button', class: 'icon', text: 'Edit', onclick: () => { $('macroName').value = m.name; $('macroText').value = m.text; } }),
+    el('button', { type: 'button', class: 'icon', text: 'Delete', onclick: async () => {
+      macros = (await post('/api/macros/delete', { name: m.name })).macros; renderLists();
+    } }))) : [el('li', { class: 'muted', text: 'None yet.' })]));
+  const job = state.job, m = (job && job.machine) || {};
+  $('rawOut').textContent = (m.raw || []).join('\n');
+}
+
+// A macro: one command per line. GOTO x y, MOVE dx dy, PEN UP|DOWN, HOME, TICK dx dy, SPEED v, WAIT ms.
+async function runMacro(m) {
+  const lines = String(m.text).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  for (const [n, line] of lines.entries()) {
+    const [w, ...a] = line.split(/\s+/);
+    const v = a.map(Number);
+    const W = w.toUpperCase();
+    let ok = true;
+    if (W === 'GOTO' && v.length === 2) await send('goto', { x: v[0], y: v[1] });
+    else if (W === 'MOVE' && v.length === 2) await send('move', { dx: v[0], dy: v[1] });
+    else if (W === 'TICK' && v.length === 2) await send('tick', { dx: v[0], dy: v[1] });
+    else if (W === 'PEN' && /^(UP|DOWN)$/i.test(a[0] || '')) await send('pen', { pen: a[0].toLowerCase() });
+    else if (W === 'HOME') await send('home');
+    else if (W === 'SPEED' && v.length === 1) await send('speed', { speed: v[0] });
+    else if (W === 'WAIT' && v.length === 1 && v[0] >= 0 && v[0] <= 60000) await new Promise((r) => setTimeout(r, v[0]));
+    else ok = false;
+    if (!ok) { toast(`Macro ${m.name}, line ${n + 1}: not understood (${line}).`, true); return; }
+  }
+  toast(`Macro ${m.name} sent.`);
+}
+
+async function loadLifetime() {
+  try {
+    const t = await api('/api/stats');
+    const pens = Object.entries(t.pen_mm || {}).sort((a, b) => b[1] - a[1]).map(([p, mm]) => `${p} ${(mm / 1000).toFixed(1)} m`).join(', ');
+    $('lifeInfo').textContent = `${t.jobs || 0} real jobs${t.since ? ` since ${t.since}` : ''}, ${((t.seconds || 0) / 3600).toFixed(1)} h plotting, ` +
+      `${(t.strokes || 0).toLocaleString()} strokes.` + (pens ? ` Line drawn per pen: ${pens}.` : '');
+  } catch (e) { /* not available */ }
+}
+
 export function initMachine() {
   on('me', () => showHw(state.me && state.me.plotter));
+  loadPorts(); loadLists(); loadLifetime();
+  on('job', () => { renderLists(); const j = state.job; if (j && !jobActive()) loadLifetime(); });
+  $('hwPortSet').onclick = async () => {
+    try { await post('/api/plotter/port', { port: $('hwPort').value || null }); toast('Port saved.'); loadPorts(); } catch (e) { toast(e.message, true); }
+  };
+  $('posSave').onclick = async () => {
+    const pos = state.pos || (state.job && state.job.pos);
+    if (!pos) { toast('Take control first: the position comes from the carriage.', true); return; }
+    const name = await askText('Save this position', `The carriage is at ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)} mm. A name:`, '', 'Save');
+    if (!name) return;
+    try { positions = (await post('/api/positions/save', { name, x: pos.x, y: pos.y })).positions; renderLists(); } catch (e) { toast(e.message, true); }
+  };
+  $('macroSave').onclick = async () => {
+    try { macros = (await post('/api/macros/save', { name: $('macroName').value, text: $('macroText').value })).macros; renderLists(); toast('Macro saved.'); }
+    catch (e) { toast(e.message, true); }
+  };
+  $('rawForm').onsubmit = (e) => {
+    e.preventDefault();
+    const t = $('rawText').value.trim();
+    if (t) send('raw', { text: t });
+  };
   $('mcToSel').onclick = () => {
     const p = selectionAnchor();
     if (!p) { toast('Select an object on the bed first.', true); return; }

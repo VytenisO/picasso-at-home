@@ -245,6 +245,12 @@
         <div class="row"><button type="button" id="hwCheck" title="Ask the board for its firmware version (nothing moves)">Check the plotter</button>
           <button type="button" id="hwDoctor" title="Ports, permissions, the board's answer and the likely cause (nothing moves)">Diagnose the connection</button></div>
         <ul id="hwReport" class="problems" hidden></ul>
+        <div class="row" title="Normally the plotter is found by its USB id; pick a port only if that fails">
+          <select id="hwPort" aria-label="Serial port"></select><button type="button" id="hwPortSet">Use this port</button></div>
+      </div>
+      <div class="section">
+        <h2>Lifetime</h2>
+        <p id="lifeInfo" class="hint">No real jobs yet.</p>
       </div>
       <div class="section">
         <h2>Backup</h2>
@@ -294,6 +300,28 @@
           <div class="row">
             <button type="button" id="mcSetS" title="The pen is over the paper's top-left corner: make this S">Set S here</button>
           </div>
+          <details class="mc-more">
+            <summary>Saved positions</summary>
+            <ul id="posList" class="mini-list"></ul>
+            <button type="button" id="posSave">Save this position...</button>
+          </details>
+          <details class="mc-more">
+            <summary>Macros</summary>
+            <ul id="macroList" class="mini-list"></ul>
+            <p class="hint">One command per line: GOTO x y, MOVE dx dy, PEN UP, PEN DOWN, HOME, TICK dx dy, SPEED v, WAIT ms.
+              Moves stay inside the reachable area and the position stays known.</p>
+            <input id="macroName" maxlength="40" placeholder="Name" aria-label="Macro name">
+            <textarea id="macroText" rows="4" placeholder="GOTO 200 100&#10;PEN DOWN&#10;WAIT 500&#10;PEN UP" aria-label="Macro commands"></textarea>
+            <button type="button" id="macroSave">Save the macro</button>
+          </details>
+          <details class="mc-more">
+            <summary>EBB command line (advanced)</summary>
+            <p class="note warn">Sends one command straight to the board. Bootloader, reset, flash, configuration and servo
+              setup commands are refused. Anything that moves or frees the carriage makes its position unknown.</p>
+            <form id="rawForm" class="row"><input id="rawText" maxlength="60" placeholder="QS" aria-label="EBB command" autocomplete="off">
+              <button type="submit">Send</button></form>
+            <pre id="rawOut" class="raw-out"></pre>
+          </details>
           <div class="row">
             <button type="button" id="mcFinishS" class="primary">Finish at S</button>
             <button type="button" id="mcFinishHere">Finish here</button>
@@ -375,6 +403,7 @@
           <option value="0">Off</option><option value="4">4 px</option><option value="7">7 px</option><option value="12">12 px</option></select></label>
       </div>
       <label class="check"><input type="checkbox" id="vLockGuides"> Lock the guides (no dragging)</label>
+      <label class="field"><span>Show lengths in</span><select id="vUnits"><option value="mm">mm</option><option value="in">inches</option></select></label>
       <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
     </div>
     <div class="scrub" id="scrubBar" hidden>
