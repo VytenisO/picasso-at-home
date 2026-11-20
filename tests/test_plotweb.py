@@ -858,6 +858,17 @@ class TestDocument(SimServer):
         self.assertEqual(len(n["strokes"]), 4)                          # each arm cut in two by the hole
         r = op("penwidth", [box], width=1)
         self.assertEqual((r["x"], r["w"]), (100.5, 19))
+        r = op("fill", [box])                                           # the square gets its colour as a fill
+        filled = self.obj(r["file"]["id"], r["x"], r["y"], r["w"], r["h"])
+        plain = self.doc_preview([filled])["summary"]
+        self.assertEqual([f["key"] for f in plain["fill_inks"]], [f"{c}|" for c in r["colors"]])  # what the client sets
+        hatched = self.doc_preview([filled], {"fills": [{"key": f"{r['colors'][0]}|", "mode": "hatch", "spacing": 1,
+                                                         "angle": 45}]})["summary"]
+        self.assertGreater(hatched["drawing_mm"], plain["drawing_mm"] + 300)        # ~20 lines of 20 mm
+        r = op("unfill", [filled])
+        self.assertEqual(self.doc_preview([self.obj(r["file"]["id"], r["x"], r["y"], r["w"], r["h"])])["summary"]["fill_inks"], [])
+        code, r = self.call("POST", "/api/shapes", {"op": "fill", "objects": [x]})   # the cross has no closed line
+        self.assertEqual(code, 400)
         code, r = self.call("POST", "/api/shapes", {"op": "fillet", "objects": [box], "radius": 30})
         self.assertEqual(code, 400)
         code, r = self.call("POST", "/api/shapes", {"op": "trim", "objects": [x], "x": 150, "y": 150})

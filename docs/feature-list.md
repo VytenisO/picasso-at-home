@@ -243,6 +243,7 @@ niche.
 | Pressure step per pass | HAVE |  | Layers, More: Per pass, each extra pass lighter or heavier by this much |
 | Layer mode: line | HAVE | | the only mode today |
 | Layer mode: hatch fill (angle, spacing in mm, crosshatch, back-and-forth or one direction) | HAVE | | Layers, Filled shapes: per fill colour; spacing exact (the job default still scales by darkness) |
+| Fill an outline-only drawing on the bed | HAVE |  | Line tools (or right-click), Fill closed shapes: the closed lines get their own colour as a fill (even-odd, rings inside rings are holes), hatched at the job default or at a spacing asked for then and set for that colour; Remove the fill undoes it. Other line tools drop the fill |
 | Layer mode: contour fill (inward offsets, spacing) | HAVE | | `fill.contour_rings`: exact distance transform on a capped grid, then marching squares; stdlib only |
 | Fill grouping: all shapes together / per group / per shape | HAVE |  | Fills: Fill order, all of an ink together, each object, or each shape finished before the next |
 | Hatch overscan (start/end outside, clipped) | HAVE |  | as an inset instead: Filled shapes, Inset stops fill lines short of the edge, so the blob at each end stays inside (drawing past the edge would mark the paper) |

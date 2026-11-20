@@ -401,6 +401,29 @@ def svg_layers(groups):
             f'viewBox="0 0 {w:.3f} {h:.3f}">{body}</svg>'), [x0, y0, x1, y1]
 
 
+def svg_filled(groups):
+    """groups: [(colour, polys)] -> (svg text, bounds), like svg_layers() but the closed lines of each colour are one
+    path filled in that colour (even-odd, so a ring inside a ring is a hole). Open lines stay plain strokes."""
+    allp = [s for _, ps in groups for s in ps]
+    xs = [x for s in allp for x, _ in s]
+    ys = [y for s in allp for _, y in s]
+    x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+    w, h = max(x1 - x0, 0.01), max(y1 - y0, 0.01)
+    d = lambda ps, z: " ".join("M" + " L".join(f"{x - x0:.3f} {y - y0:.3f}" for x, y in s) + z for s in ps)
+    body = ""
+    for c, ps in groups:
+        shut = [s for s in ps if len(s) > 3 and math.dist(s[0], s[-1]) <= CLOSE_TOL]
+        open_ = [s for s in ps if not (len(s) > 3 and math.dist(s[0], s[-1]) <= CLOSE_TOL)]
+        if shut:
+            body += (f'<path d="{d(shut, " Z")}" fill="{c}" fill-rule="evenodd" stroke="{c}" stroke-width="0.3" '
+                     f'stroke-linecap="round" stroke-linejoin="round"/>')
+        if open_:
+            body += (f'<path d="{d(open_, "")}" fill="none" stroke="{c}" stroke-width="0.3" stroke-linecap="round" '
+                     f'stroke-linejoin="round"/>')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.3f}mm" height="{h:.3f}mm" '
+            f'viewBox="0 0 {w:.3f} {h:.3f}">{body}</svg>'), [x0, y0, x1, y1]
+
+
 def svg(polys, color="#000000"):
     """-> (svg text, bounds [x0, y0, x1, y1] in mm). The drawing's own mm are machine mm minus the corner."""
     xs = [x for s in polys for x, _ in s]

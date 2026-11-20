@@ -560,7 +560,7 @@ class App:
         return shapes.svg_layers(groups), before, after
 
     LINE_OPS = ("close", "smooth", "hull", "fillet", "cut", "trim", "affine", "warp", "penwidth", "arcs", "grid",
-                "set")
+                "set", "fill", "unfill")
 
     def line_op(self, op, objs, body):
         """The bed's line tools. -> a new drawing (or several, see cut) replacing the objects it was made from."""
@@ -611,6 +611,13 @@ class App:
                     cols = {c for c, _ in strokes}
                     res = [((it.get("c") if it.get("c") in cols else strokes[0][0]),
                             [(float(x), float(y)) for x, y in it["pts"]]) for it in new]
+                elif op in ("fill", "unfill"):
+                    # fill: the closed lines get a fill colour (their own), which the plot hatches; unfill drops it
+                    res = strokes
+                    if op == "fill" and not any(len(s) > 3 and math.dist(s[0], s[-1]) <= shapes.CLOSE_TOL
+                                                for _, s in strokes):
+                        raise ApiError(400, "None of these lines is closed, so there is nothing to fill. "
+                                            "Line tools, Close nearly closed lines first.")
                 elif op == "hull":
                     res = shapes.hull(strokes)
                 elif op == "fillet":
@@ -644,13 +651,14 @@ class App:
         groups = {}
         for c, s in res:
             groups.setdefault(c, []).append(s)
-        text, b = shapes.svg_layers(list(groups.items()))
+        text, b = (shapes.svg_filled if op == "fill" else shapes.svg_layers)(list(groups.items()))
         names = sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs if o["id"] not in keep_ids})
         e = self.lib.add_svg_text(text, f"{op}-{'-'.join(names)[:40]}.svg", kind="shape")
         self.ev.log("info", f"Line tool {op} on {len(objs)} object(s) -> {e['name']}.")
         return {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
                 "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3),
-                "replace": [o["id"] for o in objs if o["id"] not in keep_ids]}
+                "replace": [o["id"] for o in objs if o["id"] not in keep_ids],
+                "colors": sorted(groups)}
 
     def shape_op(self, body):
         """Union, subtract, intersect or offset of bed objects -> a new library drawing and where it sits."""

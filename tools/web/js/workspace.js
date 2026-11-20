@@ -290,7 +290,34 @@ async function lineOp(op, extra = {}, { add = false } = {}) {
     const r = await post('/api/shapes', { op, objects: sel, ...extra });
     await refreshFiles();
     await D.addFile(r.file.id, { at: [r.x, r.y], replace: add ? [] : (r.replace || sel.map((o) => o.id)) });
-  } catch (e) { toast(e.message, true); }
+    return r;
+  } catch (e) { toast(e.message, true); return null; }
+}
+
+// Fill: the selected closed lines get their own colour as a fill, which the plot hatches. With no job default
+// hatch, each of their colours gets a hatch of its own (Layers, Filled shapes changes it later).
+export async function fillSel() {
+  const st = state.doc.settings;
+  let spacing = st.fill;
+  if (!(spacing > 0)) {
+    const v = await askText('Fill', 'Hatch line spacing (mm). 0.5 to 1 suits a fine pen:', '0.8', 'Fill');
+    if (v === null) return;
+    spacing = G.parseLength(v);
+    if (!(spacing >= 0.2 && spacing <= 50)) { toast('The spacing must be 0.2 to 50 mm.', true); return; }
+  }
+  const r = await lineOp('fill');
+  if (!r) return;
+  if (!(st.fill > 0)) {
+    D.edit((d) => {
+      const all = d.settings.fills || [];
+      for (const c of r.colors || []) {
+        const key = `${c}|`;
+        if (!all.some((f) => f.key === key)) all.push({ key, mode: 'hatch', spacing, angle: d.settings.fill_angle ?? 45 });
+      }
+      d.settings.fills = all;
+    });
+  }
+  toast('Filled. The preview shows the hatch; Layers, Filled shapes sets spacing, angle, crosshatch or contour rings.');
 }
 
 function clicks(n, prompts, done) {
@@ -319,6 +346,8 @@ async function lineTool(t) {
   }
   else if (t === 'fillet') { const v = await ask('Round corners', 'Corner radius (mm), for closed shapes:', '2'); if (v > 0) lineOp('fillet', { radius: v }); }
   else if (t === 'hull') lineOp('hull', {}, { add: true });
+  else if (t === 'fill') fillSel();
+  else if (t === 'unfill') lineOp('unfill');
   else if (t === 'cut-out' || t === 'cut-in') {
     if (sel.length < 2) { toast('Select the cutter first, then Shift-click the objects to cut.', true); return; }
     lineOp('cut', { keep: t === 'cut-in' ? 'inside' : 'outside' });

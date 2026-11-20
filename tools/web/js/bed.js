@@ -595,6 +595,7 @@ function openMenu(clientX, clientY, mm) {
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
     item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
     item('Edit nodes', () => import('./nodes.js').then((m) => m.nodeEdit()), state.sel.length === 1),
+    item('Fill closed shapes...', () => import('./workspace.js').then((m) => m.fillSel())),
     item('Edit shape...', () => import('./workspace.js').then((m) => m.editShape(D.selected()[0])),
       state.sel.length === 1 && !!(state.files || []).find((f) => f.id === (D.selected()[0] || {}).file && f.shape_params)),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
