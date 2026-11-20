@@ -219,7 +219,7 @@ async function refreshNaturals() {
 
 // ------------------------------------------------------------------ adding and arranging
 // Put a library drawing on the bed at natural size (shrunk to fit the canvas), next to what is there.
-export async function addFile(id, { select: pick = true, at = null, replace = [] } = {}) {
+export async function addFile(id, { select: pick = true, at = null, replace = [], corner = false } = {}) {
   const entry = state.files.find((f) => f.id === id);
   if (!entry) { toast('That file is no longer in the library.', true); return null; }
   if (jobActive()) { toast('A job is running: add it to the bed when it ends.', true); return null; }
@@ -241,6 +241,14 @@ export async function addFile(id, { select: pick = true, at = null, replace = []
     else if (b.y1 + gap + o.h <= c[3]) { o.x = c[0]; o.y = G.r2(b.y1 + gap); }
   }
   if (at) { o.x = G.r2(at[0]); o.y = G.r2(at[1]); }
+  if (corner && others.length) {
+    // the first canvas corner (bottom right, bottom left, top right, top left) where it overlaps nothing
+    const hit = (x, y) => others.some((q) => { const b = G.bounds([q]); return x < b.x1 && x + o.w > b.x0 && y < b.y1 && y + o.h > b.y0; });
+    const spots = [[c[2] - o.w, c[3] - o.h], [c[0], c[3] - o.h], [c[2] - o.w, c[1]], [c[0], c[1]]];
+    const free = spots.find(([x, y]) => !hit(x, y));
+    if (free) { o.x = G.r2(free[0]); o.y = G.r2(free[1]); }
+    else toast('No free corner: placed after the other drawings. Move it before plotting.', true);
+  }
   edit((d) => {
     if (replace.length) {          // a shape result takes the place (and plot order) of what it was made from
       const at_ = d.objects.findIndex((x) => replace.includes(x.id));

@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import converters, document, hardware, machinecfg, plotjob, prepare, shapes, tools
 from .auth import COOKIE, SESSION_AGE, Auth
-from .config import LIMITS, WEB
+from .config import CEILINGS, LIMITS, WEB, apply_limits
 from .events import EventLog
 from .library import MAX_UPLOAD, Library
 from .runner import JobRunner
@@ -40,6 +40,10 @@ class ApiError(Exception):
 class App:
     def __init__(self, settings, web_cfg):
         self.s = settings
+        try:
+            apply_limits(settings.machine())
+        except (OSError, ValueError):
+            pass
         self.ev = EventLog()
         self.auth = Auth(web_cfg)
         self.lib = Library(settings, self.ev)
@@ -71,10 +75,15 @@ class App:
     # ------------------------------------------------------------ helpers
     def me(self, authed):
         bed = self.s.bed()
+        cfg = self.s.machine()
+        apply_limits(cfg)
         return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
                 "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch,
                 "features": {"shapes": shapes.available(), "homing": bool(self.s.machine().get("homing"))},
-                "plotter": hardware.LAST if authed else None}
+                "plotter": hardware.LAST if authed else None,
+                "machine_cfg": {"travel": cfg.get("travel_mm"), "signs": {a: cfg["axis"][a].get("sign", 1) for a in ("x", "y")},
+                                "limits": cfg.get("limits") or {}, "ceilings": CEILINGS,
+                                "steps_per_mm": cfg.get("steps_per_mm")} if authed else None}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
@@ -244,6 +253,33 @@ class App:
             if not objs:
                 raise ApiError(400, "None of the objects chosen for plotting are on the bed. Plot all of them, "
                                     "or choose again.")
+        # Start from: the job's anchor point (one of nine on the objects' box) at the carriage's position now or a
+        # saved position, instead of where the objects sit on the bed.
+        origin = str(rs.get("origin") or "")
+        if origin:
+            if origin == "here":
+                pos = self.runner.snapshot()["position"]
+                if pos.get("state") == "unknown" or not pos.get("at"):
+                    raise ApiError(400, "Start from the carriage's position: the position is not known. Park at S or "
+                                        "move it with the Machine controls first.")
+                tx, ty = pos["at"]
+            elif origin.startswith("pos:"):
+                p = next((p for p in self.list_get("positions") if p.get("name") == origin[4:]), None)
+                if not p:
+                    raise ApiError(400, f"There is no saved position called {origin[4:]}.")
+                tx, ty = p["x"], p["y"]
+            else:
+                raise ApiError(400, "Start from must be the bed, here or a saved position.")
+            pts = [c for o in objs for c in document.corners(o)]
+            x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
+            x1, y1 = max(p[0] for p in pts), max(p[1] for p in pts)
+            anc = str(rs.get("origin_anchor") or "tl")
+            if len(anc) != 2 or anc[0] not in "tmb" or anc[1] not in "lcr":
+                raise ApiError(400, "The job anchor must be one of tl, tc, tr, ml, mc, mr, bl, bc, br.")
+            ax = {"l": x0, "c": (x0 + x1) / 2, "r": x1}[anc[1]]
+            ay = {"t": y0, "m": (y0 + y1) / 2, "b": y1}[anc[0]]
+            dx, dy = float(tx) - ax, float(ty) - ay
+            objs = [dict(o, x=round(o["x"] + dx, 3), y=round(o["y"] + dy, 3)) for o in objs]
         try:
             fill = float(rs.get("fill") or 0)
             fill_angle = float(rs.get("fill_angle", 45.0) if rs.get("fill_angle") not in (None, "") else 45.0)
@@ -1759,6 +1795,7 @@ class Handler(BaseHTTPRequestHandler):
             out = fn(self.app.s, *args)
         except machinecfg.ConfigError as ex:
             raise ApiError(400, str(ex))
+        apply_limits(self.app.s.machine())
         self.app.ev.emit("config")
         return out
 
@@ -1798,6 +1835,14 @@ class Handler(BaseHTTPRequestHandler):
         paper = self._config_edit(machinecfg.set_paper, self.json_body().get("paper"))
         self.app.ev.log("info", f"Paper set: {paper['width']:g} x {paper['height']:g} mm at ({paper['x0']:g}, "
                                 f"{paper['y0']:g}), margin {paper['margin_mm']:g} mm.")
+        self.send(200, {"me": self.app.me(True)})
+
+    def r_machine_settings(self):
+        cfg = self._config_edit(machinecfg.set_machine, self.json_body().get("machine"))
+        self.app.ev.log("warn", f"Machine settings: travel {cfg['travel_mm']['x']:g} x {cfg['travel_mm']['y']:g} mm, "
+                                f"directions X {cfg['axis']['x']['sign']:+d} Y {cfg['axis']['y']['sign']:+d}, limits "
+                                f"{cfg['limits']['speed_max']:g}/{cfg['limits']['travel_max']:g} mm/s. Preview again "
+                                "before plotting.")
         self.send(200, {"me": self.app.me(True)})
 
     def r_pen_save(self):
@@ -1972,6 +2017,7 @@ ROUTES_POST = {
     "/api/machine/send": (Handler.r_machine_send, True),
     "/api/machine/calibrate": (Handler.r_calibrate, True),
     "/api/machine/paper": (Handler.r_paper, True),
+    "/api/machine/settings": (Handler.r_machine_settings, True),
     "/api/pens/save": (Handler.r_pen_save, True),
     "/api/pens/delete": (Handler.r_pen_delete, True),
     "/api/pens/import": (Handler.r_pens_import, True),

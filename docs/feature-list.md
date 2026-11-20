@@ -324,7 +324,7 @@ niche.
 | Motors off (release to park by hand) | HAVE | | Finish here / Finish at S switch the motors off; Stop too |
 | Set start here / re-zero here | HAVE | | Set S here: the carriage becomes S (pen over the paper corner) |
 | Saved positions (pen-swap spot, parking, paper corner) | HAVE |  | Machine control, Saved positions: save where the carriage is under a name, Go back to it |
-| Start-from options: S, current position, saved origin, with 9-point job anchor | TODO | P2 | |
+| Start-from options: S, current position, saved origin, with 9-point job anchor | HAVE |  | Job, Start from: as placed, the carriage's position now, or a saved position, with one of nine anchor points of the job's box |
 | Live position shown on the bed during jogs | HAVE | | the carriage marker and the position pill follow every move |
 | Macros: saved command sequences as buttons | HAVE |  | Machine control, Macros: GOTO, MOVE, PEN, HOME, TICK, SPEED, WAIT lines run as tracked moves, so the position stays known |
 | Raw EBB command line in the console | HAVE |  | Machine control, EBB command line: one command at a time; bootloader, reset, flash, configuration and servo setup refused; any command that can move or free the carriage makes the position unknown |
@@ -344,13 +344,13 @@ niche.
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
-| Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | PART | P2 | paper corner, size and margin, and steps/mm through calibration; travel and axis signs read-only; servo never (set by hand) |
+| Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | HAVE |  | Machine, Machine settings: travel, axis directions (asks first), speed limits and defaults; paper and margin; steps/mm through calibration; servo only by the pen height test, by design |
 | Units mm / inch for display | HAVE |  | View, Show lengths in mm or inches (status line, selection, measure, plan size); typed values take either |
 | Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Machine tab: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
-| Paper edge calibration in the UI | PART | P2 | paper corner typed in, or jog to the corner and Set S here; no guided measurement |
+| Paper edge calibration in the UI | HAVE |  | Machine, Paper, Measure the sheet with the pen: jog to the top-left and bottom-right corners |
 | Squareness and backlash test patterns | HAVE |  | Tools: Squareness sheet (square with diagonals), Backlash sheet (lines drawn towards each other) |
 | Lost-steps test in the UI | HAVE |  | Tools: Lost-steps sheet and Lost-steps result (the drift turned into steps per metre) |
-| Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
+| Speed and acceleration limits shown and editable within ceilings | HAVE |  | Machine settings: drawing and pen-up limits and defaults, never above the driver's ceilings; acceleration is the firmware's |
 | Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
 | Lifetime stats (jobs, pen-down metres; pen wear) | HAVE |  | Machine, Lifetime: real jobs, hours, strokes, metres of line per pen (from each job's plan, by the share of strokes per layer) |
@@ -377,7 +377,7 @@ niche.
 | Record results into the pen profile | HAVE | | |
 | Pen height test (toggle, sweep) | HAVE | | |
 | Two-parameter grid test (e.g. speed x pressure) with value labels | HAVE |  | Tools, Speed x pressure grid: one cell per speed and pressure (patch, line, circle) at its own settings (data-speed, data-pressure), labelled, one run |
-| Place a test sheet anywhere on the paper | PART | P2 | placed like any drawing; add "fit in the free corner" |
+| Place a test sheet anywhere on the paper | HAVE |  | placed like any drawing; with drawings already on the bed it goes into the first free canvas corner |
 | Tone ramp test (hatch spacing -> perceived grey) | HAVE |  | Tools, Tone ramp: patches hatched 0.3 to 3 mm apart, labelled |
 | Test presets | HAVE |  | Tools: each test's settings saved under a name and loaded back (per browser) |
 

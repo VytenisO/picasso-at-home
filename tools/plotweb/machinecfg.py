@@ -79,6 +79,39 @@ def set_paper(settings, raw):
     return cfg["paper"]
 
 
+def set_machine(settings, raw):
+    """Travel, axis directions and the speed limits (each at most the driver's ceiling). Steps/mm only through
+    calibration, the servo only through the pen height test."""
+    from .config import CEILINGS
+    raw = raw if isinstance(raw, dict) else {}
+    cfg = json.loads(settings.machine_path.read_text())
+    tx = _num(raw.get("travel_x"), 50, 2000, "Travel X")
+    ty = _num(raw.get("travel_y"), 50, 2000, "Travel Y")
+    p = cfg.get("paper") or {}
+    if p and (p["x0"] + p["width"] > tx + 0.01 or p["y0"] + p["height"] > ty + 0.01):
+        raise ConfigError(f"The paper ({p['width']:g} x {p['height']:g} mm at {p['x0']:g}, {p['y0']:g}) would run past a "
+                          f"{tx:g} x {ty:g} mm bed. Move or shrink the paper first.")
+    signs = {}
+    for ax in ("x", "y"):
+        s = raw.get(f"sign_{ax}")
+        if s not in (1, -1):
+            raise ConfigError(f"The {ax.upper()} direction must be 1 or -1.")
+        signs[ax] = s
+    lim = {}
+    for key, label in (("speed_max", "Drawing speed limit"), ("travel_max", "Pen-up speed limit"),
+                       ("speed_default", "Default drawing speed"), ("travel_default", "Default pen-up speed")):
+        ceiling = CEILINGS["travel_speed" if key.startswith("travel") else "speed"]
+        lim[key] = _num(raw.get(key), 1, ceiling, label)
+    if lim["speed_default"] > lim["speed_max"] or lim["travel_default"] > lim["travel_max"]:
+        raise ConfigError("A default speed cannot be above its limit.")
+    cfg["travel_mm"] = {"x": tx, "y": ty}
+    for ax in ("x", "y"):
+        cfg["axis"][ax]["sign"] = signs[ax]
+    cfg["limits"] = lim
+    _write(settings, settings.machine_path, cfg)
+    return cfg
+
+
 def save_pen(settings, name, fields, rename_from=None):
     """Create or edit a pen profile. Test results recorded by the tools are kept."""
     if not isinstance(name, str) or not PEN_NAME.match(name):

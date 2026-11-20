@@ -19,6 +19,23 @@ LIMITS = {
     "edge_margin": plot_svg.EDGE_MARGIN,
 }
 
+# The driver's own ceilings: the limits in machine.json can only lower them.
+CEILINGS = {"speed": plot_svg.MAX_SPEED, "travel_speed": plot_svg.MAX_TRAVEL_SPEED}
+DEFAULTS = {"speed": 15.0, "travel_speed": 100.0}
+
+
+def apply_limits(cfg):
+    """Speed limits and defaults from machine.json "limits", inside the ceilings. LIMITS is changed in place."""
+    lim = (cfg or {}).get("limits") or {}
+    for key, mx, df in (("speed", "speed_max", "speed_default"), ("travel_speed", "travel_max", "travel_default")):
+        top = CEILINGS[key]
+        try:
+            m = min(top, max(1.0, float(lim.get(mx, top))))
+            d = min(m, max(1.0, float(lim.get(df, DEFAULTS[key]))))
+        except (TypeError, ValueError):
+            m, d = top, min(top, DEFAULTS[key])
+        LIMITS[key]["max"], LIMITS[key]["default"] = m, d
+
 
 class Settings:
     """Everything the server needs to know about where things live and how it runs."""

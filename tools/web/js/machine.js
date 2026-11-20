@@ -198,6 +198,9 @@ export function initMachine() {
   $('calSaveX').onclick = () => calSave('x');
   $('calSaveY').onclick = () => calSave('y');
   $('paperForm').onsubmit = savePaper;
+  $('mcfgForm').onsubmit = saveMachineSettings;
+  $('paperTL').onclick = () => paperCorner('tl');
+  $('paperBR').onclick = () => paperCorner('br');
   $('penNew').onclick = () => editPen(null);
   $('penImport').onclick = () => $('penFile').click();
   $('penFile').onchange = async () => {
@@ -321,6 +324,58 @@ function renderCal() {
   $('calX').disabled = $('calY').disabled = !machineRunning();
 }
 
+// ------------------------------------------------------------------ machine settings (travel, directions, limits)
+function renderMachineSettings() {
+  const c = state.me && state.me.machine_cfg, f = $('mcfgForm');
+  if (!c || f.contains(document.activeElement)) return;
+  const L = c.limits || {};
+  f.travel_x.value = c.travel.x; f.travel_y.value = c.travel.y;
+  f.sign_x.value = String(c.signs.x); f.sign_y.value = String(c.signs.y);
+  f.speed_max.value = L.speed_max ?? c.ceilings.speed; f.travel_max.value = L.travel_max ?? c.ceilings.travel_speed;
+  f.speed_default.value = L.speed_default ?? 15; f.travel_default.value = L.travel_default ?? 100;
+  f.speed_max.max = f.speed_default.max = c.ceilings.speed;
+  f.travel_max.max = f.travel_default.max = c.ceilings.travel_speed;
+  $('mcfgCeil').textContent = `The driver's ceilings: drawing ${c.ceilings.speed} mm/s, pen up ${c.ceilings.travel_speed} mm/s. ` +
+    `Steps/mm (X ${c.steps_per_mm.x}, Y ${c.steps_per_mm.y}) change only through Calibration.`;
+  f.querySelector('button[type=submit]').disabled = jobActive();
+}
+
+async function saveMachineSettings(e) {
+  e.preventDefault();
+  const f = $('mcfgForm'), c = state.me.machine_cfg;
+  const machine = Object.fromEntries(['travel_x', 'travel_y', 'speed_max', 'travel_max', 'speed_default', 'travel_default']
+    .map((k) => [k, Number(f[k].value)]));
+  machine.sign_x = Number(f.sign_x.value); machine.sign_y = Number(f.sign_y.value);
+  const flips = ['x', 'y'].filter((a) => machine['sign_' + a] !== c.signs[a]);
+  if (flips.length && !await ask('Reverse an axis?', `Reversing ${flips.join(' and ').toUpperCase()} makes every move on that axis go ` +
+    'the other way. Only do this if the carriage moves opposite to the arrows. Jog a short way afterwards to check before plotting.', 'Reverse')) return;
+  try {
+    const r = await post('/api/machine/settings', { machine });
+    set({ me: r.me });
+    toast('Machine settings saved. Preview again before plotting.');
+  } catch (err) { toast(err.message, true); }
+}
+
+// ------------------------------------------------------------------ paper by measuring: jog to two corners
+let paperTL = null;
+function carriage() { return state.pos || (state.job && state.job.pos) || null; }
+function paperCorner(which) {
+  const p = carriage();
+  if (!p) { toast('Take control first, then jog the pen tip onto the corner.', true); return; }
+  const f = $('paperForm');
+  if (which === 'tl') {
+    paperTL = [p.x, p.y];
+    f.x0.value = p.x.toFixed(1); f.y0.value = p.y.toFixed(1);
+    $('paperMeasureNote').textContent = `Top-left at ${p.x.toFixed(1)}, ${p.y.toFixed(1)} mm. Now jog to the bottom-right corner.`;
+  } else {
+    const tl = paperTL || [Number(f.x0.value), Number(f.y0.value)];
+    const w = p.x - tl[0], h = p.y - tl[1];
+    if (w < 20 || h < 20) { toast('The bottom-right corner must be right of and below the top-left one.', true); return; }
+    f.width.value = w.toFixed(1); f.height.value = h.toFixed(1);
+    $('paperMeasureNote').textContent = `Sheet ${w.toFixed(1)} x ${h.toFixed(1)} mm. Check the margin, then Save paper.`;
+  }
+}
+
 // ------------------------------------------------------------------ paper
 function renderPaper() {
   const m = state.me && state.me.machine;
@@ -331,6 +386,7 @@ function renderPaper() {
     if (document.activeElement !== f[k]) f[k].value = v;
   }
   f.querySelector('button').disabled = jobActive();
+  renderMachineSettings();
   const sv = m.servo || {};
   $('servoNote').textContent = `Pen servo: up ${sv.pen_up}, down ${sv.pen_down}. These are set by hand with a pen mounted ` +
     '(Tools, Pen height test, and config/machine.json), never here: a wrong pen-down value can gouge the paper.';

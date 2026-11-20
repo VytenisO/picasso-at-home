@@ -172,6 +172,25 @@ class TestConfig(MachineServer):
         self.assertEqual(code, 400)
         self.assertIn("past the bed", r["error"])
 
+    def test_02b_machine_settings_and_limits(self):
+        cfg = {"travel_x": 368, "travel_y": 227.5, "sign_x": 1, "sign_y": -1,
+               "speed_max": 30, "travel_max": 80, "speed_default": 12, "travel_default": 60}
+        code, r = self.call("POST", "/api/machine/settings", {"machine": cfg})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["me"]["limits"]["speed"]["max"], 30)
+        self.assertEqual(r["me"]["limits"]["travel_speed"]["default"], 60)
+        self.assertEqual(r["me"]["machine_cfg"]["signs"]["y"], -1)
+        code, r = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {"speed": 40}}})
+        self.assertEqual(code, 400)
+        for bad, word in (({"speed_max": 10000}, "Drawing speed limit"), ({"speed_default": 50}, "default"),
+                          ({"travel_x": 100}, "paper"), ({"sign_x": 0}, "direction")):
+            code, r = self.call("POST", "/api/machine/settings", {"machine": dict(cfg, **bad)})
+            self.assertEqual(code, 400, bad)
+            self.assertIn(word.lower(), r["error"].lower())
+        ceil = r and self.call("GET", "/api/me")[1]["machine_cfg"]["ceilings"]
+        code, r = self.call("POST", "/api/machine/settings", {"machine": dict(cfg, sign_y=1, speed_max=ceil["speed"],
+                            travel_max=ceil["travel_speed"], speed_default=15, travel_default=100)})
+        self.assertEqual(code, 200, r)
 
     def test_04_backup_restore_and_doctor(self):
         with urllib.request.urlopen(self.base + "/api/backup") as r:

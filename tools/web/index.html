@@ -371,8 +371,39 @@
           </div>
           <button type="submit">Save paper</button>
         </form>
+        <details class="mc-more">
+          <summary>Measure the sheet with the pen</summary>
+          <p class="hint">Take control, jog the pen tip onto the paper's top-left corner and press the first button;
+            then onto the bottom-right corner and press the second. The fields above fill in; check and save.</p>
+          <div class="row"><button type="button" id="paperTL">Top-left is here</button>
+            <button type="button" id="paperBR">Bottom-right is here</button></div>
+          <p class="hint" id="paperMeasureNote"></p>
+        </details>
         <p class="hint">S is the paper's top-left corner. Changing it means parking the carriage at the new corner.</p>
         <p class="hint" id="servoNote"></p>
+      </div>
+      <div class="section">
+        <h2>Machine settings</h2>
+        <form id="mcfgForm">
+          <div class="field-row">
+            <label class="field" title="How far the carriage can travel from the top-left of the bed"><span>Travel X (mm)</span><input name="travel_x" type="number" step="0.5" min="50" max="2000"></label>
+            <label class="field"><span>Travel Y (mm)</span><input name="travel_y" type="number" step="0.5" min="50" max="2000"></label>
+          </div>
+          <div class="field-row">
+            <label class="field" title="1 is the normal direction; -1 reverses the motor for that axis"><span>X direction</span><select name="sign_x"><option value="1">normal</option><option value="-1">reversed</option></select></label>
+            <label class="field"><span>Y direction</span><select name="sign_y"><option value="1">normal</option><option value="-1">reversed</option></select></label>
+          </div>
+          <div class="field-row">
+            <label class="field"><span>Drawing limit (mm/s)</span><input name="speed_max" type="number" step="1" min="1"></label>
+            <label class="field"><span>Default (mm/s)</span><input name="speed_default" type="number" step="1" min="1"></label>
+          </div>
+          <div class="field-row">
+            <label class="field"><span>Pen-up limit (mm/s)</span><input name="travel_max" type="number" step="1" min="1"></label>
+            <label class="field"><span>Default (mm/s)</span><input name="travel_default" type="number" step="1" min="1"></label>
+          </div>
+          <button type="submit">Save machine settings</button>
+        </form>
+        <p class="hint" id="mcfgCeil"></p>
       </div>
       <div class="section">
         <h2>Pens</h2>
@@ -640,6 +671,14 @@
           <label class="field"><span>When done</span><select name="finish">
             <option value="start">Back to S</option><option value="clear">Clear of the paper</option>
             <option value="stay">Stay at the last stroke</option></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field" title="Where the job goes: as placed on the bed, or with its anchor point at the carriage or a saved position"><span>Start from</span>
+            <select name="origin"><option value="">Where it is on the bed</option><option value="here">The carriage's position now</option></select></label>
+          <label class="field" title="Which point of the job's box goes to the start point"><span>Job anchor</span><select name="origin_anchor">
+            <option value="tl">top left</option><option value="tc">top centre</option><option value="tr">top right</option>
+            <option value="ml">middle left</option><option value="mc">centre</option><option value="mr">middle right</option>
+            <option value="bl">bottom left</option><option value="bc">bottom centre</option><option value="br">bottom right</option></select></label>
         </div>
         <label class="check"><input type="checkbox" name="keep_motors"> Keep the motors on after a plot that ends normally:
           they hold the carriage where it is (and get warm). Machine, Take control then Finish switches them off.</label>

@@ -71,7 +71,10 @@ async function run(t, form, btn) {
     if (t.kind === 'sheet') {
       toast(params.pen ? `Sheet for pen ${params.pen} added. Plot it with that pen only.` : 'Sheet added.');
       await refreshFiles();
-      openFile(r.file.id);
+      if (state.doc && state.doc.objects.length) {
+        const D = await import('./doc.js');
+        D.addFile(r.file.id, { corner: true });           // into a free corner of the sheet, beside what is there
+      } else openFile(r.file.id);
     } else if (t.kind === 'record' && !params.pen) {
       await ask(t.title, String(r.output || '').trim().slice(-1200), 'OK');
     } else if (t.kind === 'record') {

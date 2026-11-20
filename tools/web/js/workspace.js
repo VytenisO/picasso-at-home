@@ -17,6 +17,16 @@ let anchor = prefs('anchor') || [0, 0];
 export function initWorkspace() {
   const f = $('placeForm');
   f.addEventListener('change', fromJobForm);
+  // the saved positions (Machine) as start points, fetched when the list is opened
+  f.origin.addEventListener('pointerdown', async () => {
+    try {
+      const { positions } = await api('/api/positions');
+      const keep = f.origin.value;
+      f.origin.replaceChildren(el('option', { value: '', text: 'Where it is on the bed' }), el('option', { value: 'here', text: "The carriage's position now" }),
+        ...positions.map((p) => el('option', { value: `pos:${p.name}`, text: `Saved position ${p.name} (${p.x.toFixed(0)}, ${p.y.toFixed(0)})` })));
+      f.origin.value = keep;
+    } catch (e) { /* the two fixed choices stay */ }
+  });
   f.addEventListener('submit', (e) => e.preventDefault());
   const xf = $('xfForm');
   xf.addEventListener('change', fromXfForm);
@@ -633,6 +643,13 @@ function fillJobForm() {
   set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
   set_('copies', st.copies || 1);
   if (document.activeElement !== f.finish) f.finish.value = st.finish || 'start';
+  if (document.activeElement !== f.origin) {
+    const have = [...f.origin.options].map((o) => o.value);
+    if (st.origin && !have.includes(st.origin)) f.origin.append(el('option', { value: st.origin, text: `Saved position ${st.origin.slice(4)}` }));
+    f.origin.value = st.origin || '';
+  }
+  f.origin_anchor.value = st.origin_anchor || 'tl';
+  f.origin_anchor.disabled = !st.origin || jobActive();
   if (document.activeElement !== f.sweep) f.sweep.value = st.sweep || 'none';
   f.optimize.checked = st.optimize !== false;
   f.dedupe.checked = !!st.dedupe;
@@ -656,6 +673,7 @@ function fillJobForm() {
 
 function fromJobForm(e) {
   const f = $('placeForm');
+  const st = state.doc.settings;
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
   const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
     optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
@@ -675,7 +693,8 @@ function fromJobForm(e) {
     if (!(v >= 0 && v <= hi)) { toast(`${label}: 0 to ${hi}.`, true); f[k].value = st[k] || 0; return; }
     patch[k] = v || null;
   }
-  const st = state.doc.settings;
+  patch.origin = f.origin.value || null;
+  patch.origin_anchor = f.origin.value && f.origin_anchor.value !== 'tl' ? f.origin_anchor.value : null;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {
     toast('Copies: a whole number from 1 to 50.', true);

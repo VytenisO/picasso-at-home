@@ -965,6 +965,27 @@ class TestDocument(SimServer):
                                                              for k in self.doc_preview(objs, {"fill": 2})["summary"]["fill_inks"]]})
             self.assertGreater(pv["summary"]["strokes"], 4)
 
+    def test_04t_start_from(self):
+        fid = self.upload("two_layers.svg")
+        objs = [self.obj(fid, 100, 50, 40, 40)]
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"origin": "here"}}})
+        pos = self.call("GET", "/api/state")[1]["position"]
+        if pos["state"] == "unknown":                                    # depends on what ran before in this class
+            self.assertEqual(code, 400)
+            self.assertIn("not known", d["error"])
+        else:
+            self.assertEqual(code, 200, d)
+        self.call("POST", "/api/positions/save", {"name": "corner", "x": 150, "y": 80})
+        for anc, want in (("tl", (150, 80)), ("mc", (130, 60)), ("br", (110, 40))):
+            pv = self.doc_preview(objs, {"origin": "pos:corner", "origin_anchor": anc})
+            b = pv["summary"]["bbox_machine_mm"]
+            plain = self.doc_preview(objs)["summary"]["bbox_machine_mm"]
+            self.assertAlmostEqual(b[0] - plain[0], want[0] - 100, 1)     # the whole job shifts by anchor -> point
+            self.assertAlmostEqual(b[1] - plain[1], want[1] - 50, 1)
+        code, d = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"origin": "pos:nope"}}})
+        self.assertEqual(code, 400)
+        self.call("POST", "/api/positions/delete", {"name": "corner"})
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)
