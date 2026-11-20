@@ -129,7 +129,7 @@ niche.
 | Project notes (free text shown on open) | HAVE |  | Projects: notes saved with the bed, shown when the project opens and in the list |
 | Export flattened plot SVG | HAVE | | Run: Export plot SVG. Every stroke after fills, in plot order, machine mm, one Inkscape layer per pen |
 | Export preview as PNG | HAVE |  | Projects: Export the plan as PNG, every stroke in its pen's colour on white, 8 px/mm |
-| Export compiled job (EBB command stream) and run it later | TODO | P3 | |
+| Export compiled job (EBB command stream) and run it later | PART | P3 | Run, Export compiled job (or plot_svg.py --sim --mode plot --emit); tools/run_compiled.py replays it, refuses another calibration, Ctrl+C stops and lifts the pen. Code done and simulator-tested; the replay has not run on the machine yet |
 | Print to paper printer | SKIP | | |
 
 ## 4. Selection

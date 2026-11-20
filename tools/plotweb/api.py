@@ -1743,6 +1743,26 @@ class Handler(BaseHTTPRequestHandler):
     def r_start(self):
         self.send(200, self.app.start(self.json_body()))
 
+    def r_compile(self):
+        """The bed as a compiled job: plot_svg's EBB command stream from a simulated plot, for run_compiled.py."""
+        body = self.json_body()
+        if not isinstance(body.get("doc"), dict):
+            raise ApiError(400, "Send the bed (doc) to compile.")
+        v, objs, pid, layers, plan = self.app._resolve_doc(body["doc"])
+        out = plan / f"compiled_{secrets.token_hex(4)}.ebb"
+        argv = plotjob.build_argv(self.app.s, plan / "drawing.svg", v, "plot", None, sim=True,
+                                  layers_json=plan / "layers.json", machine=plan / "machine.json",
+                                  bed=self.app._bed(plan)) + ["--emit", str(out)]
+        rc, text = plotjob.run_dry(argv)
+        if rc != 0 or not out.exists():
+            raise ApiError(400, "Could not compile: " + "; ".join(plotjob.friendly_problems(None, text))[:600])
+        data = out.read_bytes()
+        out.unlink()
+        name = re.sub(r"[^\w-]+", "_", str(body["doc"].get("name") or "bed"))[:60] or "bed"
+        self.app.ev.log("info", f"Compiled job exported ({len(data) // 1024} kB): run it with tools/run_compiled.py.")
+        self.send(200, data, "text/plain; charset=utf-8",
+                  {"Content-Disposition": f'attachment; filename="{name}.ebb"'})
+
     def r_job_preview(self):
         pv = self.app.runner.preview
         if not pv:
@@ -2049,6 +2069,7 @@ ROUTES_POST = {
     "/api/projects/open": (Handler.r_project_open, True),
     "/api/projects/delete": (Handler.r_project_delete, True),
     "/api/job/start": (Handler.r_start, True),
+    "/api/job/compile": (Handler.r_compile, True),
     "/api/job/pause": (Handler.r_pause, True),
     "/api/job/speed": (Handler.r_speed, True),
     "/api/job/continue": (Handler.r_continue, True),

@@ -986,6 +986,17 @@ class TestDocument(SimServer):
         self.assertEqual(code, 400)
         self.call("POST", "/api/positions/delete", {"name": "corner"})
 
+    def test_04u_compiled_job(self):
+        fid = self.upload("two_layers.svg")
+        req = urllib.request.Request(self.base + "/api/job/compile", method="POST", headers={"Content-Type": "application/json"},
+                                     data=json.dumps({"doc": {"objects": [self.obj(fid, 100, 50, 40, 40)], "settings": {},
+                                                              "name": "card"}}).encode())
+        with urllib.request.urlopen(req, timeout=120) as r:
+            self.assertIn('filename="card.ebb"', r.headers["Content-Disposition"])
+            text = r.read().decode()
+        self.assertIn("#HEAD ", text)
+        self.assertIn("\nSM,", text)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

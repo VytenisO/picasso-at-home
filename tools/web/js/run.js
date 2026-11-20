@@ -41,6 +41,7 @@ export function initRun() {
   };
   $('onlyAll').onclick = () => setSettings({ only: null });
   $('exportBtn').onclick = exportPlot;
+  $('compileBtn').onclick = (e) => exportPlot(e, '/api/job/compile', 'bed.ebb');
   $('simBtn').onclick = () => start('simulate');
   $('traceBtn').onclick = () => start('trace');
   $('plotBtn').onclick = () => start('plot');
@@ -207,6 +208,7 @@ function renderRun() {
   if (only.length) $('onlyText').textContent = `Plotting only ${only.length} of ${all.length} object${all.length === 1 ? '' : 's'}; the rest are shown faded and stay on the bed. `;
   $('onlySelBtn').disabled = active || !state.sel.length;
   $('exportBtn').disabled = active || !all.length;
+  $('compileBtn').disabled = active || !all.length;
   if (state.startAt) {
     const tot = pv && pv.summary && pv.summary.total_in_order;
     $('startAtText').textContent = `Starts at stroke ${state.startAt + 1}${tot ? ` of ${tot}` : ''}: the first ${state.startAt} are skipped. `;
@@ -308,12 +310,12 @@ async function loadHistory() {
 }
 
 // Download exactly what will be plotted, as the server plans it now.
-async function exportPlot() {
+async function exportPlot(e, route = '/api/export_doc', fallback = 'plot.svg') {
   const d = state.doc;
   if (!d || !d.objects.length) { toast('The bed is empty.', true); return; }
   let r;
   try {
-    r = await fetch('/api/export_doc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    r = await fetch(route, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc: { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: 0 } } }) });
   } catch (e) { toast('The server cannot be reached.', true); return; }
   if (!r.ok) {
@@ -321,7 +323,8 @@ async function exportPlot() {
     try { msg = (await r.json()).error || msg; } catch (e) { /* not JSON */ }
     toast(msg, true); return;
   }
-  const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'plot.svg';
+  const name = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || fallback;
+  if (route !== '/api/export_doc') toast('Compiled job saved. Run it with tools/run_compiled.py (it checks the calibration first).');
   const url = URL.createObjectURL(await r.blob());
   const a = el('a', { href: url, download: name });
   document.body.append(a);

@@ -252,6 +252,8 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     if ctl:
         ctl.drain()
     print("__PAUSE__:" + json.dumps(info), flush=True)
+    if EMIT is not None:
+        EMIT.append(("PAUSE", info))
     if ctl:
         log("Waiting for CONTINUE (pen up, motors on: do not push the carriage).")
         go = ctl.wait_continue()
@@ -394,6 +396,8 @@ def pause_for_paper(copy, copies, a, ctl=None):
     if ctl:
         ctl.drain()
     print("__PAUSE__:" + json.dumps({"kind": "paper", "copy": copy, "copies": copies}), flush=True)
+    if EMIT is not None:
+        EMIT.append(("PAUSE", {"kind": "paper", "copy": copy, "copies": copies}))
     if ctl:
         go = ctl.wait_continue()
         if go:
@@ -755,6 +759,30 @@ def bbox(strokes):
 
 
 # ------------------------------------------------------------------ machine IO
+# --emit: the compiled job, every EBB command with the driver's waits and pauses, for run_compiled.py
+EMIT = None
+
+
+def emit_wait(s):
+    if EMIT is not None and s > 0:
+        if EMIT and EMIT[-1][0] == "WAIT":
+            EMIT[-1] = ("WAIT", EMIT[-1][1] + s)
+        else:
+            EMIT.append(("WAIT", s))
+
+
+def write_emit(path, cfg, a):
+    head = {"format": "picasso-ebb-1", "steps_per_mm": cfg["steps_per_mm"], "axis": cfg["axis"],
+            "servo": cfg["servo"], "start_mm": [a.start_x, a.start_y], "svg": str(a.svg), "mode": a.mode,
+            "made": time.strftime("%Y-%m-%d %H:%M:%S")}
+    out = ["# compiled pen-plotter job: run with tools/run_compiled.py, carriage parked at S, pen up",
+           "#HEAD " + json.dumps(head, separators=(",", ":"))]
+    for kind, v in EMIT:
+        out.append(v if kind == "CMD" else f"#WAIT {v:.4f}" if kind == "WAIT" else "#PAUSE " + json.dumps(v))
+    pathlib.Path(path).write_text("\n".join(out) + "\n")
+    log(f"Compiled job   : {sum(1 for k, _ in EMIT if k == 'CMD')} commands written to {path}")
+
+
 class Plotter:
     def __init__(self, cfg, args):
         self.cfg, self.sim = cfg, args.sim
@@ -805,6 +833,7 @@ class Plotter:
             return
         if self.sim:
             self.vt += s
+            emit_wait(s)
             if self.sim_speed > 0:
                 time.sleep(s / self.sim_speed)
         elif interruptible and self.ctl and "ES" in self.caps:
@@ -813,6 +842,8 @@ class Plotter:
             time.sleep(s)
 
     def cmd(self, line, timeout=3.0):
+        if EMIT is not None:
+            EMIT.append(("CMD", line))
         if self.sim:
             return ["OK"]
         self.ser.timeout = timeout
@@ -991,6 +1022,7 @@ def main():
     ap.add_argument("svg")
     ap.add_argument("--mode", choices=["dry", "trace", "plot"], default="dry")
     ap.add_argument("--sim", action="store_true", help="virtual machine + clock, no hardware")
+    ap.add_argument("--emit", help="with --sim --mode plot: write the EBB command stream (a compiled job) here")
     ap.add_argument("--port")
     ap.add_argument("--config", default=str(ROOT / "config" / "machine.json"))
     ap.add_argument("--width", type=float, help="scale the drawing to this width in mm (keeps aspect)")
@@ -1067,6 +1099,11 @@ def main():
                     help="the SVG's own millimetres are machine millimetres: no anchoring, --x0/--y0/--width ignored "
                          "(the web UI composes a bed-sized document)")
     a = ap.parse_args()
+    global EMIT
+    if a.emit:
+        if not a.sim or a.mode != "plot":
+            sys.exit("--emit compiles a plot: use it with --sim --mode plot (nothing moves)")
+        EMIT = []
     if a.sim_speed is not None and not (a.sim and 0 < a.sim_speed <= 1000):
         sys.exit("--sim-speed needs --sim and a factor in (0, 1000]")
     a.ctl = Control() if a.control else None
@@ -1669,6 +1706,8 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
         p.keep_motors = bool(getattr(a, "keep_motors", False)) and status == "complete"
         if not p.shutdown(abort=status.startswith(("interrupted", "error"))):
             status += " (cleanup FAILED: pen may be down or motors still on, check the machine and cut power if needed)"
+        if EMIT is not None and a.emit and status == "complete":
+            write_emit(a.emit, cfg, a)
         el = p.now() - t_start
         summary.update(status=status, elapsed_s=el, sm_commands=p.nsm, net_ebb_steps_sent=p.sent,
                        final_world_steps=p.pos)

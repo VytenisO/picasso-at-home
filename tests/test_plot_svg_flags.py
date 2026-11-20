@@ -37,6 +37,29 @@ class TestFlags(unittest.TestCase):
         _, metas, _, _ = load_svg(str(svg), False)
         self.assertEqual([m["color"] for m in metas], ["#2463a6", "#2463a6", "#111111", "#000000"])
 
+    def test_emit_compiled_job_and_check(self):
+        job = self.tmp / "job.ebb"
+        rc, out = run(FIX / "two_layers.svg", "--sim", "--mode", "plot", "--x0", "80", "--y0", "40", "--width", "60",
+                      "--emit", job)
+        self.assertEqual(rc, 0, out)
+        lines = job.read_text().splitlines()
+        self.assertTrue(lines[1].startswith("#HEAD "))
+        self.assertTrue(any(ln.startswith("SM,") for ln in lines))
+        self.assertTrue(any(ln.startswith("#PAUSE ") for ln in lines))       # the pen change between the layers
+        self.assertEqual(lines[-1], "EM,0,0")                                 # motors off at the end
+        tool = ROOT / "tools" / "run_compiled.py"
+        r = subprocess.run([sys.executable, str(tool), str(job), "--check"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        cfg = json.loads((ROOT / "config" / "machine.json").read_text())
+        cfg["steps_per_mm"]["x"] += 0.5
+        other = self.tmp / "m.json"
+        other.write_text(json.dumps(cfg))
+        r = subprocess.run([sys.executable, str(tool), str(job), "--check", "--config", str(other)],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)                                     # another calibration: refused
+        rc, out = run(FIX / "two_layers.svg", "--mode", "dry", "--emit", job)
+        self.assertNotEqual(rc, 0)
+
     def test_touching_strokes_join_and_overlaps_go(self):
         svg = self.tmp / "j.svg"
         svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="10mm" viewBox="0 0 40 10">'
