@@ -76,6 +76,162 @@ def run(op, objects_strokes, distance=0.0, join="round"):
     return out
 
 
+# ------------------------------------------------------------------ line edits (strokes in machine mm)
+# Each takes [(colour, stroke)] and returns the same, for the bed's line tools. Pure geometry; the ones that need
+# areas use shapely and say so when it is missing.
+
+def _closed(s, tol=0.05):
+    return len(s) > 2 and math.dist(s[0], s[-1]) <= tol
+
+
+def close_gaps(strokes, tol):
+    """Strokes whose ends are within tol mm get closed exactly."""
+    out = []
+    for c, s in strokes:
+        s = list(s)
+        if len(s) >= 3 and 0 < math.dist(s[0], s[-1]) <= tol:
+            s.append(s[0])
+        out.append((c, s))
+    return out
+
+
+def smooth(strokes, passes=2):
+    """Chaikin corner cutting: rounder curves, the ends of open strokes stay put."""
+    out = []
+    for c, s in strokes:
+        pts = list(s)
+        closed = _closed(pts)
+        for _ in range(passes):
+            if len(pts) < 3:
+                break
+            ring = pts[:-1] if closed else pts
+            new = [] if closed else [ring[0]]
+            n = len(ring)
+            for i in range(n if closed else n - 1):
+                a, b = ring[i], ring[(i + 1) % n]
+                new += [(0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]),
+                        (0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1])]
+            if closed:
+                new.append(new[0])
+            else:
+                new.append(ring[-1])
+            pts = new
+        out.append((c, pts))
+    return out
+
+
+def densify(s, step=1.0):
+    out = [s[0]]
+    for a, b in zip(s, s[1:]):
+        n = max(1, math.ceil(math.dist(a, b) / step))
+        out += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(1, n + 1)]
+    return out
+
+
+def affine(strokes, m):
+    a, b, c, d, e, f = m
+    return [(col, [(a * x + c * y + e, b * x + d * y + f) for x, y in s]) for col, s in strokes]
+
+
+def warp(strokes, quad):
+    """Bilinear map of the strokes' bounding box onto quad (top-left, top-right, bottom-right, bottom-left)."""
+    xs = [x for _, s in strokes for x, _ in s]
+    ys = [y for _, s in strokes for _, y in s]
+    x0, y0, w, h = min(xs), min(ys), max(max(xs) - min(xs), 1e-9), max(max(ys) - min(ys), 1e-9)
+    (ax, ay), (bx, by), (cx, cy), (dx, dy) = quad
+
+    def f(x, y):
+        u, v = (x - x0) / w, (y - y0) / h
+        tx, ty = ax + (bx - ax) * u, ay + (by - ay) * u
+        bx_, by_ = dx + (cx - dx) * u, dy + (cy - dy) * u
+        return tx + (bx_ - tx) * v, ty + (by_ - ty) * v
+    return [(col, [f(x, y) for x, y in densify(s, 1.0)]) for col, s in strokes]
+
+
+def hull(strokes):
+    if shapely is None:
+        raise ShapeError("The convex outline needs shapely on the server.")
+    from shapely.geometry import MultiPoint
+    g = MultiPoint([p for _, s in strokes for p in s]).convex_hull
+    if g.geom_type != "Polygon":
+        raise ShapeError("The selection is a line or a point: it has no outline.")
+    return [(strokes[0][0], [(round(x, 3), round(y, 3)) for x, y in g.exterior.coords])]
+
+
+def fillet(strokes, r):
+    """Round every corner of the closed strokes with radius r (convex and concave); open strokes stay."""
+    if shapely is None:
+        raise ShapeError("Rounding corners needs shapely on the server.")
+    out = []
+    for c, s in strokes:
+        if not _closed(s, CLOSE_TOL) or len(s) < 4:
+            out.append((c, s))
+            continue
+        p = shapely.make_valid(Polygon(s))
+        g = p.buffer(-r, join_style="round").buffer(r, join_style="round")
+        g = g.buffer(r, join_style="round").buffer(-r, join_style="round")
+        if g.is_empty:
+            raise ShapeError(f"A radius of {r:g} mm is larger than a shape: nothing would be left.")
+        out += [(c, ln) for ln in outlines(g)]
+    return out
+
+
+def cut(cutter, strokes, keep="outside"):
+    """Lines cut by the closed shapes of the cutter: keep what lies outside (or inside) them."""
+    if shapely is None:
+        raise ShapeError("Cutting needs shapely on the server.")
+    area, _ = area_of([s for _, s in cutter])
+    if area is None or area.is_empty:
+        raise ShapeError("The first object selected is the cutter: it needs a closed shape.")
+    out = []
+    for c, s in strokes:
+        ln = LineString(s) if len(s) >= 2 else None
+        if ln is None:
+            continue
+        g = ln.difference(area) if keep == "outside" else ln.intersection(area)
+        for part in getattr(g, "geoms", [g]):
+            if part.geom_type == "LineString" and not part.is_empty and part.length > 0.05:
+                out.append((c, [(round(x, 3), round(y, 3)) for x, y in part.coords]))
+    if not out:
+        raise ShapeError("Nothing is left after the cut.")
+    return out
+
+
+def trim(strokes, x, y, tol=3.0):
+    """Split every line where lines cross, and drop the piece nearest (x, y) (within tol mm)."""
+    if shapely is None:
+        raise ShapeError("Trimming needs shapely on the server.")
+    from shapely.geometry import Point
+    from shapely.ops import linemerge
+    pieces = []
+    by = {}
+    for c, s in strokes:
+        if len(s) >= 2:
+            by.setdefault(c, []).append(LineString(s))
+    for c, lines in by.items():
+        noded = unary_union(lines)
+        for part in getattr(noded, "geoms", [noded]):
+            pieces.append((c, part))
+    if not pieces:
+        raise ShapeError("These objects have no lines to trim.")
+    pt = Point(x, y)
+    i = min(range(len(pieces)), key=lambda k: pieces[k][1].distance(pt))
+    if pieces[i][1].distance(pt) > tol:
+        raise ShapeError(f"No line within {tol:g} mm of the click.")
+    del pieces[i]
+    out = []
+    for c in by:
+        rest = [g for col, g in pieces if col == c]
+        if not rest:
+            continue
+        merged = linemerge(rest) if len(rest) > 1 else rest[0]
+        for part in getattr(merged, "geoms", [merged]):
+            out.append((c, [(round(px, 3), round(py, 3)) for px, py in part.coords]))
+    if not out:
+        raise ShapeError("Nothing is left.")
+    return out
+
+
 def outlines(g):
     """Every boundary of a geometry as closed polylines."""
     out = []

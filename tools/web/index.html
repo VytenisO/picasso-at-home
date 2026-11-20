@@ -511,6 +511,18 @@
           <button type="button" data-act="join" title="Join lines whose ends touch (same colour) into one stroke: fewer pen lifts. Replaces the selection; Undo brings it back.">Join lines</button>
           <button type="button" data-act="split" title="Every stroke becomes an object of its own (at most 64 on the bed)">Break apart</button>
           <button type="button" data-act="reverse" title="Draw every stroke from its other end, last stroke first. Only shows with Shorter pen-up travel off (Job, Path planning).">Reverse</button>
+          <select id="lineTools" aria-label="Line tools"><option value="">Line tools...</option>
+            <option value="close">Close nearly closed lines</option><option value="smooth">Smooth</option>
+            <option value="fillet">Round the corners</option><option value="hull">Convex outline around</option>
+            <option value="cut-out">Cut with the first selected (keep outside)</option>
+            <option value="cut-in">Keep inside the first selected</option>
+            <option value="trim">Trim: click a piece to remove</option>
+            <option value="penwidth">Allow for the pen width</option>
+            <option value="shear">Shear</option><option value="taper">Taper / warp</option>
+            <option value="mirror-line">Mirror about a line (two clicks)</option>
+            <option value="true-size">True size from two points</option>
+            <option value="along">Copy along a path (first selected)</option>
+            <option value="pack">Pack onto the canvas</option></select>
           <span class="muted">Colour</span>
           <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
           <label class="ink-pick" title="Any colour: a layer of its own"><input type="color" id="inkPick" aria-label="Pick a colour"></label>
@@ -709,6 +721,22 @@
     <p class="hint" data-for="poly">Then click on the bed for each point. Shift keeps 45 degree steps. Click the first point to
       close the shape; double-click or Enter finishes an open line; Esc cancels; Backspace removes the last point.</p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Place</button></div>
+  </form>
+</dialog>
+
+<dialog id="taperDlg" aria-labelledby="taperDlgTitle">
+  <form method="dialog" class="dlg" id="taperForm">
+    <h2 id="taperDlgTitle">Taper / warp</h2>
+    <p class="hint">Each edge of the selection's box as a percentage of its size now: the drawing is bent to fit.</p>
+    <div class="field-row">
+      <label class="field"><span>Top width %</span><input name="top" type="number" min="1" max="400" step="1" value="70"></label>
+      <label class="field"><span>Bottom width %</span><input name="bottom" type="number" min="1" max="400" step="1" value="100"></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Left height %</span><input name="left" type="number" min="1" max="400" step="1" value="100"></label>
+      <label class="field"><span>Right height %</span><input name="right" type="number" min="1" max="400" step="1" value="100"></label>
+    </div>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Warp</button></div>
   </form>
 </dialog>
 

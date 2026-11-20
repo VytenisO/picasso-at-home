@@ -26,6 +26,7 @@ export function initWorkspace() {
   for (const b of $('xfBox').querySelectorAll('[data-act]')) b.onclick = () => act(b.dataset.act);
   $('undoBtn').onclick = D.undo;
   initHistory();
+  $('lineTools').onchange = (e) => { const t = e.target.value; e.target.value = ''; if (t) lineTool(t); };
   $('redoBtn').onclick = D.redo;
   $('projForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -241,6 +242,134 @@ async function joinLines() {
     await D.addFile(r.file.id, { at: [r.x, r.y], replace: sel.map((o) => o.id) });
     toast(r.after < r.before ? `${r.before} strokes became ${r.after}.` : 'No touching ends found: nothing was joined.');
   } catch (e) { toast(e.message, true); }
+}
+
+// ------------------------------------------------------------------ line tools (Arrange, Line tools...)
+// Server-side edits of the selected objects' lines: the result is a new drawing that takes their place (Undo
+// brings them back). A few need clicks on the bed first.
+async function lineOp(op, extra = {}, { add = false } = {}) {
+  const sel = D.selected();
+  if (!add && D.lockedSel()) return;
+  try {
+    const r = await post('/api/shapes', { op, objects: sel, ...extra });
+    await refreshFiles();
+    await D.addFile(r.file.id, { at: [r.x, r.y], replace: add ? [] : (r.replace || sel.map((o) => o.id)) });
+  } catch (e) { toast(e.message, true); }
+}
+
+function clicks(n, prompts, done) {
+  const pts = [];
+  const next = () => {
+    toast(prompts[pts.length]);
+    armPlace((x, y) => { pts.push([x, y]); if (pts.length < n) next(); else done(pts); });
+  };
+  next();
+}
+
+const selCentre = () => { const b = G.bounds(D.selected()); return [b.x0 + b.w / 2, b.y0 + b.h / 2]; };
+
+async function lineTool(t) {
+  const sel = D.selected();
+  if (!sel.length) { toast('Select the objects first.', true); return; }
+  const ask = async (title, text, def) => { const v = await askText(title, text, def, 'OK'); return v === null ? null : G.parseLength(v); };
+  if (t === 'close') { const v = await ask('Close gaps', 'Close strokes whose ends are this close (mm):', '1'); if (v > 0) lineOp('close', { tolerance: v }); }
+  else if (t === 'smooth') lineOp('smooth', { passes: 2 });
+  else if (t === 'fillet') { const v = await ask('Round corners', 'Corner radius (mm), for closed shapes:', '2'); if (v > 0) lineOp('fillet', { radius: v }); }
+  else if (t === 'hull') lineOp('hull', {}, { add: true });
+  else if (t === 'cut-out' || t === 'cut-in') {
+    if (sel.length < 2) { toast('Select the cutter first, then Shift-click the objects to cut.', true); return; }
+    lineOp('cut', { keep: t === 'cut-in' ? 'inside' : 'outside' });
+  } else if (t === 'penwidth') {
+    const st = state.doc.settings, pens = state.me.pens || {};
+    const pen = (st.layers || []).map((l) => pens[l.pen]).find((p) => p && p.width_mm);
+    const v = await ask('Pen width', 'Closed shapes move inward by half this line width, so the inked edge lands on the drawn one (mm):', String(pen ? pen.width_mm : 0.5));
+    if (v > 0) lineOp('penwidth', { width: v });
+  } else if (t === 'trim') {
+    toast('Click the piece of line to remove (it is cut where lines cross).');
+    armPlace((x, y) => lineOp('trim', { x, y, tolerance: 4 / 1 }));
+  } else if (t === 'shear') {
+    const v = await ask('Shear', 'Slant to the right by this angle (degrees, negative: left):', '15');
+    if (v === null || !Number.isFinite(v) || Math.abs(v) >= 80) return;
+    const k = Math.tan(v * Math.PI / 180), [, cy] = selCentre();
+    lineOp('affine', { m: [1, 0, -k, 1, k * cy, 0] });
+  } else if (t === 'mirror-line') {
+    clicks(2, ['Click the first point of the mirror line.', 'Click the second point.'], ([p, q]) => {
+      const th = Math.atan2(q[1] - p[1], q[0] - p[0]), a = Math.cos(2 * th), b = Math.sin(2 * th);
+      lineOp('affine', { m: [a, b, b, -a, p[0] - a * p[0] - b * p[1], p[1] - b * p[0] + a * p[1]] });
+    });
+  } else if (t === 'true-size') {
+    clicks(2, ['Click the first of two points whose real distance you know.', 'Click the second point.'], async ([p, q]) => {
+      const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      const v = await ask('True size', `The points are ${G.r2(d)} mm apart. Their real distance (mm):`, String(G.r2(d)));
+      if (!(v > 0) || d < 0.01) return;
+      const k = v / d;
+      lineOp('affine', { m: [k, 0, 0, k, p[0] - k * p[0], p[1] - k * p[1]] });
+    });
+  } else if (t === 'taper') openTaper();
+  else if (t === 'along') copyAlong();
+  else if (t === 'pack') packCanvas();
+}
+
+function openTaper() {
+  const d = $('taperDlg'), f = $('taperForm');
+  d.returnValue = '';
+  d.onclose = () => {
+    if (d.returnValue !== 'ok') return;
+    const b = G.bounds(D.selected()), cx = b.x0 + b.w / 2, cy = b.y0 + b.h / 2;
+    const tw = b.w * Number(f.top.value) / 200, bw = b.w * Number(f.bottom.value) / 200;
+    const lh = b.h * Number(f.left.value) / 200, rh = b.h * Number(f.right.value) / 200;
+    lineOp('warp', { quad: [[cx - tw, cy - lh], [cx + tw, cy - rh], [cx + bw, cy + rh], [cx - bw, cy + lh]] });
+  };
+  d.showModal();
+}
+
+// Copy along a path: the first object selected is the path; the others are copied evenly along it.
+async function copyAlong() {
+  const sel = D.selected();
+  const path = sel.find((o) => o.id === state.sel[0]), items = sel.filter((o) => o !== path);
+  if (!path || !items.length) { toast('Select the path first, then Shift-click what to copy along it.', true); return; }
+  const n = state.naturals[path.file];
+  if (!n || !n.strokes.length) return;
+  const m = G.matrix(path, n.geom);
+  const pts = n.strokes.reduce((a, s) => (s.pts.length > a.length ? s.pts : a), []).map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+  const t = await askText('Copy along a path', 'How many copies along the path (its longest line)?', '8', 'Place');
+  const count = Math.round(Number(t));
+  if (!(count >= 2 && count <= 60)) return;
+  const seg = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]));
+  const total = seg.reduce((a, b) => a + b, 0);
+  const closed = Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.2;
+  const at = (dist) => {
+    for (let i = 0; i < seg.length; i++) {
+      if (dist <= seg[i] || i === seg.length - 1) {
+        const f = seg[i] ? Math.min(1, dist / seg[i]) : 0, [a, b] = [pts[i], pts[i + 1]];
+        return [[a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI];
+      }
+      dist -= seg[i];
+    }
+    return [pts[0], 0];
+  };
+  const ib = G.bounds(items), ic = [ib.x0 + ib.w / 2, ib.y0 + ib.h / 2];
+  const placed = [];
+  for (let k = 0; k < count; k++) {
+    const [[x, y], ang] = at(total * k / (closed ? count : count - 1));
+    placed.push({ dx: x - ic[0], dy: y - ic[1], ang, cx: x, cy: y });
+  }
+  D.placeCopies(items, placed);
+}
+
+// Pack: the selection laid out in rows on the canvas from its top-left, tallest first, 3 mm apart.
+function packCanvas() {
+  const c = G.canvasRect().canvas, gap = 3;
+  D.editSel((objs) => {
+    const bs = objs.map((o) => ({ o, b: G.bounds([o]) })).sort((p, q) => q.b.h - p.b.h);
+    let x = c[0], y = c[1], row = 0;
+    for (const p of bs) {
+      if (x + p.b.w > c[2] && x > c[0]) { x = c[0]; y += row + gap; row = 0; }
+      p.o.x += x - p.b.x0; p.o.y += y - p.b.y0;
+      x += p.b.w + gap; row = Math.max(row, p.b.h);
+    }
+    if (y + row > c[3]) toast('They do not all fit on the canvas: the last row runs past the bottom.', true);
+  });
 }
 
 // Break apart: the selection is replaced by one object per stroke, as one undoable edit.

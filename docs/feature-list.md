@@ -156,8 +156,8 @@ niche.
 | Non-uniform scale (edge handles, unlock aspect) | HAVE | | edge handles stretch one way; corners keep proportions unless Shift |
 | Rotate (handle, 15 degree snap with Shift, rotate 90 keys) | HAVE | | turn handle snaps to 15 degrees (Shift: free), Turn left/right buttons, typed angle |
 | Flip horizontal / vertical | HAVE | | Mirror H / Mirror V about the selection's centre |
-| Mirror about a drawn line | TODO | P3 | |
-| Shear | TODO | P3 | |
+| Mirror about a drawn line | HAVE |  | Line tools, Mirror about a line: two clicks on the bed |
+| Shear | HAVE |  | Line tools, Shear: a slant angle, about the selection's middle |
 | Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | HAVE | | X/Y/W/H are the selection's bounds at the chosen reference point; a group scales about it |
 | Unit-aware and arithmetic input (`100/3`, `2in`) | HAVE |  | Arrange X, Y, width, height, turn: + - * / and brackets, units mm, cm, in or ", pt, px; a decimal comma works |
 | Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | HAVE | | 200 steps per page; typing and arrow nudges coalesce into one step |
@@ -166,8 +166,8 @@ niche.
 | Group / ungroup | HAVE |  | Arrange Group/Ungroup, Ctrl+G and Ctrl+Shift+G: selecting one member selects the group; copies get their own group |
 | Lock object (no move/resize/delete) | HAVE |  | Arrange Lock/Unlock: no handles, no drag, nudge, transform, shape operation or remove; colour and plot settings still change |
 | Make same width / height | HAVE |  | Arrange, Same width / Same height: as the first object selected, around each one's centre |
-| Two-point rotate/scale (match two points to two targets) | TODO | P3 | scale a traced photo to true size |
-| Warp (4-corner) and deform (grid) | TODO | P3 | |
+| Two-point rotate/scale (match two points to two targets) | HAVE |  | Line tools, True size from two points: click two points, type their real distance; the drawing scales about the first. Full two-target matching is not there |
+| Warp (4-corner) and deform (grid) | PART | P3 | Line tools, Taper / warp: each edge of the box as a percentage (bilinear); no free corner dragging or grid deform |
 | Edit locked while a job runs | HAVE | | |
 
 ## 6. Arrange
@@ -182,8 +182,8 @@ niche.
 | Draw order: forward/back/front/back, per-object priority | HAVE |  | Arrange list arrows; the list order is the plot order within each pen with planning off, or with Finish each object before the next |
 | Grid array (rows, columns, spacing, stagger, alternate mirror) | HAVE |  | Arrange, Array: columns, rows, gaps, stagger of odd rows, mirror every other copy |
 | Circular array | HAVE |  | Arrange, Circular array: copies in all, radius, turn with the circle or stay upright |
-| Copy along path | TODO | P3 | |
-| Quick pack small items on a sheet | TODO | P3 | bounding-box packing only |
+| Copy along path | HAVE |  | Line tools, Copy along a path: the first object selected is the path (its longest line); the rest are copied evenly along it, turned with it |
+| Quick pack small items on a sheet | HAVE |  | Line tools, Pack onto the canvas: rows from the canvas's top-left, tallest first, 3 mm apart (bounding boxes) |
 | Shape-aware nesting | SKIP | | material saving; paper is not the constraint |
 | Several pages in one project | TODO | P3 | sheet sequence with paper-change holds; live mode already has New page |
 
@@ -207,20 +207,20 @@ niche.
 | Shape properties stay editable (sides, radius) | TODO | P3 | |
 | Freehand drawing on the bed | HAVE |  | Bed, Shape, Freehand: drag to draw one line, smoothed to 0.3 mm, kept as a drawing; the writing pad still plots live |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | TODO | P3 | large job; useful for cleanup |
-| Trim at intersections (click to delete a piece) | TODO | P3 | |
+| Trim at intersections (click to delete a piece) | HAVE |  | Line tools, Trim: lines are split where they cross; the clicked piece goes |
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
-| Close nearly closed paths within a tolerance | TODO | P3 | |
+| Close nearly closed paths within a tolerance | HAVE |  | Line tools, Close nearly closed lines |
 | Remove duplicate and overlapping lines | PART | P2 | Job, Path planning: exact repeats of the same pen are skipped (any direction or start); partly overlapping lines are not |
 | Simplify paths (tolerance, before/after node count) | HAVE |  | Prepare clean-up step Simplify with the point count in Result; Job, Path planning: Simplify (mm) for the plot itself, with the points in the plan |
-| Smooth / fit arcs | TODO | P3 | |
+| Smooth / fit arcs | PART | P3 | Line tools, Smooth (Chaikin corner cutting); no arc fitting |
 | Break apart into separate paths | HAVE |  | Arrange, Break apart: every stroke becomes its own object (and library drawing) where it was; one undo step; at most 64 objects on the bed |
 | Reverse path direction | HAVE |  | Arrange, Reverse: each stroke from its other end, last stroke first; only shows with Shorter pen-up travel off, since planning picks direction itself |
 | Set start point of a closed path | PART | P3 | planning starts each closed path at the vertex nearest the pen; no manual seam |
 | Offset (in, out, both; round/miter/bevel corners) | HAVE | | Arrange, Offset: outward or inward, round, sharp or cut corners; lines get a band (shapely; python3-shapely on robotlab) |
 | Booleans: union/weld, subtract, intersect | HAVE | | Arrange: union, subtract (others from the first), intersect; the result replaces the selection as a new library drawing |
-| Cut shapes with a closed shape | TODO | P3 | |
-| Fillet corners | TODO | P3 | |
-| Convex outline around a selection | TODO | P3 | |
+| Cut shapes with a closed shape | HAVE |  | Line tools: the first object selected cuts the others (keep outside or keep inside); the cutter stays |
+| Fillet corners | HAVE |  | Line tools, Round the corners: closed shapes, convex and concave corners, a set radius |
+| Convex outline around a selection | HAVE |  | Line tools, Convex outline around: added as a new object |
 | Measure tool (length, size, area, path count) | HAVE |  | Arrange: path count and line length of the selection (from the drawings' geometry), size on the bed label and in the status line; no area |
 | Clip art library (save selection, drag back in) | TODO | P3 | signatures, stamps, borders |
 | Tabs, slot resizing, path-from-cut, tangent circles | SKIP | | cutting concepts or niche geometry |
@@ -249,7 +249,7 @@ niche.
 | Skip empty gaps in fills without lifting | TODO | P3 | |
 | Angle increment per pass | TODO | P3 | |
 | Several settings on one geometry (outline + hatch, sub-layers) | HAVE |  | Layers, Filled shapes: Own layer puts a colour's hatch or contour fill on a layer of its own, so the fill and the outline take different pens even in the same colour |
-| Pen-width compensation (offset outlines by half the line width) | TODO | P3 | |
+| Pen-width compensation (offset outlines by half the line width) | HAVE |  | Line tools, Allow for the pen width: closed shapes move inward by half the width (the layer's pen width offered) |
 | Dashed / dotted line mode | TODO | P3 | pen taps at intervals |
 | Dwell at stroke start/end | TODO | P3 | ink flow for dip pens; `--pen-delay` exists in the CLI |
 | Overdraw closed shapes past the start point | TODO | P3 | closes the seam on felt tips |

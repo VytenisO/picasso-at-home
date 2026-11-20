@@ -799,6 +799,45 @@ class TestDocument(SimServer):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": {"simplify": 3}}})
         self.assertEqual(code, 400)
 
+    def test_04o_line_tools(self):
+        code, me = self.call("GET", "/api/me")
+        if not me["features"]["shapes"]:
+            self.skipTest("no shapely here")
+        sq = b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="20mm" viewBox="0 0 20 20"><rect width="20" height="20" stroke="#000" fill="none"/></svg>'
+        cross = (b'<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="20mm" viewBox="0 0 20 20">'
+                 b'<path d="M0 10 L20 10" stroke="#000"/><path d="M10 0 L10 20" stroke="#000"/></svg>')
+        ids = []
+        for n, raw in (("sq", sq), ("cross", cross)):
+            code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": f"{n}.svg", "X-Params": "{}"})
+            ids.append(d["file"]["id"])
+        box, x = self.obj(ids[0], 100, 50, 20, 20), self.obj(ids[1], 100, 50, 20, 20)
+
+        def op(name, objs, **kw):
+            code, r = self.call("POST", "/api/shapes", dict({"op": name, "objects": objs}, **kw))
+            self.assertEqual(code, 200, (name, r))
+            return r
+        r = op("fillet", [box], radius=3)
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (100, 50, 20, 20))
+        r = op("hull", [box, x])
+        self.assertEqual(r["w"], 20)
+        r = op("affine", [box], m=[2, 0, 0, 2, -100, -50])            # doubled about (100, 50)
+        self.assertEqual((r["x"], r["y"], r["w"], r["h"]), (100, 50, 40, 40))
+        r = op("warp", [box], quad=[[105, 50], [115, 50], [120, 70], [100, 70]])
+        self.assertEqual((r["x"], r["w"]), (100, 20))
+        r = op("trim", [x], x=118, y=60)                                # the right arm of the cross goes
+        self.assertEqual((r["x"], r["w"]), (100, 10))
+        small = self.obj(ids[0], 105, 55, 10, 10)
+        r = op("cut", [small, x], keep="outside")
+        self.assertEqual(r["replace"], [x["id"]])                       # the cutter stays
+        code, n = self.call("GET", f"/api/files/natural?id={r['file']['id']}")
+        self.assertEqual(len(n["strokes"]), 4)                          # each arm cut in two by the hole
+        r = op("penwidth", [box], width=1)
+        self.assertEqual((r["x"], r["w"]), (100.5, 19))
+        code, r = self.call("POST", "/api/shapes", {"op": "fillet", "objects": [box], "radius": 30})
+        self.assertEqual(code, 400)
+        code, r = self.call("POST", "/api/shapes", {"op": "trim", "objects": [x], "x": 150, "y": 150})
+        self.assertEqual(code, 400)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

@@ -6,6 +6,7 @@ Routes are listed in ROUTES_GET / ROUTES_POST; docs/ui-design.md documents them.
 import hashlib
 import http.cookies
 import json
+import math
 import mimetypes
 import pathlib
 import re
@@ -423,6 +424,76 @@ class App:
             raise ApiError(400, "These objects have no lines to join.")
         return shapes.svg_layers(groups), before, after
 
+    LINE_OPS = ("close", "smooth", "hull", "fillet", "cut", "trim", "affine", "warp", "penwidth")
+
+    def line_op(self, op, objs, body):
+        """The bed's line tools. -> a new drawing (or several, see cut) replacing the objects it was made from."""
+        def num(k, lo, hi, label, default=None):
+            try:
+                v = float(body.get(k, default))
+            except (TypeError, ValueError):
+                raise ApiError(400, f"{label} must be a number.")
+            if not lo <= v <= hi:
+                raise ApiError(400, f"{label} must be {lo:g} to {hi:g}.")
+            return v
+        keep_ids = []
+        try:
+            if op == "cut":
+                if len(objs) < 2:
+                    raise ApiError(400, "Select the cutter first, then the objects to cut.")
+                cutter, rest = objs[0], objs[1:]
+                res = shapes.cut(self.object_strokes([cutter]), self.object_strokes(rest),
+                                 "inside" if body.get("keep") == "inside" else "outside")
+                keep_ids = [cutter["id"]]
+            else:
+                strokes = self.object_strokes(objs)
+                if not strokes:
+                    raise ApiError(400, "These objects have no lines.")
+                if op == "close":
+                    res = shapes.close_gaps(strokes, num("tolerance", 0.01, 20, "The gap", 1.0))
+                elif op == "smooth":
+                    res = shapes.smooth(strokes, int(num("passes", 1, 5, "Passes", 2)))
+                elif op == "hull":
+                    res = shapes.hull(strokes)
+                elif op == "fillet":
+                    res = shapes.fillet(strokes, num("radius", 0.1, 50, "The radius", 2))
+                elif op == "trim":
+                    res = shapes.trim(strokes, num("x", -1000, 2000, "X"), num("y", -1000, 2000, "Y"),
+                                      num("tolerance", 0.2, 20, "The distance", 3))
+                elif op == "affine":
+                    m = body.get("m")
+                    if not (isinstance(m, list) and len(m) == 6 and all(isinstance(v, (int, float)) for v in m)):
+                        raise ApiError(400, "The transform must be six numbers.")
+                    res = shapes.affine(strokes, m)
+                elif op == "warp":
+                    q = body.get("quad")
+                    if not (isinstance(q, list) and len(q) == 4 and all(isinstance(p, list) and len(p) == 2 for p in q)):
+                        raise ApiError(400, "The warp needs four corners.")
+                    res = shapes.warp(strokes, [(float(a), float(b)) for a, b in q])
+                else:      # penwidth: closed shapes offset inward by half the pen's line width
+                    w = num("width", 0.05, 10, "The pen width")
+                    res = []
+                    for c, s in strokes:
+                        if len(s) > 3 and math.dist(s[0], s[-1]) <= shapes.CLOSE_TOL:
+                            res += [(c, ln) for ln in shapes.run("offset", [[s]], -w / 2, "round")]
+                        else:
+                            res.append((c, s))
+        except shapes.ShapeError as ex:
+            raise ApiError(400, str(ex))
+        res = [(c, s) for c, s in res if len(s) >= 2]
+        if not res:
+            raise ApiError(400, "Nothing is left.")
+        groups = {}
+        for c, s in res:
+            groups.setdefault(c, []).append(s)
+        text, b = shapes.svg_layers(list(groups.items()))
+        names = sorted({(self.lib.get(o["file"]) or {}).get("name", "").removesuffix(".svg") for o in objs if o["id"] not in keep_ids})
+        e = self.lib.add_svg_text(text, f"{op}-{'-'.join(names)[:40]}.svg", kind="shape")
+        self.ev.log("info", f"Line tool {op} on {len(objs)} object(s) -> {e['name']}.")
+        return {"ok": True, "file": {"id": e["id"], "name": e["name"]}, "x": round(b[0], 3), "y": round(b[1], 3),
+                "w": round(b[2] - b[0], 3), "h": round(b[3] - b[1], 3),
+                "replace": [o["id"] for o in objs if o["id"] not in keep_ids]}
+
     def shape_op(self, body):
         """Union, subtract, intersect or offset of bed objects -> a new library drawing and where it sits."""
         import collections
@@ -435,6 +506,8 @@ class App:
         if not objs:
             raise ApiError(400, "Select the objects first.")
         op = body.get("op")
+        if op in self.LINE_OPS:
+            return self.line_op(op, objs, body)
         if op == "split":
             return {"ok": True, "pieces": self.split_objects(objs)}
         if op == "reverse":

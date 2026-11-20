@@ -388,6 +388,19 @@ export function circularSel(n, radius, turn) {
   edit((d) => { d.objects.push(...copies); }, { sel: [...src.map((o) => o.id), ...copies.map((o) => o.id)] });
 }
 
+// Copies of objs moved by each placement's (dx, dy) and turned by its angle about its point (copy along a path).
+export function placeCopies(objs, placed) {
+  const copies = [];
+  for (const p of placed) {
+    const set = objs.map((o) => ({ ...structuredClone(o), id: newId(), locked: undefined, x: o.x + p.dx, y: o.y + p.dy }));
+    if (p.ang) G.rotateAbout(set, p.cx, p.cy, p.ang);
+    for (const o of set) { o.x = G.r2(o.x); o.y = G.r2(o.y); }
+    copies.push(...regroup(set));
+  }
+  if (copies.length + state.doc.objects.length > 64) { toast('At most 64 objects on the bed.', true); return; }
+  edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
+}
+
 // Undo history: what each step was, newest first. undoTo(n) steps back n times.
 export const history = () => undoStack.map((e, i) => ({ i, what: e.what, t: e.t })).reverse();
 export function undoTo(n) { for (let k = 0; k < n; k++) undo(); }
