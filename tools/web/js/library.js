@@ -109,17 +109,20 @@ async function choose(file) {
   } catch (e) { toast(e.message, true); }
 }
 
-const KIND = { prepared: 'prepared', raster: 'image', svg: 'svg', mesh: '3D', text: 'text', sheet: 'test sheet' };
+const KIND = { prepared: 'prepared', raster: 'image', svg: 'svg', mesh: '3D', text: 'text', sheet: 'test sheet', clipart: 'clip art', shape: 'shape' };
 
 function renderFiles() {
   const list = $('fileList');
   const kinds = [...new Set(state.files.map((f) => f.kind).filter(Boolean))].sort();
+  const tagset = [...new Set(state.files.flatMap((f) => f.tags || []))].sort();
   const ksel = $('libKind'), want = ksel.value || ksel.dataset.want || '';
-  ksel.replaceChildren(el('option', { value: '', text: 'All kinds' }), ...kinds.map((k) => el('option', { value: k, text: KIND[k] || k })));
-  ksel.value = kinds.includes(want) ? want : '';
+  ksel.replaceChildren(el('option', { value: '', text: 'All kinds' }), ...kinds.map((k) => el('option', { value: k, text: KIND[k] || k })),
+    ...tagset.map((t) => el('option', { value: `#${t}`, text: `Tag: ${t}` })));
+  ksel.value = [...kinds, ...tagset.map((t) => `#${t}`)].includes(want) ? want : '';
   delete ksel.dataset.want;
   const q = $('libSearch').value.trim().toLowerCase();
-  let files = state.files.filter((f) => (!q || f.name.toLowerCase().includes(q)) && (!ksel.value || f.kind === ksel.value));
+  let files = state.files.filter((f) => (!q || f.name.toLowerCase().includes(q) || (f.tags || []).some((t) => t.toLowerCase().includes(q))) &&
+    (!ksel.value || (ksel.value.startsWith('#') ? (f.tags || []).includes(ksel.value.slice(1)) : f.kind === ksel.value)));
   const sort = $('libSort').value;
   files = files.slice().sort(sort === 'name' ? (a, b) => a.name.localeCompare(b.name)
     : sort === 'old' ? (a, b) => String(a.uploaded).localeCompare(String(b.uploaded))
@@ -156,9 +159,17 @@ function renderFiles() {
       onclick: () => { $('replaceInput').dataset.id = f.id; $('replaceInput').click(); } }) : null;
     const dl = el('a', { class: 'btn icon', href: `/api/files/orig?id=${encodeURIComponent(f.id)}`, text: 'Save',
       title: 'Download the original file' });
-    return el('li', { class: sel ? 'selected' : '' },
+    const tagBtn = el('button', { class: 'icon', text: 'Tags', title: 'Tags for sorting the library (comma separated)', onclick: async () => {
+      const t = await askText('Tags', 'Tags, separated by commas:', (f.tags || []).join(', '), 'Save');
+      if (t === null) return;
+      try { await post('/api/files/tags', { id: f.id, tags: t.split(',') }); await refreshFiles(); } catch (e) { toast(e.message, true); }
+    } });
+    const li = el('li', { class: sel ? 'selected' : '', draggable: 'true',
+      ondragstart: (e) => { e.dataTransfer.setData('text/x-plotter-file', f.id); e.dataTransfer.effectAllowed = 'copy'; } },
       el('img', { src: `/api/files/svg?id=${encodeURIComponent(f.id)}`, alt: '', loading: 'lazy' }),
-      el('div', {}, el('div', { class: 'name' }, open), el('div', { class: 'meta' }, ...tags, ' ', f.uploaded ? f.uploaded.replace('T', ' ') : '')),
-      el('div', { class: 'row' }, add, prep, dl, ren, rep, del));
+      el('div', {}, el('div', { class: 'name' }, open), el('div', { class: 'meta' }, ...tags,
+        ...(f.tags || []).map((t) => el('span', { class: 'tag', text: t })), ' ', f.uploaded ? f.uploaded.replace('T', ' ') : '')),
+      el('div', { class: 'row' }, add, prep, dl, ren, tagBtn, rep, del));
+    return li;
   }));
 }

@@ -178,7 +178,10 @@
           <input id="projName" maxlength="80" placeholder="Name this bed" aria-label="Project name" required>
           <button type="submit">Save</button>
         </form>
+        <label class="check"><input type="checkbox" id="projTemplate"> Save as a template (opens as a fresh copy)</label>
+        <label class="field"><span>Notes, shown when the project opens</span><textarea id="projNotes" rows="2" maxlength="2000" placeholder="e.g. 0.3 fineliner, A4 160 g"></textarea></label>
         <ul id="projList" class="files projs" aria-label="Saved projects"></ul>
+        <button type="button" id="exportPng" class="link" title="The plan as a picture: every stroke in its pen's colour on white">Export the plan as PNG</button>
         <button id="bedClear" type="button" class="link">Clear the bed</button>
       </div>
     </section>
@@ -671,6 +674,7 @@
       <span class="spacer"></span>
       <span id="conCount" class="muted"></span>
       <button id="conCopy" class="icon">Copy</button>
+      <a class="btn icon" href="/api/log/download" title="The whole log since the server started, as a text file">Download</a>
       <button id="conClear" class="icon" title="Clear this view (the server keeps its history)">Clear</button>
     </div>
     <div class="console-body" id="conBody" role="log" aria-live="off" tabindex="0">
@@ -728,6 +732,9 @@
 <dialog id="helpDlg" aria-labelledby="helpTitle">
   <div class="dlg">
     <h2 id="helpTitle">How plotting works here</h2>
+    <p class="hint" id="aboutLine">Loading versions...</p>
+    <p><a href="/api/diagnostics">Download a diagnostic bundle</a> (versions, machine and pen settings, the last jobs and
+      log) to attach to a bug report.</p>
     <ol>
       <li><b>Prepare</b> (optional): drop an image, 3D model or SVG, or start from text. Build a recipe (adjust,
         method, clean up), check the result in ink, choose pens, and send it to Plot. A finished SVG can skip this.</li>

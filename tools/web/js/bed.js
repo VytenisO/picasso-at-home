@@ -8,6 +8,7 @@ import { $, el, toast, askText } from './ui.js';
 import { drawInk, inkMode, setInkMode, hiddenLayers } from './ink.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
+import { post } from './api.js';
 
 let cv, ctx, W = 0, H = 0, dpr = 1;
 const view = { s: 2, ox: 20, oy: 20, fitted: false };
@@ -25,6 +26,7 @@ let bedClick = () => false;        // the Machine tab's "click to go"
 let placeHook = null;              // one click on the bed, for the text tool
 
 export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
+window.__bedToMm = (px, py) => toMm(px, py);      // for dropping library drawings onto the bed
 let textEditHook = null;
 export function setTextEdit(fn) { textEditHook = fn; }
 
@@ -549,7 +551,17 @@ function openMenu(clientX, clientY, mm) {
   };
   const tail = [sep(), item('Invert the selection', () => D.invertSel(), true, 'Ctrl+I'),
     item('Select objects with open lines', () => toast(`${D.selectWhere('open')} selected.`)),
-    item('Select small objects...', smaller), item('Paste in place', () => D.pasteInPlace(), !!prefs('clipboard'), 'Ctrl+Shift+V')];
+    item('Select small objects...', smaller), item('Paste in place', () => D.pasteInPlace(), !!prefs('clipboard'), 'Ctrl+Shift+V'),
+    sel ? item('Save the selection as clip art...', async () => {
+      const name = await askText('Clip art', 'A name: it goes into the Library (kind clip art); drag it onto the bed to use it.', 'clip art', 'Save');
+      if (!name) return;
+      try {
+        const r = await post('/api/clipart', { objects: D.selected(), name });
+        const { refreshFiles } = await import('./workspace.js');
+        await refreshFiles();
+        toast(`${r.file.name} saved.`);
+      } catch (e) { toast(e.message, true); }
+    }) : null];
   const items = sel ? [
     item('Duplicate', () => D.duplicateSel(), true, 'Ctrl+D'), item('Copy', () => D.copySel(), true, 'Ctrl+C'),
     item('Cut', () => D.cutSel(), true, 'Ctrl+X'), item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'),

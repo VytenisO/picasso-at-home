@@ -106,15 +106,15 @@ niche.
 | Raster image import (png, jpg, webp, bmp, gif, tif) | HAVE | | converted on upload |
 | 3D mesh import (stl, obj) as hidden-line wireframe | HAVE | | `mesh_to_svg.py` |
 | PDF import | HAVE |  | Prepare: a PDF is a source; Use a page as it is takes page N in vectors through pdftocairo (poppler-utils, present on robotlab); pictures on the page are left out |
-| DXF import | TODO | P3 | |
-| HPGL/PLT import | TODO | P3 | classic plotter format |
+| DXF import | HAVE |  | Prepare (or drop in the Library): ASCII DXF with lines, polylines with bulges, circles, arcs, ellipses, splines; $INSUNITS; colour numbers become pens |
+| HPGL/PLT import | HAVE |  | Prepare: HPGL (.plt, .hpgl) with IN, SP, PU, PD, PA, PR, CI; each pen its own colour |
 | AI, G-code, Gerber import | SKIP | | rare for this use |
 | Import report (what was skipped or changed) | HAVE |  | Prepare result, Imported: shapes that plot, text converted, clones (<use>) expanded, elements left out (pictures, embedded HTML). <use> is now expanded for every SVG, and unplottable elements are taken out instead of failing the plan |
 | Paste SVG text or image from the clipboard | HAVE |  | Ctrl+V: SVG text or an SVG file goes into the library and onto the bed, an image to Prepare; otherwise the bed pastes copied objects |
 | Library list with thumbnails, kind, pen tag, date | HAVE | | |
 | Rename library file | HAVE | | Library: Rename; the name is cleaned the way uploads are, the extension kept |
 | Search, sort and filter library | HAVE |  | Library: name search, kind filter, newest, oldest or A-Z; remembered in this browser |
-| Folders or tags in library | TODO | P3 | |
+| Folders or tags in library | HAVE |  | Library: Tags per drawing; filter by tag, search finds tags |
 | Re-convert with new parameters (saved params editable) | HAVE | | Library: Prepare reopens a prepared drawing's recipe with its settings; save replaces it |
 | Replace source keeping placement and settings | HAVE |  | Library: Replace loads a new SVG into an SVG, shape or text drawing under the same id; bed objects keep their place and width and take the new proportions. Prepared drawings: replace the source in Prepare |
 | Download original | HAVE | | "Save" button |
@@ -122,13 +122,13 @@ niche.
 | Trash / undo delete | HAVE |  | Delete moves to the Trash (30 days, then gone); Restore, Delete for good, Empty the trash. The drawing's bed objects leave as an undoable edit |
 | Project file: scene of several objects with layers and settings | HAVE | | the bed document (`document.py`): objects with their own transform, composed into one SVG in machine mm and planned with `plot_svg.py --absolute` |
 | New / open / save / save as project | HAVE | | Library tab, Projects: save the bed under a name, open (undoable), delete, clear the bed |
-| Recent projects | PART | P3 | projects are listed newest first; no separate recent list |
-| Templates (project that opens as a copy, keeps layer/pen setup) | TODO | P3 | |
+| Recent projects | HAVE |  | the five opened last come first, marked recent |
+| Templates (project that opens as a copy, keeps layer/pen setup) | HAVE |  | Projects: Save as a template; opening one gives a fresh unnamed copy with its objects, pens and settings |
 | Autosave and recovery after reload or crash | HAVE | | the bed is saved on the server with every change and reloads on every device |
 | Warn on leaving with unsaved changes | HAVE | | no prompt needed: the bed is saved on the server with every change, and a change still waiting for its preview is sent as the page closes; Prepare keeps its recipe in the browser |
-| Project notes (free text shown on open) | TODO | P3 | pen and paper reminders |
+| Project notes (free text shown on open) | HAVE |  | Projects: notes saved with the bed, shown when the project opens and in the list |
 | Export flattened plot SVG | HAVE | | Run: Export plot SVG. Every stroke after fills, in plot order, machine mm, one Inkscape layer per pen |
-| Export preview as PNG | TODO | P3 | |
+| Export preview as PNG | HAVE |  | Projects: Export the plan as PNG, every stroke in its pen's colour on white, 8 px/mm |
 | Export compiled job (EBB command stream) and run it later | TODO | P3 | |
 | Print to paper printer | SKIP | | |
 
@@ -222,7 +222,7 @@ niche.
 | Fillet corners | HAVE |  | Line tools, Round the corners: closed shapes, convex and concave corners, a set radius |
 | Convex outline around a selection | HAVE |  | Line tools, Convex outline around: added as a new object |
 | Measure tool (length, size, area, path count) | HAVE |  | Arrange: path count and line length of the selection (from the drawings' geometry), size on the bed label and in the status line; no area |
-| Clip art library (save selection, drag back in) | TODO | P3 | signatures, stamps, borders |
+| Clip art library (save selection, drag back in) | HAVE |  | right-click: Save the selection as clip art (a library drawing of kind clip art); library drawings can be dragged onto the bed |
 | Tabs, slot resizing, path-from-cut, tangent circles | SKIP | | cutting concepts or niche geometry |
 
 ## 9. Layers and plot settings
@@ -438,9 +438,9 @@ niche.
 |---|---|---|---|
 | Console with level filter, search, auto-scroll pause, copy, clear | HAVE | | `console.js` |
 | History replay on reload, SSE resume | HAVE | | |
-| Download full log | TODO | P3 | |
-| Diagnostic bundle (versions, config, last log) | TODO | P3 | |
-| About: app, server and firmware versions | TODO | P3 | |
+| Download full log | HAVE |  | Console: Download, the whole log as text |
+| Diagnostic bundle (versions, config, last log) | HAVE |  | Help: Download a diagnostic bundle (versions, machine, pens, plotter answer, job, last jobs, lifetime, log) |
+| About: app, server and firmware versions | HAVE |  | Help shows the app version (git), Python, pyserial, shapely, Pillow and firmware |
 | Usage telemetry | SKIP | | none |
 
 ## 18. Settings and shortcuts

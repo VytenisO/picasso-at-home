@@ -252,7 +252,9 @@ class DocStore:
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
                                        "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
                                        "keep_motors", "simplify", "corner_starts", "inner_first", "approach",
-                                       "start_delay", "end_delay", "trace_shape", "trace_repeat")}
+                                       "start_delay", "end_delay", "trace_shape", "trace_repeat", "notes")}
+        if keep.get("notes") is not None:
+            keep["notes"] = str(keep["notes"])[:2000]
         with self.lock:
             d = self._read()
             d["objects"] = objs
@@ -272,20 +274,27 @@ class DocStore:
             try:
                 d = json.loads(p.read_text())
                 out.append({"slug": p.stem, "name": d.get("name") or p.stem, "objects": len(d.get("objects") or []),
-                            "saved": d.get("saved")})
+                            "saved": d.get("saved"), "opened": d.get("opened"), "template": bool(d.get("template")),
+                            "notes": ((d.get("settings") or {}).get("notes") or "")[:200]})
             except (OSError, ValueError):
                 continue
         return sorted(out, key=lambda x: x.get("saved") or "", reverse=True)
 
-    def save_project(self, name):
+    def save_project(self, name, template=False):
         name = project_name(name)
         with self.lock:
             d = self._read()
             d["name"], d["client"] = name, ""
             d["saved"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             slug = project_slug(name)
+            old = {}
+            try:
+                old = json.loads((self.proj_dir / f"{slug}.json").read_text())
+            except (OSError, ValueError):
+                pass
             (self.proj_dir / f"{slug}.json").write_text(json.dumps(
-                {k: d.get(k) for k in ("name", "objects", "settings", "saved")}, indent=1))
+                {**{k: d.get(k) for k in ("name", "objects", "settings", "saved")},
+                 "template": bool(template), "opened": old.get("opened")}, indent=1))
             d["rev"] = int(d.get("rev", 0)) + 1
             self._write(d)
         return slug
@@ -300,7 +309,14 @@ class DocStore:
             raise DocError("No such project.")
         known = {e["id"] for e in self.lib.list()}
         missing = sum(1 for o in saved.get("objects") or [] if o.get("file") not in known)
-        d = self.put(saved.get("objects") or [], saved.get("settings") or {}, name=saved.get("name") or slug)
+        # a template opens as a fresh copy: no name, so saving it asks for a new one and the template stays
+        d = self.put(saved.get("objects") or [], saved.get("settings") or {},
+                     name="" if saved.get("template") else (saved.get("name") or slug))
+        try:
+            saved["opened"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            p.write_text(json.dumps(saved, indent=1))
+        except OSError:
+            pass
         return d, missing
 
     def delete_project(self, slug):

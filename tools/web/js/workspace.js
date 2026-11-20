@@ -30,8 +30,18 @@ export function initWorkspace() {
   $('redoBtn').onclick = D.redo;
   $('projForm').onsubmit = async (e) => {
     e.preventDefault();
-    try { await D.saveProject($('projName').value); } catch (err) { toast(err.message, true); }
+    try { await D.saveProject($('projName').value, $('projTemplate').checked); } catch (err) { toast(err.message, true); }
   };
+  $('projNotes').onchange = () => D.setSettings({ notes: $('projNotes').value.trim() || null });
+  $('exportPng').onclick = exportPng;
+  $('bedPane').addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('text/x-plotter-file')) e.preventDefault(); });
+  $('bedPane').addEventListener('drop', (e) => {
+    const id = e.dataTransfer.getData('text/x-plotter-file');
+    if (!id) return;
+    e.preventDefault();
+    const at = bedPoint(e.clientX, e.clientY);
+    D.addFile(id, { at: at || null });
+  });
   $('bedClear').onclick = async () => {
     if (!state.doc.objects.length) return;
     if (await ask('Clear the bed', 'Take every drawing off the bed? They stay in the Library, and Undo brings them back.', 'Clear')) D.clearBed();
@@ -926,15 +936,49 @@ function renderProjects() {
   const list = $('projList');
   const locked = jobActive();
   if (state.doc && document.activeElement !== $('projName')) $('projName').value = state.doc.name || '';
-  list.replaceChildren(...(state.projects || []).map((p) => el('li', {},
+  if (state.doc && document.activeElement !== $('projNotes')) $('projNotes').value = state.doc.settings.notes || '';
+  // the five opened last first ("recent"), then the rest newest saved first
+  const all = state.projects || [];
+  const recent = all.filter((p) => p.opened).sort((a, b) => b.opened.localeCompare(a.opened)).slice(0, 5);
+  const ordered = [...recent, ...all.filter((p) => !recent.includes(p))];
+  list.replaceChildren(...ordered.map((p) => el('li', {},
     el('div', {}, el('div', { class: 'name' }, el('button', { class: 'link', text: p.name, disabled: locked,
-      title: 'Open: replaces what is on the bed (Undo brings it back)', onclick: () => D.openProject(p.slug).catch((e) => toast(e.message, true)) })),
-    el('div', { class: 'meta' }, `${p.objects} object${p.objects === 1 ? '' : 's'}, saved ${(p.saved || '').replace('T', ' ')}`)),
+      title: p.template ? 'Open a fresh copy of this template' : 'Open: replaces what is on the bed (Undo brings it back)',
+      onclick: () => D.openProject(p.slug).catch((e) => toast(e.message, true)) }),
+      p.template ? el('span', { class: 'tag', text: 'template' }) : null, recent.includes(p) ? el('span', { class: 'tag', text: 'recent' }) : null),
+    el('div', { class: 'meta' }, `${p.objects} object${p.objects === 1 ? '' : 's'}, saved ${(p.saved || '').replace('T', ' ')}` +
+      (p.notes ? `. ${p.notes}` : ''))),
     el('div', { class: 'row' }, el('button', { class: 'icon', text: 'Delete', 'aria-label': `Delete project ${p.name}`, onclick: async () => {
       if (!(await ask('Delete project', `Delete the project ${p.name}? The drawings stay in the Library.`, 'Delete'))) return;
       try { await D.deleteProject(p.slug); } catch (e) { toast(e.message, true); }
     } })))));
   $('bedClear').disabled = locked || !(state.doc && state.doc.objects.length);
+}
+
+// The bed point (mm) under a screen point, or null outside the bed.
+function bedPoint(cx, cy) {
+  const r = $('bed').getBoundingClientRect();
+  return window.__bedToMm ? window.__bedToMm(cx - r.left, cy - r.top) : null;
+}
+
+// PNG of the current plan: every stroke in its pen's colour on white, 8 px per mm.
+async function exportPng() {
+  const pv = state.preview;
+  if (!pv || !pv.strokes || !pv.summary) { toast('Preview the bed first.', true); return; }
+  const b = pv.summary.bbox_machine_mm, k = 8, pad = 4;
+  const w = Math.ceil((b[2] - b[0]) * k) + 2 * pad, h = Math.ceil((b[3] - b[1]) * k) + 2 * pad;
+  if (w * h > 60e6) { toast('Too large for a picture at 8 px/mm.', true); return; }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+  g.setTransform(k, 0, 0, k, pad - b[0] * k, pad - b[1] * k);
+  const { drawInk } = await import('./ink.js');
+  drawInk(g, pv, { px: 1 / k, layers: state.doc.settings.layers, pens: state.me.pens || {}, css: () => '#111111', ink: true });
+  c.toBlob((blob) => {
+    const a = el('a', { href: URL.createObjectURL(blob), download: `${(state.doc.name || 'bed').replace(/[^\w-]+/g, '_')}-plan.png` });
+    document.body.append(a); a.click(); a.remove();
+  });
 }
 
 export async function refreshFiles() {

@@ -613,9 +613,9 @@ export function reorder(dir) {
 }
 
 // ------------------------------------------------------------------ projects
-export async function saveProject(name) {
+export async function saveProject(name, template = false) {
   await runPreview();                       // the server's copy must be this bed
-  const r = await post('/api/projects/save', { name });
+  const r = await post('/api/projects/save', { name, template });
   set({ projects: r.projects, doc: { ...state.doc, name: r.doc.name } });
   toast(`Saved the bed as "${r.doc.name}".`);
 }
@@ -625,8 +625,13 @@ export async function openProject(slug) {
   const r = await post('/api/projects/open', { slug });
   await adopt(r.doc);
   set({ projects: (await api('/api/doc')).projects });
-  toast(`Opened "${r.doc.name}"` + (r.missing ? `. ${r.missing} drawing${r.missing > 1 ? 's are' : ' is'} no longer in the library and was left out.` : '.'),
+  toast(`Opened "${r.doc.name || 'a copy of the template'}"` + (r.missing ? `. ${r.missing} drawing${r.missing > 1 ? 's are' : ' is'} no longer in the library and was left out.` : '.'),
     !!r.missing);
+  const notes = r.doc.settings && r.doc.settings.notes;
+  if (notes) {
+    const { ask } = await import('./ui.js');
+    ask('Project notes', notes, 'OK');
+  }
 }
 
 export async function deleteProject(slug) {

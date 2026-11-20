@@ -344,6 +344,24 @@ class App:
         tmp.replace(p)
         return items
 
+    def about(self):
+        import platform
+        import subprocess
+        def ver(mod):
+            try:
+                m = __import__(mod)
+                return getattr(m, "__version__", "installed")
+            except Exception:  # noqa: BLE001
+                return None
+        try:
+            rev = subprocess.run(["git", "-C", str(self.s.root), "log", "-1", "--format=%h %cs"], capture_output=True,
+                                 text=True, timeout=5).stdout.strip() or None
+        except Exception:  # noqa: BLE001
+            rev = None
+        return {"app": rev, "python": platform.python_version(), "system": platform.platform(),
+                "pyserial": ver("serial"), "shapely": ver("shapely"), "pillow": ver("PIL"),
+                "firmware": (hardware.LAST or {}).get("firmware"), "sim": self.s.sim}
+
     def _push(self, title, text):
         """POST a message to the ntfy topic URL in web.json ("ntfy"). Best effort, off the job's thread."""
         import urllib.request
@@ -1126,13 +1144,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send(code, out)
 
     def raw_body(self):
+        # read once per request (the headers object is new for each): a second read would wait forever
+        if getattr(self, "_body_for", None) is self.headers:
+            return self._body
         try:
             n = int(self.headers.get("Content-Length", 0))
         except ValueError:
             n = 0
         if n > MAX_UPLOAD + 4096:
             raise ApiError(413, f"The upload is larger than {MAX_UPLOAD // (1024 * 1024)} MB.")
-        return self.rfile.read(n) if n > 0 else b""
+        self._body = self.rfile.read(n) if n > 0 else b""
+        self._body_for = self.headers
+        return self._body
 
     def json_body(self):
         try:
@@ -1217,6 +1240,60 @@ class Handler(BaseHTTPRequestHandler):
     # ---- routes: state and events
     def r_state(self):
         self.send(200, self.app.state())
+
+    def r_log_download(self):
+        evs, _ = self.app.ev.log_since(0)
+        text = "\n".join(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(e.get('t', 0)))}  "
+                         f"{e.get('level', '').upper():5}  {e.get('src', '')}: {e.get('text', '')}" for e in evs)
+        self.send(200, text + "\n", "text/plain; charset=utf-8",
+                  {"Content-Disposition": f'attachment; filename="plotter-log-{time.strftime("%Y%m%d-%H%M")}.txt"'})
+
+    def r_about(self):
+        self.send(200, self.app.about())
+
+    def r_diagnostics(self):
+        evs, _ = self.app.ev.log_since(0)
+        cfg = {}
+        try:
+            cfg = json.loads(self.app.s.machine_path.read_text())
+        except (OSError, ValueError):
+            pass
+        bundle = {"about": self.app.about(), "machine": cfg, "pens": self.app.s.pens(),
+                  "plotter": hardware.LAST, "job": self.app.runner.snapshot(), "history": self.app.runner.history(50),
+                  "lifetime": self.app.runner.lifetime(), "log": evs[-500:]}
+        self.send(200, json.dumps(bundle, indent=1, default=str), "application/json; charset=utf-8",
+                  {"Content-Disposition": f'attachment; filename="plotter-diagnostics-{time.strftime("%Y%m%d-%H%M")}.json"'})
+
+    def r_tags(self):
+        b = self.json_body()
+        tags = b.get("tags") if isinstance(b.get("tags"), list) else []
+        tags = sorted({re.sub(r"\s+", " ", str(t)).strip()[:30] for t in tags if str(t).strip()})[:12]
+        e = self.app.lib.update(b.get("id", ""), tags=tags)
+        if not e:
+            raise ApiError(404, "Unknown file.")
+        self.send(200, {"ok": True, "tags": tags})
+
+    def r_clipart(self):
+        """The selected objects as one library drawing (clip art), as they sit, to drag back in later."""
+        known = {e["id"] for e in self.app.lib.list()}
+        body = self.json_body()
+        try:
+            objs = document.clean_objects(body.get("objects") or [], known)
+        except document.DocError as ex:
+            raise ApiError(400, str(ex))
+        if not objs:
+            raise ApiError(400, "Select the objects first.")
+        strokes = self.app.object_strokes(objs)
+        if not strokes:
+            raise ApiError(400, "These objects have no lines.")
+        groups = {}
+        for c, s in strokes:
+            groups.setdefault(c, []).append(s)
+        text, b = shapes.svg_layers(list(groups.items()))
+        name = re.sub(r"[^A-Za-z0-9 _-]+", "", str(body.get("name") or "clip art"))[:40] or "clip art"
+        e = self.app.lib.add_svg_text(text, f"{name}.svg", kind="clipart", tags=["clip art"])
+        self.app.ev.log("info", f"Saved {len(objs)} object(s) as clip art {e['name']}.")
+        self.send(200, {"ok": True, "file": {"id": e["id"], "name": e["name"]}})
 
     def r_log(self):
         try:
@@ -1603,7 +1680,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_project_save(self):
         try:
-            slug = self.app.docs.save_project(self.json_body().get("name"))
+            body = self.json_body()
+            slug = self.app.docs.save_project(body.get("name"), body.get("template") is True)
         except document.DocError as ex:
             raise ApiError(400, str(ex))
         self.send(200, {"slug": slug, "projects": self.app.docs.projects(), "doc": self.app.docs.get()})
@@ -1830,6 +1908,9 @@ ROUTES_GET = {
     "/api/me": (Handler.r_me, False),
     "/api/state": (Handler.r_state, True),
     "/api/log": (Handler.r_log, True),
+    "/api/log/download": (Handler.r_log_download, True),
+    "/api/about": (Handler.r_about, True),
+    "/api/diagnostics": (Handler.r_diagnostics, True),
     "/api/events": (Handler.r_events, True),
     "/api/files": (Handler.r_files, True),
     "/api/files/svg": (Handler.r_file_svg, True),
@@ -1865,6 +1946,8 @@ ROUTES_POST = {
     "/api/files/convert_preview": (Handler.r_convert_preview, True),
     "/api/files/delete": (Handler.r_delete, True),
     "/api/files/rename": (Handler.r_rename, True),
+    "/api/files/tags": (Handler.r_tags, True),
+    "/api/clipart": (Handler.r_clipart, True),
     "/api/restore": (Handler.r_settings_restore, True),
     "/api/plotter/port": (Handler.r_port_set, True),
     "/api/positions/save": (Handler.r_position_save, True),

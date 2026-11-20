@@ -909,6 +909,37 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/qr", {"text": "x" * 300})
         self.assertEqual(code, 400)
 
+    def test_04r_cad_tags_clipart_projects_diagnostics(self):
+        dxf = "\n".join(["0", "SECTION", "2", "ENTITIES", "0", "LINE", "10", "0", "20", "0", "11", "40", "21", "0",
+                          "0", "CIRCLE", "62", "1", "10", "20", "20", "20", "40", "8", "0", "ENDSEC", "0", "EOF"]).encode()
+        code, d = self.call("POST", "/api/prepare/source", raw=dxf, headers={"X-Filename": "part.dxf"})
+        self.assertEqual(code, 200, d)
+        self.assertEqual(d["source"]["kind"], "svg")                          # a DXF becomes an SVG source
+        code, d = self.call("POST", "/api/prepare/source", raw=b"IN;SP1;PU0,0;PD800,0,800,800;", headers={"X-Filename": "p.plt"})
+        self.assertEqual(code, 200, d)
+        fid = self.upload("two_layers.svg")
+        code, r = self.call("POST", "/api/files/tags", {"id": fid, "tags": ["cards", " cards ", "Xmas"]})
+        self.assertEqual(r["tags"], ["Xmas", "cards"])
+        code, r = self.call("POST", "/api/clipart", {"objects": [self.obj(fid, 80, 30, 40, 40)], "name": "stamp"})
+        self.assertEqual(code, 200, r)
+        code, lib = self.call("GET", "/api/files")
+        self.assertEqual(next(f for f in lib["files"] if f["id"] == r["file"]["id"])["kind"], "clipart")
+        code, r = self.call("POST", "/api/doc", {"objects": [self.obj(fid, 80, 30, 40, 40)], "settings": {"notes": "Use the 0.3 pen"}})
+        code, r = self.call("POST", "/api/projects/save", {"name": "Card template", "template": True})
+        self.assertEqual(code, 200, r)
+        code, r = self.call("POST", "/api/projects/open", {"slug": "card-template"})
+        self.assertEqual(r["doc"]["name"], "")                                # a template opens as a fresh copy
+        self.assertEqual(r["doc"]["settings"]["notes"], "Use the 0.3 pen")
+        code, d = self.call("GET", "/api/doc")
+        p = next(x for x in d["projects"] if x["slug"] == "card-template")
+        self.assertTrue(p["template"] and p["opened"])
+        self.call("POST", "/api/projects/delete", {"slug": "card-template"})
+        code, a = self.call("GET", "/api/about")
+        self.assertIn("python", a)
+        for path in ("/api/log/download", "/api/diagnostics"):
+            with urllib.request.urlopen(self.base + path) as resp:
+                self.assertIn("attachment", resp.headers["Content-Disposition"])
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

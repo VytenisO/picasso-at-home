@@ -478,9 +478,22 @@ class Workshop:
         from .library import safe_name
         safe = safe_name(filename)
         ext = pathlib.Path(safe).suffix.lower()
+        if ext in (".dxf", ".plt", ".hpgl", ".hpg"):
+            # CAD drawings become an SVG source right away: the SVG method and clean-up then work on them
+            import tempfile
+            import cad_to_svg
+            with tempfile.TemporaryDirectory() as td:
+                src = pathlib.Path(td) / f"in{ext}"
+                src.write_bytes(raw)
+                try:
+                    cad_to_svg.convert(src, pathlib.Path(td) / "out.svg")
+                except ValueError as ex:
+                    raise PrepareError(str(ex))
+                raw = (pathlib.Path(td) / "out.svg").read_bytes()
+            safe, ext = pathlib.Path(safe).stem + ".svg", ".svg"
         kind = kind_of(ext)
         if not kind:
-            exts = ", ".join(sorted(e for v in KINDS.values() for e in v))
+            exts = ", ".join(sorted(e for v in KINDS.values() for e in v) + [".dxf", ".hpgl", ".plt"])
             raise PrepareError(f"Files of type {ext or '(no extension)'} cannot be prepared. Use {exts}.")
         if not raw:
             raise PrepareError("The file is empty.")

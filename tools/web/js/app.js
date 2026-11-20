@@ -56,6 +56,11 @@ function initOnce() {
   initRun();
   initLibrary();
   renderShortcutList();
+  api('/api/about').then((a) => {
+    $('aboutLine').textContent = `Version ${a.app || 'unknown'}; Python ${a.python}; pyserial ${a.pyserial || 'missing'}, ` +
+      `shapely ${a.shapely || 'missing'}, Pillow ${a.pillow || 'missing'}; firmware ${a.firmware || 'not checked yet'}` +
+      (a.sim ? '; simulator' : '') + '.';
+  }).catch(() => {});
   tagTooltips();
   setObjectPaste(D.paste);
   initTools();

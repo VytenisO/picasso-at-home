@@ -75,7 +75,7 @@ export async function initPrepare() {
     const r = await api('/api/prepare/steps');
     steps = r.steps; kinds = r.kinds; maxBytes = r.max_bytes || maxBytes;
     byId = Object.fromEntries(steps.map((s) => [s.id, s]));
-    $('prepFile').accept = Object.values(kinds).flat().join(',');
+    $('prepFile').accept = [...Object.values(kinds).flat(), '.dxf', '.plt', '.hpgl', '.hpg'].join(',');
   } catch (e) { toast(e.message, true); }
   restore();
   initPresets();
@@ -377,7 +377,7 @@ function renderSource() {
     const drop = el('div', { class: 'drop', tabindex: '0', role: 'button', 'aria-label': 'Choose a file to prepare',
       onclick: () => $('prepFile').click(),
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('prepFile').click(); } } },
-    'Drop an image, SVG, PDF or 3D model, or ', el('b', { text: 'choose one' }),
+    'Drop an image, SVG, PDF, DXF, HPGL or 3D model, or ', el('b', { text: 'choose one' }),
     el('br'), el('small', { text: Object.values(kinds).flat().join(' ') }));
     const gen_ = el('div', { class: 'gen-row' }, el('span', { class: 'muted', text: 'or start from' }),
       ...generators.map((g) => el('button', { type: 'button', class: m && m.step === g.id ? 'chip on' : 'chip', text: g.title,
