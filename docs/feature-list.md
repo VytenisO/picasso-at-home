@@ -84,11 +84,11 @@ niche.
 | Wheel zoom at cursor, pinch zoom, drag to pan | HAVE | | `bed.js` |
 | Zoom in/out/fit buttons and `+ - 0` keys | HAVE | | |
 | Zoom to selection | HAVE | | Z, or the context menu |
-| Pan with Space+drag or middle button | PART | P3 | middle or right drag, a finger on empty bed; Space stays pause/continue |
+| Pan with Space+drag or middle button | HAVE |  | Space+drag when no job is running, middle or right drag, a finger on empty bed |
 | Cursor X/Y read-out | HAVE | | |
 | Grid | HAVE |  | View: off, 1, 2, 5, 10 or 20 mm (skipped when finer than 4 px on screen) |
 | Rulers on the top and left edges | HAVE | | adaptive ticks, the pointer and the selection's extent marked |
-| Draggable guide lines from the rulers (never plotted, lockable, snappable) | PART | P3 | drag out of a ruler, move, drop back on a ruler to remove, right-click to add or clear; saved with the bed; not lockable |
+| Draggable guide lines from the rulers (never plotted, lockable, snappable) | HAVE |  | drag out of a ruler, move, drop back to remove, right-click to add or clear; saved with the bed; View, Lock the guides |
 | Automatic alignment hints while dragging (edges/centres line up) | HAVE | | a line shows what the dragged edge or centre snapped to |
 | Wireframe vs filled view | HAVE |  | Ink (pen colour and width) or Lines (thin lines) on the bed and in Prepare |
 | Show pen width (stroke drawn at the pen's real width) | HAVE |  | Ink view draws each layer at its pen's width_mm |
@@ -141,17 +141,17 @@ niche.
 | Shift add, Ctrl toggle | HAVE | | Shift and Ctrl both toggle |
 | Select all, deselect with Esc or empty click | HAVE | | Ctrl+A; Esc only deselects, it never stops a job |
 | Select all on a layer (pen) | HAVE | | Layers: Select on a layer card selects the objects that draw in it |
-| Tab cycles through objects | TODO | P3 | |
-| Invert selection | TODO | P3 | |
-| Select open paths, select shapes smaller than N | TODO | P3 | cleanup helpers |
-| Selection drawn with marching dashes, groups distinct | PART | P3 | groups get a dotted box when selected or hovered; the selection outline is solid (one) or dashed (several), not animated |
+| Tab cycles through objects | HAVE |  | Tab / Shift+Tab with the bed focused; a group is one step |
+| Invert selection | HAVE |  | Ctrl+I, or the bed's right-click menu |
+| Select open paths, select shapes smaller than N | HAVE |  | right-click menu: Select objects with open lines, Select small objects (size asked) |
+| Selection drawn with marching dashes, groups distinct | HAVE |  | the selection outline's dashes move; groups get a dotted box when selected or hovered |
 
 ## 5. Edit and transform
 
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | Move by drag, arrow-key nudge 1 mm / Shift 10 mm | HAVE | | |
-| Nudge distances as a setting | TODO | P3 | |
+| Nudge distances as a setting | HAVE |  | View, Nudge: 0.1 to 10 mm; Shift ten times, Alt a tenth |
 | Uniform scale by corner handles | HAVE | | aspect locked |
 | Non-uniform scale (edge handles, unlock aspect) | HAVE | | edge handles stretch one way; corners keep proportions unless Shift |
 | Rotate (handle, 15 degree snap with Shift, rotate 90 keys) | HAVE | | turn handle snaps to 15 degrees (Shift: free), Turn left/right buttons, typed angle |
@@ -161,11 +161,11 @@ niche.
 | Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | HAVE | | X/Y/W/H are the selection's bounds at the chosen reference point; a group scales about it |
 | Unit-aware and arithmetic input (`100/3`, `2in`) | HAVE |  | Arrange X, Y, width, height, turn: + - * / and brackets, units mm, cm, in or ", pt, px; a decimal comma works |
 | Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | HAVE | | 200 steps per page; typing and arrow nudges coalesce into one step |
-| Undo history list | TODO | P3 | |
-| Copy / cut / paste / paste in place / duplicate / delete | PART | P3 | copy, cut, paste (offset each time), duplicate, delete; no paste in place |
+| Undo history list | HAVE |  | bed toolbar, History: each step with what it did and when; pick one to go back to just before it |
+| Copy / cut / paste / paste in place / duplicate / delete | HAVE |  | plus Paste in place (Ctrl+Shift+V) |
 | Group / ungroup | HAVE |  | Arrange Group/Ungroup, Ctrl+G and Ctrl+Shift+G: selecting one member selects the group; copies get their own group |
 | Lock object (no move/resize/delete) | HAVE |  | Arrange Lock/Unlock: no handles, no drag, nudge, transform, shape operation or remove; colour and plot settings still change |
-| Make same width / height | TODO | P3 | |
+| Make same width / height | HAVE |  | Arrange, Same width / Same height: as the first object selected, around each one's centre |
 | Two-point rotate/scale (match two points to two targets) | TODO | P3 | scale a traced photo to true size |
 | Warp (4-corner) and deform (grid) | TODO | P3 | |
 | Edit locked while a job runs | HAVE | | |
@@ -177,11 +177,11 @@ niche.
 | Quick placement: canvas top-left, centre, fit canvas | HAVE | | `workspace.js` |
 | Move to any page anchor (corners, edge midpoints, centre) | HAVE | | "To canvas ..." uses the 9-point reference |
 | Align left/right/top/bottom/centres | HAVE | | to each other with several selected, to the canvas with one |
-| Distribute by edges or centres | PART | P3 | Spread H/V gives equal gaps between edges; not by centres |
-| Move together (abut) and dock to edge | TODO | P3 | |
+| Distribute by edges or centres | HAVE |  | Spread H/V (equal gaps) and Centres H/V (equal steps between centres) |
+| Move together (abut) and dock to edge | HAVE |  | Together H/V close the gaps; docking to an edge is Align with one object (to the canvas) |
 | Draw order: forward/back/front/back, per-object priority | HAVE |  | Arrange list arrows; the list order is the plot order within each pen with planning off, or with Finish each object before the next |
-| Grid array (rows, columns, spacing, stagger, alternate mirror) | PART | P3 | Arrange, Array: columns, rows, gaps; no stagger or alternate mirror |
-| Circular array | TODO | P3 | |
+| Grid array (rows, columns, spacing, stagger, alternate mirror) | HAVE |  | Arrange, Array: columns, rows, gaps, stagger of odd rows, mirror every other copy |
+| Circular array | HAVE |  | Arrange, Circular array: copies in all, radius, turn with the circle or stay upright |
 | Copy along path | TODO | P3 | |
 | Quick pack small items on a sheet | TODO | P3 | bounding-box packing only |
 | Shape-aware nesting | SKIP | | material saving; paper is not the constraint |
@@ -193,9 +193,9 @@ niche.
 |---|---|---|---|
 | Grid snap while dragging (0.5 mm), Shift disables | HAVE | | |
 | Grid snap spacing and toggle as a setting | HAVE |  | View: moves and resizes snap to the grid step instead of 0.5 mm |
-| Snap to object nodes, midpoints, centres, intersections | PART | P3 | object edges and centres while moving; no nodes, no snapping while resizing |
+| Snap to object nodes, midpoints, centres, intersections | PART | P3 | object edges and centres while moving and while resizing an unturned box by an edge; no nodes or intersections |
 | Snap to paper/canvas edges and centre | HAVE | | moving snaps edges and centre to canvas, paper, guides and other objects within 7 px; Alt: none |
-| Snap distance setting, modifier to disable | TODO | P3 | |
+| Snap distance setting, modifier to disable | HAVE |  | View, Snap distance (off, 4, 7, 12 px); Alt while dragging turns it off |
 
 ## 8. Create and edit geometry
 

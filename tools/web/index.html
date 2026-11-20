@@ -347,6 +347,7 @@
       <span class="title" id="bedTitle">The bed is empty</span>
       <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
       <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
+      <button class="icon" id="histBtn" aria-haspopup="true" aria-expanded="false" title="Undo history: step back to any point">History</button>
       <button class="icon" id="textTool" aria-pressed="false" title="Text: click on the bed where it should go">Text</button>
       <button class="icon" id="shapeTool" aria-pressed="false" title="Rectangle, ellipse, polygon, star, or a line by clicks">Shape</button>
       <span class="spacer"></span>
@@ -356,12 +357,21 @@
       <button class="icon" id="zoomFit" title="Fit the bed (0)">Fit</button>
       <button class="icon" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
     </div>
+    <div class="view-menu hist-menu" id="histMenu" role="menu" aria-label="Undo history" hidden></div>
     <div class="view-menu" id="viewMenu" role="group" aria-label="View" hidden>
       <label class="field"><span>Grid</span><select id="vGrid">
         <option value="0">Off</option><option value="1">1 mm</option><option value="2">2 mm</option>
         <option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
       <label class="check"><input type="checkbox" id="vSnapGrid"> Moves snap to the grid (else to 0.5 mm)</label>
       <label class="check"><input type="checkbox" id="vDir"> Path direction and start points (after a preview)</label>
+      <div class="field-row">
+        <label class="field" title="Arrow keys move this far (Shift: ten times, Alt: a tenth)"><span>Nudge (mm)</span><select id="vNudge">
+          <option value="0.1">0.1</option><option value="0.5">0.5</option><option value="1">1</option><option value="2">2</option>
+          <option value="5">5</option><option value="10">10</option></select></label>
+        <label class="field" title="How close (screen pixels) an edge must come to snap; Alt while dragging: no snapping"><span>Snap distance</span><select id="vSnapPx">
+          <option value="0">Off</option><option value="4">4 px</option><option value="7">7 px</option><option value="12">12 px</option></select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="vLockGuides"> Lock the guides (no dragging)</label>
       <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
     </div>
     <div class="scrub" id="scrubBar" hidden>
@@ -483,6 +493,12 @@
           <button type="button" data-act="bottom" title="Align bottom edges">Bottom</button>
           <button type="button" data-act="distx" title="Equal gaps left to right (three or more)">Spread H</button>
           <button type="button" data-act="disty" title="Equal gaps top to bottom (three or more)">Spread V</button>
+          <button type="button" data-act="distcx" title="Equal steps between centres, left to right (three or more)">Centres H</button>
+          <button type="button" data-act="distcy" title="Equal steps between centres, top to bottom (three or more)">Centres V</button>
+          <button type="button" data-act="abutx" title="Side by side with no gap, left to right">Together H</button>
+          <button type="button" data-act="abuty" title="One under the other with no gap">Together V</button>
+          <button type="button" data-act="samew" title="The width of the first object selected">Same width</button>
+          <button type="button" data-act="sameh" title="The height of the first object selected">Same height</button>
         </div>
         <div class="tool-row" role="group" aria-label="Shapes" id="shapeRow" hidden>
           <span class="muted">Shapes (closed outlines)</span>
@@ -505,6 +521,7 @@
           <button type="button" data-act="fit" title="Scale to fill the canvas and centre">Fit canvas</button>
           <button type="button" data-act="dup" title="Duplicate (Ctrl+D)">Duplicate</button>
           <button type="button" data-act="array" title="Copies in rows and columns">Array</button>
+          <button type="button" data-act="circle" title="Copies around a centre">Circular array</button>
           <button type="button" data-act="del" class="danger-text" title="Remove from the bed (Delete)">Remove</button>
         </div>
       </div>
@@ -695,6 +712,19 @@
   </form>
 </dialog>
 
+<dialog id="circleDlg" aria-labelledby="circleDlgTitle">
+  <form method="dialog" class="dlg" id="circleForm">
+    <h2 id="circleDlgTitle">Circular array</h2>
+    <p class="hint">Copies around a centre below the selection: the selection stays at the top of the circle.</p>
+    <div class="field-row">
+      <label class="field"><span>Copies in all</span><input name="n" type="number" min="2" max="36" step="1" value="6"></label>
+      <label class="field"><span>Radius (mm)</span><input name="r" type="number" min="1" max="200" step="0.5" value="30"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="turn" checked> Turn each copy with the circle</label>
+    <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Make copies</button></div>
+  </form>
+</dialog>
+
 <dialog id="arrayDlg" aria-labelledby="arrayDlgTitle">
   <form method="dialog" class="dlg" id="arrayForm">
     <h2 id="arrayDlgTitle">Grid array</h2>
@@ -706,6 +736,10 @@
     <div class="field-row">
       <label class="field"><span>Gap across (mm)</span><input name="gx" type="number" min="-100" max="200" step="0.5" value="5"></label>
       <label class="field"><span>Gap down (mm)</span><input name="gy" type="number" min="-100" max="200" step="0.5" value="5"></label>
+    </div>
+    <div class="field-row">
+      <label class="field" title="Every second row shifted across by this much (brick pattern)"><span>Stagger (mm)</span><input name="stagger" type="number" min="-200" max="200" step="0.5" value="0"></label>
+      <label class="check"><input type="checkbox" name="alt"> Mirror every other copy</label>
     </div>
     <p class="hint" id="arrayNote"></p>
     <div class="actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Make copies</button></div>

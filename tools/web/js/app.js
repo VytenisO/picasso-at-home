@@ -241,7 +241,9 @@ function docKey(e) {
   }
   if (mod && k === 'c' && state.sel.length && !String(window.getSelection())) { D.copySel(); return true; }
   if (mod && k === 'x' && state.sel.length) { e.preventDefault(); D.cutSel(); return true; }
+  if (mod && e.shiftKey && k === 'v') { e.preventDefault(); D.pasteInPlace(); return true; }
   if (mod && k === 'v') return true;      // the paste event decides: an SVG or image from outside, else copied objects
+  if (mod && k === 'i') { e.preventDefault(); D.invertSel(); return true; }
   if (!mod && (e.key === 'Delete' || e.key === 'Backspace') && state.sel.length) { e.preventDefault(); D.removeSel(); return true; }
   if (!mod && e.key === 'Escape' && state.sel.length) { D.select([]); return true; }
   return false;

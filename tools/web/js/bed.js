@@ -4,7 +4,7 @@
 // While the bed is being edited each object is drawn from its drawing's own strokes through its transform, so a
 // drag is instant. Once a preview is fresh the planner's exact strokes are drawn instead (fills, simplification).
 import { state, set, on, jobActive, prefs } from './store.js';
-import { $, el } from './ui.js';
+import { $, el, toast, askText } from './ui.js';
 import { drawInk, inkMode, setInkMode, hiddenLayers } from './ink.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
@@ -25,6 +25,24 @@ let bedClick = () => false;        // the Machine tab's "click to go"
 let placeHook = null;              // one click on the bed, for the text tool
 
 export function armPlace(fn) { placeHook = fn; cv.style.cursor = fn ? 'crosshair' : ''; }
+
+// Space held down (with no job to pause): a drag pans the bed.
+let spaceHeld = false;
+window.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (e.key !== ' ' || e.repeat || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'))) return;
+  if (state.job && ['running', 'paused'].includes(state.job.state)) return;
+  if (t === cv || (t && t.closest && t.closest('#bedPane'))) { spaceHeld = true; if (cv) cv.style.cursor = 'grab'; }
+});
+window.addEventListener('keyup', (e) => { if (e.key === ' ' && spaceHeld) { spaceHeld = false; if (cv) cv.style.cursor = ''; } });
+
+// Marching dashes: the selection outline moves while something is selected.
+let dashPhase = 0;
+setInterval(() => {
+  if (!cv || !state.sel.length || document.visibilityState !== 'visible' || state.ws !== 'plot' || drag) return;
+  dashPhase = (dashPhase + 1) % 14;
+  redraw();
+}, 140);
 
 // Line by clicks: each click adds a point (0.5 mm grid, Shift: 45 degree steps); clicking the first point closes,
 // a double-click or Enter finishes, Esc cancels, Backspace drops the last point. done(pts, closed), or done(null).
@@ -463,7 +481,7 @@ function bestSnap(cands, targets, tol) {
 }
 
 function hitGuide(px, py) {
-  if (px < RULER || py < RULER) return -1;
+  if (px < RULER || py < RULER || viewPrefs().lockGuides) return -1;
   const gl = guides();
   for (let i = gl.length - 1; i >= 0; i--) {
     const g = gl[i], [gx, gy] = toPx(g.at, g.at);
@@ -515,6 +533,13 @@ function openMenu(clientX, clientY, mm) {
   const item = (text, fn, ok = true, key = '') => el('button', { type: 'button', role: 'menuitem', disabled: !ok,
     onclick: () => { closeMenu(); fn(); } }, el('span', { text }), key ? el('kbd', { text: key }) : null);
   const sep = () => el('hr');
+  const smaller = async () => {
+    const t = await askText('Select small objects', 'Select every object smaller than this both ways (mm):', '5', 'Select');
+    if (t !== null && Number(t) > 0) toast(`${D.selectWhere('small', Number(t))} selected.`);
+  };
+  const tail = [sep(), item('Invert the selection', () => D.invertSel(), true, 'Ctrl+I'),
+    item('Select objects with open lines', () => toast(`${D.selectWhere('open')} selected.`)),
+    item('Select small objects...', smaller), item('Paste in place', () => D.pasteInPlace(), !!prefs('clipboard'), 'Ctrl+Shift+V')];
   const items = sel ? [
     item('Duplicate', () => D.duplicateSel(), true, 'Ctrl+D'), item('Copy', () => D.copySel(), true, 'Ctrl+C'),
     item('Cut', () => D.cutSel(), true, 'Ctrl+X'), item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'),
@@ -522,14 +547,14 @@ function openMenu(clientX, clientY, mm) {
     item('Turn left', () => D.rotateSel(-90)), item('Turn right', () => D.rotateSel(90)),
     item('Mirror H', () => D.mirrorSel('x')), item('Mirror V', () => D.mirrorSel('y')), sep(),
     item('Plot earlier', () => D.reorder('down')), item('Plot later', () => D.reorder('up')), sep(),
-    item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'),
+    item('Fit canvas', () => D.fitCanvas()), item('Zoom to selection', zoomSelection, true, 'Z'), ...tail,
   ] : [
     item('Paste', () => D.paste(), !!prefs('clipboard'), 'Ctrl+V'), item('Select all', () => D.selectAll(), true, 'Ctrl+A'), sep(),
     item('Vertical guide here', () => setGuides([...guides(), { axis: 'x', at: mm[0] }])),
     item('Horizontal guide here', () => setGuides([...guides(), { axis: 'y', at: mm[1] }])),
     gi >= 0 ? item('Remove this guide', () => setGuides(guides().filter((_, i) => i !== gi))) : null,
     item('Remove all guides', () => setGuides([]), guides().length > 0), sep(),
-    item('Fit the bed', fit, true, '0'),
+    item('Fit the bed', fit, true, '0'), ...tail,
   ];
   menu = el('div', { class: 'ctx-menu', role: 'menu' }, ...items.filter(Boolean));
   document.body.append(menu);
@@ -584,9 +609,10 @@ function overlays(px) {
     if (!isSel && !bad && hover !== o.id) continue;
     ctx.strokeStyle = bad ? css('--err') : css('--accent');
     ctx.lineWidth = (isSel ? 1.5 : 1) * px;
-    ctx.setLineDash(isSel ? [] : [5 * px, 4 * px]);
+    ctx.setLineDash(isSel ? [4 * px, 3 * px] : [5 * px, 4 * px]);
+    ctx.lineDashOffset = isSel ? -dashPhase * px : 0;
     poly(G.corners(o)); ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
   }
   // groups: a dotted box around each group that is selected or under the pointer
   const groups = new Set(objs.filter((o) => o.grp && (state.sel.includes(o.id) || hover === o.id)).map((o) => o.grp));
@@ -689,6 +715,7 @@ function down(e) {
   }
   const [mx, my] = toMm(px, py);
   closeMenu();
+  if (e.button === 0 && spaceHeld) { drag = { mode: 'pan', start: [px, py], o: [view.ox, view.oy] }; cv.classList.add('dragging'); return; }
   if (e.button === 0 && placeHook) { const f = placeHook; placeHook = null; cv.style.cursor = ''; f(mx, my); return; }
   if (e.button === 0 && freeHook) { freePts = [[G.r2(mx), G.r2(my)]]; cv.setPointerCapture(e.pointerId); return; }
   if (e.button === 0 && polyHook) {
@@ -799,7 +826,7 @@ const snapStep = () => { const v = viewPrefs(); return v.snapGrid && v.grid > 0 
 const snapHalf = (v) => { const s = snapStep(); return Math.round(v / s) * s; };
 
 // ------------------------------------------------------------------ view menu
-export const viewPrefs = () => ({ grid: 10, snapGrid: false, dir: false, ...(prefs('view') || {}) });
+export const viewPrefs = () => ({ grid: 10, snapGrid: false, dir: false, nudge: 1, snapPx: 7, lockGuides: false, ...(prefs('view') || {}) });
 
 function initViewMenu() {
   const btn = $('viewBtn'), menu = $('viewMenu');
@@ -807,8 +834,12 @@ function initViewMenu() {
   $('vGrid').value = String(v.grid);
   $('vSnapGrid').checked = v.snapGrid;
   $('vDir').checked = v.dir;
-  const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked }); redraw(); };
-  for (const id of ['vGrid', 'vSnapGrid', 'vDir']) $(id).onchange = save;
+  $('vNudge').value = String(v.nudge);
+  $('vSnapPx').value = String(v.snapPx);
+  $('vLockGuides').checked = v.lockGuides;
+  const save = () => { prefs('view', { grid: Number($('vGrid').value), snapGrid: $('vSnapGrid').checked, dir: $('vDir').checked,
+    nudge: Number($('vNudge').value), snapPx: Number($('vSnapPx').value), lockGuides: $('vLockGuides').checked }); redraw(); };
+  for (const id of ['vGrid', 'vSnapGrid', 'vDir', 'vNudge', 'vSnapPx', 'vLockGuides']) $(id).onchange = save;
   const show = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };
   document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });
@@ -865,7 +896,7 @@ function dragMove(sel, mx, my, e) {
     // the 0.5 mm grid. Alt: no snapping at all.
     const b = G.bounds(drag.orig.filter((o) => drag.sel.includes(o.id)));
     const t = drag.targets || (drag.targets = snapTargets(drag.sel));
-    const tol = 7 / view.s;
+    const tol = (viewPrefs().snapPx ?? 7) / view.s;
     const sx = bestSnap([b.x0 + dx, (b.x0 + b.x1) / 2 + dx, b.x1 + dx], t.xs, tol);
     const sy = bestSnap([b.y0 + dy, (b.y0 + b.y1) / 2 + dy, b.y1 + dy], t.ys, tol);
     if (sx) { dx += sx[0]; snapLines.push({ axis: 'x', at: sx[1] }); } else dx = snapHalf(b.x0 + dx) - b.x0;
@@ -893,7 +924,23 @@ function dragScale(o, mx, my, e) {
     const k = Math.max(w / o0.w, h / o0.h);
     w = o0.w * k; h = o0.h * k;
   }
-  if (!e.altKey) { if (hx) w = Math.max(0.5, snapHalf(w)); if (hy) h = Math.max(0.5, snapHalf(h)); }
+  // an unturned box resized by an edge (or a corner with Shift) snaps its moving edges to what moves snap to
+  let sx = false, sy = false;
+  if (!e.altKey && !o0.rot && (!(hx && hy) || e.shiftKey) && (viewPrefs().snapPx ?? 7) > 0) {
+    const t = drag.targets || (drag.targets = snapTargets(drag.sel));
+    const tol = (viewPrefs().snapPx ?? 7) / view.s;
+    if (hx) {
+      const fixed = hx > 0 ? o0.x : o0.x + o0.w, mv = fixed + hx * w;
+      const s = bestSnap([mv], t.xs, tol);
+      if (s) { w = Math.max(0.5, Math.abs(mv + s[0] - fixed)); snapLines.push({ axis: 'x', at: s[1] }); sx = true; }
+    }
+    if (hy) {
+      const fixed = hy > 0 ? o0.y : o0.y + o0.h, mv = fixed + hy * h;
+      const s = bestSnap([mv], t.ys, tol);
+      if (s) { h = Math.max(0.5, Math.abs(mv + s[0] - fixed)); snapLines.push({ axis: 'y', at: s[1] }); sy = true; }
+    }
+  }
+  if (!e.altKey) { if (hx && !sx) w = Math.max(0.5, snapHalf(w)); if (hy && !sy) h = Math.max(0.5, snapHalf(h)); }
   const cu = hx ? fu + hx * w / 2 : 0, cv_ = hy ? fv + hy * h / 2 : 0;
   const [cx, cy] = G.fromLocal(o0, cu, cv_);
   o.w = w; o.h = h;
@@ -966,6 +1013,7 @@ function wheel(e) {
 }
 
 function key(e) {
+  if (e.key === 'Tab' && editable() && !polyHook) { e.preventDefault(); D.selectNext(e.shiftKey ? -1 : 1); return; }
   if (polyHook) {
     if (e.key === 'Enter') { e.preventDefault(); polyFinish(false); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); polyPts = []; polyFinish(false); }
@@ -980,6 +1028,7 @@ function key(e) {
   }
   if (!editable() || !state.sel.length) return;
   e.preventDefault();
-  const d = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+  const step = viewPrefs().nudge || 1;
+  const d = e.shiftKey ? step * 10 : e.altKey ? step / 10 : step;
   D.nudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0);
 }

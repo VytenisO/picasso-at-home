@@ -37,7 +37,7 @@ export function edit(fn, { coalesce = null, sel = null } = {}) {
   if (state.startAt) set({ startAt: 0 });
   const now = Date.now();
   if (!(coalesce && lastCoalesce && lastCoalesce.key === coalesce && now - lastCoalesce.t < 1500)) {
-    undoStack.push(before);
+    undoStack.push({ s: before, t: now, what: describe(before, d) });
     if (undoStack.length > MAX_UNDO) undoStack.shift();
   }
   lastCoalesce = coalesce ? { key: coalesce, t: now } : null;
@@ -78,12 +78,12 @@ function restore(s) {
 export function undo() {
   if (!undoStack.length || jobActive()) return;
   redoStack.push(snap());
-  restore(undoStack.pop());
+  restore(undoStack.pop().s);
 }
 
 export function redo() {
   if (!redoStack.length || jobActive()) return;
-  undoStack.push(snap());
+  undoStack.push({ s: snap(), t: Date.now(), what: 'Redone step' });
   restore(redoStack.pop());
 }
 
@@ -121,7 +121,7 @@ export async function loadDoc() {
 async function adopt(d, { record = true } = {}) {
   await ensureNaturals(d.objects);
   for (const o of d.objects) refit(o);
-  if (record && state.doc) { undoStack.push(snap()); redoStack.length = 0; }
+  if (record && state.doc) { undoStack.push({ s: snap(), t: Date.now(), what: 'Bed replaced (project or another device)' }); redoStack.length = 0; }
   set({ doc: { name: d.name || '', objects: d.objects, settings: d.settings }, sel: [], preview: null, previewStale: true,
     history: undoStack.length });
   schedule(true);
@@ -284,6 +284,127 @@ export async function replaceWithPieces(ids, pieces) {
   }, { sel: objs.map((o) => o.id) });
 }
 
+// ------------------------------------------------------------------ selection helpers
+// Tab / Shift+Tab: the next or previous object in the list (a group counts as one step).
+export function selectNext(dir = 1) {
+  const objs = state.doc ? state.doc.objects : [];
+  if (!objs.length) return;
+  const cur = objs.findIndex((o) => o.id === state.sel[dir > 0 ? state.sel.length - 1 : 0]);
+  let i = cur < 0 ? (dir > 0 ? 0 : objs.length - 1) : (cur + dir + objs.length) % objs.length;
+  const g = objs[cur] && objs[cur].grp;
+  for (let n = 0; g && n < objs.length && objs[i].grp === g; n++) i = (i + dir + objs.length) % objs.length;
+  select(objs[i].id);
+}
+
+export function invertSel() {
+  if (!state.doc) return;
+  select(state.doc.objects.filter((o) => !state.sel.includes(o.id)).map((o) => o.id));
+}
+
+// Objects whose drawing has an open stroke, or whose box is smaller than n mm both ways.
+export function selectWhere(kind, n = 5) {
+  if (!state.doc) return 0;
+  const ids = state.doc.objects.filter((o) => {
+    if (kind === 'small') return o.w < n && o.h < n;
+    const nat = state.naturals[o.file];
+    return !!(nat && (nat.strokes || []).some((s) => {
+      const p = s.pts, a = p[0], b = p[p.length - 1];
+      return p.length < 3 || Math.hypot(a[0] - b[0], a[1] - b[1]) > 0.2;
+    }));
+  }).map((o) => o.id);
+  select(ids);
+  return ids.length;
+}
+
+export async function pasteInPlace() {
+  const clip = prefs('clipboard');
+  if (!Array.isArray(clip) || !clip.length) return;
+  const known = clip.filter((o) => state.files.some((f) => f.id === o.file));
+  if (!known.length) { toast('The copied drawings are no longer in the library.', true); return; }
+  await ensureNaturals(known);
+  const copies = regroup(known.map((o) => ({ ...o, id: newId(), locked: undefined })));
+  edit((d) => { d.objects.push(...copies); }, { sel: copies.map((o) => o.id) });
+}
+
+// Same width or height as the first object selected, each keeping its own proportions only if asked.
+export function sameSize(dim, keep = false) {
+  const ref = selected().find((o) => o.id === state.sel[0]);
+  if (!ref) return;
+  editSel((objs) => {
+    if (objs.length < 2) return false;
+    for (const o of objs) {
+      if (o === ref || o.id === ref.id) continue;
+      const [cx, cy] = G.center(o);
+      if (dim === 'w') { const k = ref.w / o.w; o.w = ref.w; if (keep) o.h *= k; }
+      else { const k = ref.h / o.h; o.h = ref.h; if (keep) o.w *= k; }
+      G.setCenter(o, cx, cy);
+    }
+  });
+}
+
+// Equal steps between the objects' centres (three or more).
+export function distributeCentres(axis) {
+  editSel((objs) => {
+    if (objs.length < 3) return false;
+    const cs = objs.map((o) => ({ o, c: G.center(o)[axis === 'x' ? 0 : 1] })).sort((p, q) => p.c - q.c);
+    const step = (cs[cs.length - 1].c - cs[0].c) / (cs.length - 1);
+    cs.forEach((p, i) => { const d = cs[0].c + i * step - p.c; if (axis === 'x') p.o.x += d; else p.o.y += d; });
+  });
+}
+
+// Move together: side by side with no gap, in their current order, from the first one's edge.
+export function abut(axis) {
+  editSel((objs) => {
+    if (objs.length < 2) return false;
+    const bs = objs.map((o) => ({ o, b: G.bounds([o]) }));
+    const k0 = axis === 'x' ? 'x0' : 'y0', k1 = axis === 'x' ? 'x1' : 'y1';
+    bs.sort((p, q) => p.b[k0] - q.b[k0]);
+    let at = bs[0].b[k1];
+    for (const p of bs.slice(1)) {
+      const d = at - p.b[k0];
+      if (axis === 'x') p.o.x += d; else p.o.y += d;
+      at = p.b[k1] + d;
+    }
+  });
+}
+
+// Copies around a centre: n in all, the centre radius mm below the selection's middle (so the original sits at
+// the top); turn: each copy turned with its angle.
+export function circularSel(n, radius, turn) {
+  const src = selected();
+  if (!src.length || n < 2) return;
+  const b = G.bounds(src);
+  const cx = b.x0 + b.w / 2, cy = b.y0 + b.h / 2 + radius;
+  const copies = [];
+  for (let k = 1; k < n; k++) {
+    const set = src.map((o) => ({ ...structuredClone(o), id: newId(), locked: undefined }));
+    const rots = set.map((o) => o.rot);
+    G.rotateAbout(set, cx, cy, 360 * k / n);
+    if (!turn) set.forEach((o, i) => { o.rot = rots[i]; });      // moved round the circle, still upright
+    for (const o of set) { o.x = G.r2(o.x); o.y = G.r2(o.y); }
+    copies.push(...regroup(set));
+  }
+  if (copies.length + state.doc.objects.length > 64) { toast('At most 64 objects on the bed.', true); return; }
+  edit((d) => { d.objects.push(...copies); }, { sel: [...src.map((o) => o.id), ...copies.map((o) => o.id)] });
+}
+
+// Undo history: what each step was, newest first. undoTo(n) steps back n times.
+export const history = () => undoStack.map((e, i) => ({ i, what: e.what, t: e.t })).reverse();
+export function undoTo(n) { for (let k = 0; k < n; k++) undo(); }
+
+function describe(before, d) {
+  const b = JSON.parse(before);
+  const nb = b.objects.length, na = d.objects.length;
+  if (na > nb) return `Added ${na - nb} object${na - nb > 1 ? 's' : ''}`;
+  if (na < nb) return `Removed ${nb - na} object${nb - na > 1 ? 's' : ''}`;
+  if (JSON.stringify(b.objects) !== JSON.stringify(d.objects)) {
+    const moved = d.objects.filter((o, i) => JSON.stringify(o) !== JSON.stringify(b.objects[i])).length;
+    return `Changed ${moved} object${moved > 1 ? 's' : ''}`;
+  }
+  if (b.name !== d.name) return 'Renamed the bed';
+  return 'Job or layer settings';
+}
+
 // Copies form their own groups: a group id maps to a new one, so a copy never joins the original's group.
 function regroup(objs) {
   const map = {};
@@ -427,7 +548,8 @@ export function fitCanvas() {
 }
 
 // Copies of the selection in a grid: cols x rows, gx / gy mm between the copies' bounds.
-export function arraySel(cols, rows, gx, gy) {
+// stagger: odd rows shifted across by this many mm; alt: every other copy (chequerboard) mirrored left to right.
+export function arraySel(cols, rows, gx, gy, stagger = 0, alt = false) {
   const src = selected();
   if (!src.length || cols * rows < 2) return;
   const b = G.bounds(src);
@@ -436,7 +558,13 @@ export function arraySel(cols, rows, gx, gy) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       if (!r && !c) continue;
-      for (const o of src) copies.push({ ...structuredClone(o), id: newId(), x: G.r2(o.x + c * (b.w + gx)), y: G.r2(o.y + r * (b.h + gy)) });
+      const set = src.map((o) => ({ ...structuredClone(o), id: newId(), locked: undefined,
+        x: G.r2(o.x + c * (b.w + gx) + (r % 2 ? stagger : 0)), y: G.r2(o.y + r * (b.h + gy)) }));
+      if (alt && (r + c) % 2) {
+        const sb = G.bounds(set);
+        G.mirror(set, 'x', sb.x0 + sb.w / 2, sb.y0 + sb.h / 2);
+      }
+      copies.push(...regroup(set));
     }
   }
   if (copies.length + state.doc.objects.length > 64) { toast('At most 64 objects on the bed.', true); return; }

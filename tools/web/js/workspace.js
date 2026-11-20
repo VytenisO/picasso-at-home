@@ -25,6 +25,7 @@ export function initWorkspace() {
     title: `Reference point: ${ANCHOR_NAMES[i]}`, 'aria-label': ANCHOR_NAMES[i], onclick: () => setAnchor(a) })));
   for (const b of $('xfBox').querySelectorAll('[data-act]')) b.onclick = () => act(b.dataset.act);
   $('undoBtn').onclick = D.undo;
+  initHistory();
   $('redoBtn').onclick = D.redo;
   $('projForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -65,6 +66,24 @@ function renderTitle() {
     : (d.name ? d.name + ': ' : '') + (n === 1 ? D.fileName(d.objects[0]) : `${n} objects`);
   $('undoBtn').disabled = !D.canUndo() || jobActive();
   $('redoBtn').disabled = !D.canRedo() || jobActive();
+  $('histBtn').disabled = !D.canUndo() || jobActive();
+}
+
+// The undo history as a menu: pick a step to go back to just before it.
+function initHistory() {
+  const btn = $('histBtn'), menu = $('histMenu');
+  const show = (open) => {
+    menu.hidden = !open; btn.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const h = D.history();
+    menu.replaceChildren(el('p', { class: 'hint', text: 'Back to just before:' }), ...h.slice(0, 60).map((e, n) =>
+      el('button', { type: 'button', role: 'menuitem', onclick: () => { show(false); D.undoTo(n + 1); } },
+        el('span', { text: e.what }), el('small', { text: fmt(e.t) }))));
+  };
+  btn.onclick = (e) => { e.stopPropagation(); show(menu.hidden); };
+  document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) show(false); });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { show(false); btn.focus(); } });
 }
 
 // ------------------------------------------------------------------ arrange
@@ -105,7 +124,8 @@ function renderArrange() {
   box.querySelector('[data-act=ungroup]').disabled = locked || !sel.some((o) => o.grp);
   $('measureLine').textContent = measure(sel);
   for (const k of ['union', 'subtract', 'intersect']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 2;
-  for (const k of ['distx', 'disty']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
+  for (const k of ['distx', 'disty', 'distcx', 'distcy']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 3;
+  for (const k of ['abutx', 'abuty', 'samew', 'sameh']) box.querySelector(`[data-act=${k}]`).disabled = locked || sel.length < 2;
 }
 
 // Paths and line length of the selection, from the drawings' natural geometry and each object's transform.
@@ -163,6 +183,13 @@ function act(a) {
   else if (a === 'mirx') D.mirrorSel('x');
   else if (a === 'miry') D.mirrorSel('y');
   else if (a === 'distx') D.distribute('x');
+  else if (a === 'distcx') D.distributeCentres('x');
+  else if (a === 'distcy') D.distributeCentres('y');
+  else if (a === 'abutx') D.abut('x');
+  else if (a === 'abuty') D.abut('y');
+  else if (a === 'samew') D.sameSize('w');
+  else if (a === 'sameh') D.sameSize('h');
+  else if (a === 'circle') openCircle();
   else if (a === 'disty') D.distribute('y');
   else if (a === 'anchor') D.toCanvasAnchor(anchor);
   else if (a === 'fit') D.fitCanvas();
@@ -269,6 +296,16 @@ function openOffset() {
   d.showModal();
 }
 
+function openCircle() {
+  const d = $('circleDlg'), f = $('circleForm');
+  d.returnValue = '';
+  d.onclose = () => {
+    if (d.returnValue !== 'ok') return;
+    D.circularSel(Math.round(Math.max(2, Math.min(36, Number(f.n.value) || 6))), Math.max(1, Math.min(200, Number(f.r.value) || 30)), f.turn.checked);
+  };
+  d.showModal();
+}
+
 function openArray() {
   const d = $('arrayDlg'), f = $('arrayForm');
   const b = G.bounds(D.selected());
@@ -286,7 +323,8 @@ function openArray() {
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
     const n = (k, lo, hi) => Math.max(lo, Math.min(hi, Number(f[k].value) || 0));
-    D.arraySel(Math.round(n('cols', 1, 20)), Math.round(n('rows', 1, 20)), n('gx', -100, 200), n('gy', -100, 200));
+    D.arraySel(Math.round(n('cols', 1, 20)), Math.round(n('rows', 1, 20)), n('gx', -100, 200), n('gy', -100, 200),
+      n('stagger', -200, 200), f.alt.checked);
   };
   d.showModal();
 }
