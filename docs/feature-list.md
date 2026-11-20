@@ -240,22 +240,22 @@ niche.
 | Import colour -> pen mapping rules (remembered) | HAVE | | a colour takes the pen it had last time on a layer seen for the first time (`results/web/pen_map.json`) |
 | Non-plotting guide layer | PART | P3 | guide lines; no guide shapes |
 | Passes per layer (repeat strokes) | HAVE | | 1 to 5; each stroke again right away, an open one back over itself |
-| Pressure step per pass | TODO | P3 | brush and felt tips |
+| Pressure step per pass | HAVE |  | Layers, More: Per pass, each extra pass lighter or heavier by this much |
 | Layer mode: line | HAVE | | the only mode today |
 | Layer mode: hatch fill (angle, spacing in mm, crosshatch, back-and-forth or one direction) | HAVE | | Layers, Filled shapes: per fill colour; spacing exact (the job default still scales by darkness) |
 | Layer mode: contour fill (inward offsets, spacing) | HAVE | | `fill.contour_rings`: exact distance transform on a capped grid, then marching squares; stdlib only |
 | Fill grouping: all shapes together / per group / per shape | TODO | P2 | travel and pen lifts |
-| Hatch overscan (start/end outside, clipped) | TODO | P3 | hides blobs at hatch ends |
-| Skip empty gaps in fills without lifting | TODO | P3 | |
-| Angle increment per pass | TODO | P3 | |
+| Hatch overscan (start/end outside, clipped) | HAVE |  | as an inset instead: Filled shapes, Inset stops fill lines short of the edge, so the blob at each end stays inside (drawing past the edge would mark the paper) |
+| Skip empty gaps in fills without lifting | HAVE |  | Filled shapes, Bridge: fill lines whose ends are this close are drawn as one stroke, pen down across |
+| Angle increment per pass | HAVE |  | Filled shapes (hatch): Passes and Turn per pass |
 | Several settings on one geometry (outline + hatch, sub-layers) | HAVE |  | Layers, Filled shapes: Own layer puts a colour's hatch or contour fill on a layer of its own, so the fill and the outline take different pens even in the same colour |
 | Pen-width compensation (offset outlines by half the line width) | HAVE |  | Line tools, Allow for the pen width: closed shapes move inward by half the width (the layer's pen width offered) |
-| Dashed / dotted line mode | TODO | P3 | pen taps at intervals |
-| Dwell at stroke start/end | TODO | P3 | ink flow for dip pens; `--pen-delay` exists in the CLI |
-| Overdraw closed shapes past the start point | TODO | P3 | closes the seam on felt tips |
-| Lead-in/lead-out off the shape | TODO | P3 | |
+| Dashed / dotted line mode | HAVE |  | Layers, More: Dash drawn / Dash gap (a short dash and a long gap make dots) |
+| Dwell at stroke start/end | HAVE |  | Layers, More: Dwell (ms), counted in the time |
+| Overdraw closed shapes past the start point | HAVE |  | Layers, More: Overdraw (mm) |
+| Lead-in/lead-out off the shape | SKIP |  | on paper a lead-in is a stray mark; Overdraw closes seams and Approach takes up backlash instead |
 | Copy/paste layer settings | HAVE |  | Layers: Copy and Paste on each card (pen, speed, pressure, passes), per browser |
-| Per-colour default settings for new layers | TODO | P3 | |
+| Per-colour default settings for new layers | HAVE |  | a colour seen before takes the pen it had (pen memory), and with it that pen's speed and pressure |
 | Speed units shown clearly (mm/s) | HAVE | | limits shown next to fields |
 | Laser-only settings (power min/max, PWM, air, frequency, Z focus) | SKIP | | no equivalent |
 
@@ -269,12 +269,12 @@ niche.
 | Order by layer (pen) | HAVE | | |
 | Reduce travel (nearest neighbour or better) | HAVE | | `pathplan.py`, greedy nearest next with a cell grid; on by default (Job, Path planning). No 2-opt yet |
 | Allow path reversal | HAVE | | open strokes are reversed when their far end is nearer |
-| Best start point on closed paths (prefer corners) | PART | P3 | closed paths start at the vertex nearest the pen; no preference for corners |
+| Best start point on closed paths (prefer corners) | HAVE |  | Job, Path planning: Start closed shapes at a corner; otherwise the vertex nearest the pen |
 | Order by group (finish one object before the next) | HAVE |  | Job, Path planning: Finish each object before the next (within each pen), nearest stroke next inside an object; a group counts as its objects |
 | Order by priority, pin some objects first | HAVE |  | with Finish each object before the next, the Arrange list order is the priority: move an object up to plot it first |
-| Inner shapes first | TODO | P3 | |
+| Inner shapes first | HAVE |  | Job, Path planning: Inner shapes first (by containment, within each pen) |
 | Sweep direction (e.g. top to bottom so the hand never touches wet ink) | HAVE |  | Job, Path planning, Sweep: top to bottom or left to right in 20 mm bands within each pen, nearest stroke next inside a band |
-| Same approach direction (hide backlash) | TODO | P3 | |
+| Same approach direction (hide backlash) | HAVE |  | Job, Path planning: Approach (mm), every stroke start reached from up-left |
 | Ordering panel with before/after travel and time | HAVE | | Run shows pen-up metres and time against the file order |
 | Scrub through the plot with a slider; play at 0.1x to 40x | PART | P3 | slider over the plan order with Play (about 12 s for the whole plan); no speed choice |
 | Travel moves shown in preview | HAVE | | Travel toggle (T) and while scrubbing, dashed |
@@ -304,7 +304,7 @@ niche.
 | Job history (what ran, when, result, duration) | HAVE |  | Run, Recent jobs: the last 100 jobs (results/web/history.jsonl keeps 500) with result, time, duration, strokes done |
 | Job queue | SKIP | | one machine, one operator; repeat N covers batches |
 | Done / pen-swap notifications (browser, sound, ntfy push) | HAVE |  | Run: Notify me (browser notification) and Sound, per browser, at pen changes, paper changes and the end; ntfy push when config/web.json has "ntfy": "<topic URL>" (real jobs only) |
-| Delays before the first stroke and after the last | TODO | P3 | |
+| Delays before the first stroke and after the last | HAVE |  | Job, Path planning: Delay before / Delay after (s) |
 
 ## 12. Machine control
 

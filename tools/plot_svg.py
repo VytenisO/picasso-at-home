@@ -260,6 +260,99 @@ def pause_for_swap(key, a, ctl=None, extra=None):
     return True
 
 
+def extend_closed(s, mm):
+    """A closed stroke drawn on past its start by mm (along its own first segments): closes the seam."""
+    out, left = list(s), mm
+    for a, b in zip(s, s[1:]):
+        d = math.dist(a, b)
+        if d >= left:
+            f = left / d if d else 0
+            out.append((a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f))
+            return out
+        out.append(b)
+        left -= d
+    return out
+
+
+def dash_split(s, on, off):
+    """A stroke as dashes: on mm drawn, off mm skipped, from its start."""
+    out, cur, pos, drawing = [], [s[0]], 0.0, True
+    left = on
+    for a, b in zip(s, s[1:]):
+        d = math.dist(a, b)
+        t = 0.0
+        while d - t > 1e-9:
+            step = min(left, d - t)
+            t += step
+            p = (a[0] + (b[0] - a[0]) * t / d, a[1] + (b[1] - a[1]) * t / d)
+            left -= step
+            if drawing:
+                cur.append(p)
+            if left <= 1e-9:
+                if drawing:
+                    if len(cur) >= 2:
+                        out.append(cur)
+                    cur = []
+                else:
+                    cur = [p]
+                drawing = not drawing
+                left = on if drawing else off
+    if drawing and len(cur) >= 2:
+        out.append(cur)
+    return out
+
+
+def inset_line(s, d):
+    """An open fill line shortened by d mm at both ends (None if nothing is left)."""
+    if d <= 0 or len(s) < 2:
+        return s
+    total = sum(math.dist(a, b) for a, b in zip(s, s[1:]))
+    if total <= 2 * d + 0.05:
+        return None
+
+    def cut_front(pts, dist):
+        for i, (a, b) in enumerate(zip(pts, pts[1:])):
+            seg = math.dist(a, b)
+            if seg >= dist:
+                f = dist / seg if seg else 0
+                return [(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)] + pts[i + 1:]
+            dist -= seg
+        return pts[-1:]
+    return cut_front(cut_front(list(s), d)[::-1], d)[::-1]
+
+
+def point_in(pt, poly):
+    x, y = pt
+    inside = False
+    for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / ((y2 - y1) or 1e-12) + x1:
+            inside = not inside
+    return inside
+
+
+def depth_tiers(strokes, idxs, closed_tol=0.1):
+    """idxs grouped deepest first by how many closed strokes of the same block enclose each one."""
+    if len(idxs) > 2000:
+        return [idxs]
+    closed = [i for i in idxs if len(strokes[i]) > 3 and math.dist(strokes[i][0], strokes[i][-1]) <= closed_tol]
+    boxes = {i: bbox([strokes[i]]) for i in closed}
+    depth = {}
+    for i in idxs:
+        p = strokes[i][0]
+        n = 0
+        for j in closed:
+            if j == i:
+                continue
+            b = boxes[j]
+            if b[0] <= p[0] <= b[2] and b[1] <= p[1] <= b[3] and point_in(p, strokes[j][:-1]):
+                n += 1
+        depth[i] = n
+    tiers = {}
+    for i in idxs:
+        tiers.setdefault(depth[i], []).append(i)
+    return [tiers[k] for k in sorted(tiers, reverse=True)]
+
+
 def same_pen(la, lb):
     """Two layers set to the same pen plot one after the other with no pen change."""
     return bool(la.get("pen")) and la.get("pen") == lb.get("pen")
@@ -905,6 +998,15 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--corner-starts", action="store_true",
+                    help="closed paths start at a corner (a turn of 30 degrees or more) when they have one")
+    ap.add_argument("--inner-first", action="store_true",
+                    help="within each pen, shapes inside other shapes are drawn before them")
+    ap.add_argument("--approach", type=float, default=0.0, metavar="MM",
+                    help="arrive at every stroke start from up-left, this far out: the same last move each time "
+                         "(takes up gear backlash)")
+    ap.add_argument("--start-delay", type=float, default=0.0, metavar="S", help="wait before the first stroke")
+    ap.add_argument("--end-delay", type=float, default=0.0, metavar="S", help="wait after the last stroke")
     ap.add_argument("--keep-motors", action="store_true",
                     help="after a plot that ends normally, leave the motors on: they hold the position (and get warm)")
     ap.add_argument("--by-object", action="store_true",
@@ -1029,9 +1131,16 @@ def main():
                         lines = fillmod.contour_rings(rings, sp, f["rule"])
                     else:
                         zz = fc.get("zigzag", True) is not False
-                        lines = fillmod.hatch_rings(rings, sp, ang, f["rule"], zigzag=zz)
-                        if fc.get("cross"):
-                            lines += fillmod.hatch_rings(rings, sp, ang + 90.0, f["rule"], zigzag=zz)
+                        lines = []
+                        for k in range(int(fc.get("passes") or 1)):     # each pass turned by angle_step
+                            ak = ang + k * float(fc.get("angle_step") or 0)
+                            lines += fillmod.hatch_rings(rings, sp, ak, f["rule"], zigzag=zz)
+                            if fc.get("cross"):
+                                lines += fillmod.hatch_rings(rings, sp, ak + 90.0, f["rule"], zigzag=zz)
+                    if fc.get("inset") and lines:
+                        lines = [ln for ln in (inset_line(ln, float(fc["inset"])) for ln in lines) if ln]
+                    if fc.get("bridge") and lines:
+                        lines = pathplan.join_touching([[tuple(p) for p in ln] for ln in lines], float(fc["bridge"]))
                 elif a.fill:
                     dark = fillmod.darkness(fillmod.color_luminance(f["color"]), f["opacity"])
                     lines = fillmod.fill_shape(rings, a.fill, dark, a.fill_angle, f["rule"])
@@ -1088,10 +1197,24 @@ def main():
             nm = ent.get("name")
             if nm is not None and (not isinstance(nm, str) or len(nm) > 40):
                 sys.exit(f"layer {gi + 1}: name must be short text")
+
+            def rng(k, lo, hi):
+                v = ent.get(k)
+                if v is None:
+                    return None
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or not lo <= v <= hi:
+                    sys.exit(f"layer {gi + 1}: {k} must be {lo:g}..{hi:g}")
+                return float(v)
+            dash = ent.get("dash")
+            if dash is not None and not (isinstance(dash, list) and len(dash) == 2
+                                         and all(isinstance(v, (int, float)) and 0.2 <= v <= 50 for v in dash)):
+                sys.exit(f"layer {gi + 1}: dash must be [on mm, off mm], each 0.2..50")
             lset[gi] = {"enabled": ent.get("enabled", True) is not False,
                         "speed": float(sp_l) if sp_l is not None else None,
                         "pressure": float(pr_l) if pr_l is not None else None, "pen": pen_l,
-                        "passes": passes, "rank": rank, "name": nm}
+                        "passes": passes, "rank": rank, "name": nm,
+                        "pstep": rng("pressure_step", -0.4, 0.4), "dwell": rng("dwell_ms", 0, 3000),
+                        "overdraw": rng("overdraw", 0, 30), "dash": dash}
             for i in groups[gi][1]:
                 if lset[gi]["pressure"] is not None and metas[i].get("pressure") is None:
                     metas[i]["pressure"] = lset[gi]["pressure"]   # layer default; per-stroke data-pressure wins
@@ -1165,8 +1288,9 @@ def main():
                     by.setdefault(math.floor(min(p[ax_] for p in strokes[i]) / 20.0), []).append(i)
                 bands = [by[k] for k in sorted(by)]
             for band in bands:
-                o, cur = pathplan.order_block(strokes, band, cur)
-                order += o
+                for tier in (depth_tiers(strokes, band) if a.inner_first else [band]):
+                    o, cur = pathplan.order_block(strokes, tier, cur, corners=a.corner_starts)
+                    order += o
         file_order = {"travel_mm": t_file, "est_seconds": s_file}
     if any((ls.get("passes") or 1) > 1 for ls in lset):
         # Passes: each stroke is drawn again right away, an open one back over itself (no travel), so the
@@ -1178,11 +1302,37 @@ def main():
                 s = strokes[i]
                 closed = len(s) > 2 and math.dist(s[0], s[-1]) < 0.1
                 strokes.append(list(s) if closed or k % 2 == 0 else s[::-1])
-                metas.append(dict(metas[i]))
+                m = dict(metas[i])
+                step = lset[stroke_group[i]].get("pstep")
+                if step:          # each pass a little lighter (or heavier), never past the limits
+                    m["pressure"] = min(MAX_PRESSURE, max(0.0, (m.get("pressure") or 0.0) + k * step))
+                metas.append(m)
                 stroke_group[len(strokes) - 1] = stroke_group[i]
                 speed_of.append(speed_of[i])
                 expanded.append(len(strokes) - 1)
         order = expanded
+    if any(ls.get("overdraw") or ls.get("dash") for ls in lset):
+        new_order = []
+        for i in order:
+            ls = lset[stroke_group[i]]
+            s = strokes[i]
+            if ls.get("overdraw") and len(s) > 3 and math.dist(s[0], s[-1]) < 0.1:
+                strokes[i] = s = extend_closed(s, ls["overdraw"])
+            if ls.get("dash") and len(s) >= 2:
+                pieces = dash_split(s, *ls["dash"])
+                if not pieces:
+                    continue
+                strokes[i] = pieces[0]
+                new_order.append(i)
+                for pc in pieces[1:]:
+                    strokes.append(pc)
+                    metas.append(dict(metas[i]))
+                    stroke_group[len(strokes) - 1] = stroke_group[i]
+                    speed_of.append(speed_of[i])
+                    new_order.append(len(strokes) - 1)
+            else:
+                new_order.append(i)
+        order = new_order
     total_in_order = len(order)
     full_order = list(order)
     # Pen changes: between consecutive enabled layers in plot order, unless both name the same pen.
@@ -1203,6 +1353,9 @@ def main():
         per_full = []
         secs_full = estimate([[(x + ox, y + oy) for x, y in strokes[i]] for i in full_order], spmm, a.speed,
                              a.travel_speed, pen_s, speeds=[speed_of[i] for i in full_order], per_stroke=per_full)[3]
+    extra = sum(2 * (lset[stroke_group[i]].get("dwell") or 0) / 1000 for i in order) + a.start_delay + a.end_delay
+    secs += extra
+    secs_full += extra
     secs_all = secs + (a.copies - 1) * secs_full       # each copy ends with the trip back to S
     if file_order:
         log(f"Path planning  : pen-up travel {file_order['travel_mm'] / 1000:.2f} m -> {dt / 1000:.2f} m, "
@@ -1343,11 +1496,21 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 s = strokes[i]
                 gi = stroke_group[i]
                 pts_s = [to_steps((x + ox, y + oy), spmm) for x, y in s]
+                if a.approach > 0:          # always the same last move into the start: backlash taken up
+                    p.move_to(*to_steps((s[0][0] + ox - a.approach, s[0][1] + oy - a.approach), spmm), a.travel_speed)
                 p.move_to(*pts_s[0], a.travel_speed)
                 p.set_pressure(metas[i].get("pressure"))
+                if drawn == 0 and a.start_delay > 0:
+                    p.idle()
+                    p.sleep(a.start_delay)
                 p.pen(False, a.pen_delay)
+                dwell = (lset[gi].get("dwell") or 0) / 1000
+                if dwell:
+                    p.idle(); p.sleep(dwell)
                 for tx, ty in pts_s[1:]:
                     p.move_to(tx, ty, speed_of[i])
+                if dwell:
+                    p.idle(); p.sleep(dwell)
                 p.pen(True, a.pen_delay)
                 est_done += per_stroke[drawn] if drawn < len(per_stroke) else per_full[(drawn - len(order)) % len(per_full)]
                 drawn += 1
@@ -1401,6 +1564,9 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
             if returned:
                 log("Return requested: pen up, travelling back to the start point S.")
                 status = "stopped, returned to start"
+            if a.end_delay > 0 and not returned:
+                p.idle()
+                p.sleep(a.end_delay)
             if returned or a.finish == "start":
                 p.move_to(0, 0, a.travel_speed)
             elif a.finish == "clear":

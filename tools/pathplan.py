@@ -12,15 +12,31 @@ def is_closed(s, tol):
     return len(s) > 3 and math.dist(s[0], s[-1]) <= tol
 
 
-def order_block(strokes, idxs, cur, cell=4.0, closed_tol=0.1):
+def corner_vertices(s, min_turn=30.0):
+    """Vertices of a closed stroke where it turns by min_turn degrees or more."""
+    ring = s[:-1]
+    n = len(ring)
+    out = []
+    for k in range(n):
+        a, b, c = ring[k - 1], ring[k], ring[(k + 1) % n]
+        a1, a2 = math.atan2(b[1] - a[1], b[0] - a[0]), math.atan2(c[1] - b[1], c[0] - b[0])
+        turn = abs((math.degrees(a2 - a1) + 180) % 360 - 180)
+        if turn >= min_turn:
+            out.append(k)
+    return out
+
+
+def order_block(strokes, idxs, cur, cell=4.0, closed_tol=0.1, corners=False):
     """Order the strokes idxs from position cur. Strokes are changed in place (reversed or turned to start at a
-    vertex). -> (order, position after the last stroke)."""
+    vertex; with corners, a corner vertex when the path has one). -> (order, position after the last stroke)."""
     if not idxs:
         return [], cur
     grid = {}
     for i in idxs:
         s = strokes[i]
         ks = range(len(s) - 1) if is_closed(s, closed_tol) else ((0, len(s) - 1) if len(s) > 1 else (0,))
+        if corners and is_closed(s, closed_tol):
+            ks = corner_vertices(s) or ks
         for k in ks:
             x, y = s[k]
             grid.setdefault((math.floor(x / cell), math.floor(y / cell)), []).append((x, y, i, k))

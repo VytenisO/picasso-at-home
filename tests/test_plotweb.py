@@ -838,6 +838,27 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/shapes", {"op": "trim", "objects": [x], "x": 150, "y": 150})
         self.assertEqual(code, 400)
 
+    def test_04p_pen_behaviours_and_job_options(self):
+        raw = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="40mm" viewBox="0 0 40 40">'
+               b'<rect x="0" y="0" width="40" height="40" stroke="#000" fill="none"/>'
+               b'<rect x="10" y="10" width="20" height="20" stroke="#000" fill="#000"/></svg>')
+        code, d = self.call("POST", "/api/files/upload", raw=raw, headers={"X-Filename": "nest.svg", "X-Params": "{}"})
+        objs = [self.obj(d["file"]["id"], 100, 40, 40, 40)]
+        base = self.doc_preview(objs)
+        key = base["file_layers"][0]["key"]
+        fkey = base["summary"]["fill_inks"][0]["key"]
+        pv = self.doc_preview(objs, {
+            "layers": [{"key": key, "dash": [2, 1], "dwell_ms": 200, "overdraw": 3, "passes": 2, "pressure_step": 0.1}],
+            "fills": [{"key": fkey, "mode": "hatch", "spacing": 2, "passes": 2, "angle_step": 90, "inset": 0.3, "bridge": 0.5}],
+            "corner_starts": True, "inner_first": True, "approach": 1, "start_delay": 2, "end_delay": 1})
+        self.assertTrue(pv["ok"], pv["problems"])
+        self.assertGreater(pv["summary"]["strokes"], base["summary"]["strokes"] * 10)     # dashes
+        self.assertGreater(pv["summary"]["est_seconds"], base["summary"]["est_seconds"] + 3)
+        for bad in ({"layers": [{"key": key, "dash": [2]}]}, {"layers": [{"key": key, "dwell_ms": 9000}]},
+                    {"approach": 50}, {"fills": [{"key": fkey, "mode": "hatch", "passes": 9}]}):
+            code, r = self.call("POST", "/api/preview", {"doc": {"objects": objs, "settings": bad}})
+            self.assertEqual(code, 400, bad)
+
     def test_05_empty_bed_and_bad_objects(self):
         code, d = self.call("POST", "/api/preview", {"doc": {"objects": [], "settings": {}}})
         self.assertEqual(code, 400)

@@ -553,6 +553,9 @@ function fillJobForm() {
   f.by_object.checked = !!st.by_object;
   f.keep_motors.checked = !!st.keep_motors;
   set_('simplify', st.simplify ?? 0.05);
+  f.corner_starts.checked = !!st.corner_starts;
+  f.inner_first.checked = !!st.inner_first;
+  set_('approach', st.approach || 0); set_('start_delay', st.start_delay || 0); set_('end_delay', st.end_delay || 0);
   f.paper_custom.checked = !!st.paper;
   set_('paper_w', st.paper ? st.paper.width : pw);
   set_('paper_h', st.paper ? st.paper.height : ph);
@@ -571,6 +574,13 @@ function fromJobForm(e) {
   const simp = num('simplify');
   if (simp === null || !(simp >= 0 && simp <= 2)) { toast('Simplify: 0 to 2 mm.', true); f.simplify.value = st.simplify ?? 0.05; return; }
   patch.simplify = Math.abs(simp - 0.05) < 1e-9 ? null : simp;
+  patch.corner_starts = f.corner_starts.checked || null;
+  patch.inner_first = f.inner_first.checked || null;
+  for (const [k, hi, label] of [['approach', 10, 'Approach'], ['start_delay', 60, 'Delay before'], ['end_delay', 60, 'Delay after']]) {
+    const v = num(k) || 0;
+    if (!(v >= 0 && v <= hi)) { toast(`${label}: 0 to ${hi}.`, true); f[k].value = st[k] || 0; return; }
+    patch[k] = v || null;
+  }
   const st = state.doc.settings;
   const cp = num('copies');
   if (!Number.isInteger(cp) || cp < 1 || cp > 50) {
@@ -698,10 +708,47 @@ function renderLayers() {
         el('button', { type: 'button', class: 'link', text: 'Copy', title: 'Copy pen, speed, pressure and passes', disabled: locked,
           onclick: () => { prefs('layerClip', { pen: s.pen || null, speed: s.speed ?? null, pressure: s.pressure ?? null, passes: s.passes || 1 }); toast('Layer settings copied.'); renderLayers(); } }),
         el('button', { type: 'button', class: 'link', text: 'Paste', title: 'Paste the copied pen, speed, pressure and passes', disabled: locked || !prefs('layerClip'),
-          onclick: () => { const c = prefs('layerClip'); if (c) upd(fl.key, { pen: c.pen && pens[c.pen] ? c.pen : null, speed: c.speed, pressure: c.pressure, passes: c.passes }); } })));
+          onclick: () => { const c = prefs('layerClip'); if (c) upd(fl.key, { pen: c.pen && pens[c.pen] ? c.pen : null, speed: c.speed, pressure: c.pressure, passes: c.passes }); } })),
+      layerMore(fl, s, locked, upd));
   }));
   list.append(el('button', { type: 'button', id: 'legendBtn', text: 'Add a pen legend', disabled: locked,
     title: 'Single-line text listing each layer and its pen, placed at the bottom-left of the canvas', onclick: () => addLegend(rows) }));
+}
+
+// The less common pen behaviours of a layer, folded away: dashes, dwell, overdraw past the seam, pressure per pass.
+function layerMore(fl, s, locked, upd) {
+  const open = !!(s.dash || s.dwell_ms || s.overdraw || s.pressure_step);
+  const f = (k, label, min, max, step, title, get = (v) => v, put = (v) => v) => {
+    const i = el('input', { type: 'number', min, max, step, disabled: locked, placeholder: 'off', title, 'aria-label': `${label}, layer ${fl.name}` });
+    const cur = get(s[k]);
+    i.value = cur ?? '';
+    i.onchange = () => {
+      if (i.value === '') { upd(fl.key, { [k]: null }); return; }
+      const v = Number(i.value);
+      if (!(v >= min && v <= max)) { toast(`${label}: ${min} to ${max}.`, true); i.value = cur ?? ''; return; }
+      upd(fl.key, { [k]: put(v) });
+    };
+    return el('label', { class: 'field', title }, el('span', { text: label }), i);
+  };
+  const dashOn = el('input', { type: 'number', min: 0.2, max: 50, step: 0.1, placeholder: 'off', disabled: locked, 'aria-label': 'Dash drawn (mm)' });
+  const dashOff = el('input', { type: 'number', min: 0.2, max: 50, step: 0.1, placeholder: 'off', disabled: locked, 'aria-label': 'Dash gap (mm)' });
+  if (s.dash) { dashOn.value = s.dash[0]; dashOff.value = s.dash[1]; }
+  const setDash = () => {
+    if (dashOn.value === '' || dashOff.value === '') { if (dashOn.value === '' && dashOff.value === '') upd(fl.key, { dash: null }); return; }
+    const a = Number(dashOn.value), b = Number(dashOff.value);
+    if (!(a >= 0.2 && a <= 50 && b >= 0.2 && b <= 50)) { toast('Dashes: 0.2 to 50 mm each.', true); return; }
+    upd(fl.key, { dash: [a, b] });
+  };
+  dashOn.onchange = dashOff.onchange = setDash;
+  return el('details', { class: 'layer-more', open },
+    el('summary', { text: 'More: dashes, dwell, overdraw, pressure per pass' }),
+    el('div', { class: 'field-row' },
+      el('label', { class: 'field', title: 'Draw this long, then skip this long (pen taps)' }, el('span', { text: 'Dash drawn' }), dashOn),
+      el('label', { class: 'field' }, el('span', { text: 'Dash gap (mm)' }), dashOff)),
+    el('div', { class: 'field-row' },
+      f('dwell_ms', 'Dwell (ms)', 0, 3000, 50, 'Wait with the pen down at each stroke start and end: ink flow for dip pens and brushes'),
+      f('overdraw', 'Overdraw (mm)', 0, 30, 0.5, 'Closed shapes go on past their start by this much: closes the seam on felt tips'),
+      f('pressure_step', 'Per pass', -0.4, 0.4, 0.05, 'With several passes: each pass this much lighter (positive) or heavier (negative)')));
 }
 
 // A legend: one line per enabled layer in plot order, as single-line text at the bottom-left of the canvas.
@@ -773,6 +820,9 @@ function renderFills() {
       const row = [n('spacing', 'Spacing (mm)', 0.2, 50, 0.1, 1)];
       if (f.mode === 'hatch') row.push(n('angle', 'Angle (deg)', 0, 180, 5, 45));
       parts.push(el('div', { class: 'field-row' }, ...row));
+      const row2 = [n('inset', 'Inset (mm)', 0, 5, 0.1, 0), n('bridge', 'Bridge (mm)', 0, 5, 0.1, 0)];
+      if (f.mode === 'hatch') row2.unshift(n('passes', 'Passes', 1, 5, 1, 1), n('angle_step', 'Turn per pass', 0, 180, 5, 0));
+      parts.push(el('div', { class: 'field-row', title: 'Inset: fill lines stop short of the edge (blobs at their ends stay inside). Bridge: fill lines whose ends are this close are drawn as one, pen down across. Passes: the hatch again, turned each time.' }, ...row2));
       const chk = (k, label, title, dv) => {
         const c = el('input', { type: 'checkbox', disabled: locked });
         c.checked = f[k] === undefined ? dv : !!f[k];

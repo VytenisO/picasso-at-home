@@ -75,6 +75,11 @@ def validate(raw, bed, pens, layer_keys):
     out["by_object"] = raw.get("by_object") is True
     out["keep_motors"] = raw.get("keep_motors") is True
     out["simplify"] = _num(raw, "simplify", 0, 2, 0.05, False, "Simplify")
+    out["corner_starts"] = raw.get("corner_starts") is True
+    out["inner_first"] = raw.get("inner_first") is True
+    out["approach"] = _num(raw, "approach", 0, 10, 0, False, "Approach")
+    out["start_delay"] = _num(raw, "start_delay", 0, 60, 0, False, "Delay before the first stroke")
+    out["end_delay"] = _num(raw, "end_delay", 0, 60, 0, False, "Delay after the last stroke")
     paper = raw.get("paper")
     if paper:
         px0, py0 = bed["paper"][0], bed["paper"][1]
@@ -106,11 +111,19 @@ def validate(raw, bed, pens, layer_keys):
         rank = ent.get("rank")
         if rank is not None and (not isinstance(rank, (int, float)) or isinstance(rank, bool) or not math.isfinite(rank)):
             raise SettingsError(f"layer {i + 1}: rank must be a number")
+        extra = {"pressure_step": _num(ent, "pressure_step", -0.4, 0.4, label=f"Layer {i + 1} pressure step"),
+                 "dwell_ms": _num(ent, "dwell_ms", 0, 3000, label=f"Layer {i + 1} dwell"),
+                 "overdraw": _num(ent, "overdraw", 0, 30, label=f"Layer {i + 1} overdraw")}
+        dash = ent.get("dash")
+        if dash not in (None, "", []):
+            if not (isinstance(dash, list) and len(dash) == 2 and all(isinstance(v, (int, float)) and 0.2 <= v <= 50 for v in dash)):
+                raise SettingsError(f"layer {i + 1}: dashes are two lengths (drawn, gap), each 0.2 to 50 mm")
+            extra["dash"] = [float(v) for v in dash]
         by_key[ent["key"]] = {
             "key": ent["key"], "enabled": ent.get("enabled", True) is not False, "pen": pen,
             "speed": _num(ent, "speed", sp["min"], sp["max"], label=f"Layer {i + 1} speed"),
             "pressure": _num(ent, "pressure", pr["min"], pr["max"], label=f"Layer {i + 1} pressure"),
-            "passes": passes, "name": name, "rank": rank,
+            "passes": passes, "name": name, "rank": rank, **{k: v for k, v in extra.items() if v is not None},
         }
     # A layer with a pen and no speed or pressure of its own follows the pen profile, so retuning the pen
     # updates every job that uses it.
@@ -151,6 +164,10 @@ def validate_fills(raw):
             e["cross"] = f.get("cross") is True
             e["zigzag"] = f.get("zigzag", True) is not False
             e["own_layer"] = f.get("own_layer") is True
+            e["passes"] = int(_num(f, "passes", 1, 5, 1, False, f"Fill {i + 1} passes"))
+            e["angle_step"] = _num(f, "angle_step", 0, 180, 0, False, f"Fill {i + 1} angle step")
+            e["inset"] = _num(f, "inset", 0, 5, 0, False, f"Fill {i + 1} inset")
+            e["bridge"] = _num(f, "bridge", 0, 5, 0, False, f"Fill {i + 1} bridge")
         out[f["key"]] = e
     return [out[k] for k in sorted(out)]
 
@@ -216,6 +233,13 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv.append("--by-object")
     if v.get("simplify") is not None and abs(v["simplify"] - 0.05) > 1e-9:
         argv += ["--simplify", f"{v['simplify']:g}"]
+    if v.get("corner_starts"):
+        argv.append("--corner-starts")
+    if v.get("inner_first"):
+        argv.append("--inner-first")
+    for k, flag in (("approach", "--approach"), ("start_delay", "--start-delay"), ("end_delay", "--end-delay")):
+        if v.get(k):
+            argv += [flag, f"{v[k]:g}"]
     if v.get("keep_motors") and mode == "plot":
         argv.append("--keep-motors")
     if v.get("fill"):
