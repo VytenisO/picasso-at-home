@@ -23,8 +23,10 @@ class SettingsError(ValueError):
 
 
 def _num(raw, key, lo, hi, default=None, allow_none=True, label=None):
-    v = raw.get(key, default)
+    v = raw.get(key)
     if v is None or v == "":
+        v = default                  # empty means the default; only without one is it missing
+    if v is None:
         if allow_none:
             return None
         raise SettingsError(f"{label or key} is required")
@@ -76,6 +78,11 @@ def validate(raw, bed, pens, layer_keys):
     out["keep_motors"] = raw.get("keep_motors") is True
     out["simplify"] = _num(raw, "simplify", 0, 2, 0.05, False, "Simplify")
     out["corner_starts"] = raw.get("corner_starts") is True
+    ts = raw.get("trace_shape") or "box"
+    if ts not in ("box", "hull", "objects"):
+        raise SettingsError("trace_shape must be box, hull or objects")
+    out["trace_shape"] = ts
+    out["trace_repeat"] = raw.get("trace_repeat") is True
     out["inner_first"] = raw.get("inner_first") is True
     out["approach"] = _num(raw, "approach", 0, 10, 0, False, "Approach")
     out["start_delay"] = _num(raw, "start_delay", 0, 60, 0, False, "Delay before the first stroke")
@@ -235,6 +242,10 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--simplify", f"{v['simplify']:g}"]
     if v.get("corner_starts"):
         argv.append("--corner-starts")
+    if mode == "trace" and v.get("trace_shape", "box") != "box":
+        argv += ["--trace-shape", v["trace_shape"]]
+    if mode == "trace" and v.get("trace_repeat"):
+        argv.append("--trace-repeat")
     if v.get("inner_first"):
         argv.append("--inner-first")
     for k, flag in (("approach", "--approach"), ("start_delay", "--start-delay"), ("end_delay", "--end-delay")):

@@ -392,7 +392,7 @@ class TestApi(SimServer):
         st = self.wait_state(("complete", "stopped"))
         self.assertEqual(st["job"]["kind"], "pentest")
 
-    def test_12_trace_refuses_pause_and_return(self):
+    def test_12_trace_refuses_pause_return_ends_it(self):
         fid = self.upload("many_strokes.svg")
         d = self.preview(fid)
         code, r = self.call("POST", "/api/job/start", {"id": fid, "settings": d["settings"], "plan_id": d["plan_id"],
@@ -402,8 +402,8 @@ class TestApi(SimServer):
         code, r2 = self.call("POST", "/api/job/pause", {"job": r["job"]})
         self.assertEqual(code, 409)
         code, r2 = self.call("POST", "/api/job/return", {"job": r["job"]})
-        self.assertEqual(code, 409)
-        st = self.wait_state(("complete",))
+        self.assertIn(code, (200, 409))          # accepted while it runs (it ends a repeating trace), refused once done
+        st = self.wait_state(("complete", "stopped"))
         self.assertEqual(st["position"]["state"], "at_start")
 
     def test_13_plan_inputs_are_staged(self):
@@ -498,6 +498,8 @@ class TestDocument(SimServer):
         self.assertTrue(pv["doc"])
         st = self.wait_state(("complete",), timeout=120)
         self.assertEqual(st["job"]["meta"]["name"], "many_strokes.svg x2")
+        code, r = self.call("POST", "/api/job/speed", {"job": st["job"]["id"], "factor": 0.5})
+        self.assertEqual(code, 409)                                  # the job has ended
         code, h = self.call("GET", "/api/history")
         self.assertEqual(h["jobs"][0]["name"], "many_strokes.svg x2")
         self.assertEqual(h["jobs"][0]["state"], "complete")

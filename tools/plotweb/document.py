@@ -252,7 +252,7 @@ class DocStore:
         keep = {k: st.get(k) for k in ("speed", "travel_speed", "fill", "fill_angle", "paper", "layers", "optimize",
                                        "dedupe", "fills", "guides", "only", "copies", "finish", "sweep", "by_object",
                                        "keep_motors", "simplify", "corner_starts", "inner_first", "approach",
-                                       "start_delay", "end_delay")}
+                                       "start_delay", "end_delay", "trace_shape", "trace_repeat")}
         with self.lock:
             d = self._read()
             d["objects"] = objs

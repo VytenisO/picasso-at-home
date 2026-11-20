@@ -78,6 +78,11 @@ export function initMachine() {
   $('mcHome').onclick = () => send('home');
   $('mcPenUp').onclick = () => send('pen', { pen: 'up' });
   $('mcPenDown').onclick = () => send('pen', { pen: 'down' });
+  $('mcTouch').onclick = () => {
+    const p = Number($('mcTouchP').value);
+    if (!(p >= 0 && p <= 0.9)) { toast('Pressure: 0 (heaviest) to 0.9.', true); return; }
+    send('touch', { pressure: p, ms: 800 });
+  };
   $('mcGoForm').onsubmit = (e) => {
     e.preventDefault();
     const x = Number($('mcGoX').value), y = Number($('mcGoY').value);

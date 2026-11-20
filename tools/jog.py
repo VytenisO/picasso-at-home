@@ -168,6 +168,15 @@ def main():
                 go(x, y)
                 p.pen(True)
                 emit("pen", pen="up")
+            elif word == "TOUCH" and (v := nums(args, 2)) and 0 <= v[0] <= ps.MAX_PRESSURE and 100 <= v[1] <= 3000:
+                # a short pen-down at a pressure, then up: how hard a layer's setting presses, without drawing
+                p.set_pressure(v[0])
+                p.pen(False)
+                p.idle()
+                p.sleep(v[1] / 1000)
+                p.pen(True)
+                p.set_pressure(0.0)
+                emit("pen", pen="up")
             elif word == "SPEED" and (v := nums(args, 1)) and 1 <= v[0] <= ps.MAX_TRAVEL_SPEED:
                 speed = v[0]
                 emit("speed", speed=speed)

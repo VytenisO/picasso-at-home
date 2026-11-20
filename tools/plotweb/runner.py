@@ -195,6 +195,27 @@ class JobRunner:
         self._emit_state()
         return True, ""
 
+    def set_speed(self, job_id, factor):
+        """Drawing speed times factor (0.25..1.5) from the next move on, for a running plot."""
+        try:
+            f = float(factor)
+        except (TypeError, ValueError):
+            return False, "The speed must be a number."
+        if not 0.25 <= f <= 1.5:
+            return False, "The speed can be set from 25% to 150% (still never above the 40 mm/s limit)."
+        with self.lock:
+            err = self._check(job_id)
+            if err:
+                return False, err
+            if self.job["kind"] != "plot" or self.job["mode"] == "trace" or self.job["state"] not in ("running", "pausing", "paused"):
+                return False, "The speed can be changed while a plot is running."
+            if not self._write(f"SPEED {f:g}\n"):
+                return False, "The job process is not accepting commands."
+            self.job["speed_factor"] = f
+        self._log("info", f"Drawing speed set to {round(f * 100)}% from the next move.")
+        self._emit_state()
+        return True, ""
+
     def resume(self, job_id, pause_id):
         with self.lock:
             err = self._check(job_id)
@@ -220,9 +241,8 @@ class JobRunner:
             err = self._check(job_id)
             if err:
                 return False, err
-            if (self.job["kind"] != "plot" or self.job["mode"] == "trace"
-                    or self.job["state"] not in ("running", "pausing", "paused")):
-                return False, "Return is only possible while a plot is running or paused (a trace returns by itself)."
+            if (self.job["kind"] != "plot" or self.job["state"] not in ("running", "pausing", "paused")):
+                return False, "Return is only possible while a plot or trace is running or paused."
             if not self._write("RETURN\n"):
                 return False, "The job process is not accepting commands."
             self.job.update(state="returning",
@@ -487,6 +507,8 @@ class JobRunner:
                     word = "PEN " + args["pen"].upper()
                 elif cmd == "tick":
                     word = f"TICK {num('dx', -20, 20):.3f} {num('dy', -20, 20):.3f}"
+                elif cmd == "touch":
+                    word = f"TOUCH {num('pressure', 0, 0.9):g} {num('ms', 100, 3000):g}"
                 elif cmd == "speed":
                     word = f"SPEED {num('speed', 1, 200):g}"
                 elif cmd == "sets":

@@ -15,6 +15,21 @@ const DOT = { running: 'busy', starting: 'busy', returning: 'busy', pausing: 'wa
 
 export function initRun() {
   $('previewBtn').onclick = previewNow;
+  $('checklistText').value = prefs('checklist') || '';
+  $('checklistText').onchange = () => prefs('checklist', $('checklistText').value.slice(0, 2000));
+  $('speedRange').oninput = () => { $('speedPct').textContent = `${$('speedRange').value}%`; };
+  $('speedRange').onchange = async () => {
+    try { await post('/api/job/speed', { job: state.job.id, factor: Number($('speedRange').value) / 100 }); } catch (e) { toast(e.message, true); }
+  };
+  on('job', () => {
+    const j = state.job;
+    const show = !!(j && j.kind === 'plot' && j.mode !== 'trace' && ['running', 'pausing', 'paused'].includes(j.state));
+    $('speedLive').hidden = !show;
+    if (show && document.activeElement !== $('speedRange')) {
+      const v = Math.round((j.speed_factor || 1) * 100);
+      $('speedRange').value = v; $('speedPct').textContent = `${v}%`;
+    }
+  });
   initNotify();
   $('histBox').addEventListener('toggle', loadHistory);
   on('job', () => { const j = state.job; if (j && !jobActive() && $('histBox').open) loadHistory(); });
@@ -339,7 +354,7 @@ async function start(mode) {
   try {
     const d = state.doc;
     const r = await post('/api/job/start', { doc: { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: state.startAt || 0 } },
-      plan_id: pv.plan_id, mode, confirm: mode === 'simulate' ? undefined : { parked: true } });
+      plan_id: pv.plan_id, mode, confirm: mode === 'simulate' ? undefined : { parked: true }, sim_speed: prefs('simSpeed') || undefined });
     toast(mode === 'simulate' ? 'Simulation started: nothing moves.' : 'Started.');
     return r;
   } catch (e) {
@@ -367,6 +382,7 @@ function confirmStart(mode, pv) {
       `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${(s.start_mm || m.start)[0]}, ${(s.start_mm || m.start)[1]}) mm. It was slid there with the motors off.`,
       mode === 'plot' ? `The pen is up and the first pen is in${first && first.pen ? `: ${first.pen}` : ''}.` : 'The pen is up.',
       'The paper is taped down, nothing is in the carriage\'s way, and the power switch is within reach.',
+      ...String(prefs('checklist') || '').split('\n').map((x) => x.trim()).filter(Boolean),
     ];
     return confirmDialog(title, rows, checks, mode === 'trace' ? 'Start trace' : 'Start plot').then(resolve);
   });

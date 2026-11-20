@@ -352,7 +352,9 @@ function play() {
   if (!pv || !pv.order) return;
   const n = pv.order.length;
   let acc = state.scrub === null || state.scrub >= n ? 0 : state.scrub;
-  const step = Math.max(n / (12 * 60), 0.25);           // the whole plan in about 12 s, at least 15 strokes/s
+  // the whole plan in about 12 s (at least 15 strokes/s), or a multiple of the estimated real plotting time
+  const sp = $('playSpeed').value, est = (pv.summary && pv.summary.est_seconds) || 0;
+  const step = sp === 'fit' || !est ? Math.max(n / (12 * 60), 0.25) : n / est * Number(sp) / 60;
   $('playBtn').textContent = 'Pause';
   const tick = () => {
     acc += step;

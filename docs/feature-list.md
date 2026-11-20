@@ -276,9 +276,9 @@ niche.
 | Sweep direction (e.g. top to bottom so the hand never touches wet ink) | HAVE |  | Job, Path planning, Sweep: top to bottom or left to right in 20 mm bands within each pen, nearest stroke next inside a band |
 | Same approach direction (hide backlash) | HAVE |  | Job, Path planning: Approach (mm), every stroke start reached from up-left |
 | Ordering panel with before/after travel and time | HAVE | | Run shows pen-up metres and time against the file order |
-| Scrub through the plot with a slider; play at 0.1x to 40x | PART | P3 | slider over the plan order with Play (about 12 s for the whole plan); no speed choice |
+| Scrub through the plot with a slider; play at 0.1x to 40x | HAVE |  | slider over the plan order; Play with a speed: the whole plan in 12 s, or 0.1x to 40x the estimated plotting time |
 | Travel moves shown in preview | HAVE | | Travel toggle (T) and while scrubbing, dashed |
-| Pressure shown as line shade | TODO | P3 | |
+| Pressure shown as line shade | HAVE |  | strokes at a lighter pen pressure are drawn lighter on the bed and in Prepare |
 | Legend by pen | HAVE |  | Layers: Add a pen legend, single-line text of each enabled layer with its pen and speed, at the canvas's bottom-left |
 | Estimates calibrated against real runs (time scale factor) | HAVE |  | the median of real over estimated time of the last 10 finished real plots (3 or more) shows next to the estimate when it is more than 5% off |
 
@@ -288,10 +288,10 @@ niche.
 |---|---|---|---|
 | Simulate (watchable, pausable) | HAVE | | |
 | Trace frame (pen-up bounding box, back to S) | HAVE | | |
-| Frame as convex hull or per object | TODO | P3 | |
-| Repeat frame until stopped | TODO | P3 | while lining up paper |
+| Frame as convex hull or per object | HAVE |  | Job, Trace frame: the drawing's box, its convex outline, or each object's box |
+| Repeat frame until stopped | HAVE |  | Job: Trace again and again until Return to start (up to 50 rounds), then back to S |
 | Start plot with three-item checklist | HAVE | | |
-| Editable checklist items | TODO | P3 | |
+| Editable checklist items | HAVE |  | Run, Start checklist: your own items, each must be ticked in the start dialog (per browser) |
 | Pause at stroke end, continue, return to start, stop | HAVE | | |
 | Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
@@ -299,7 +299,7 @@ niche.
 | Start from stroke N (resume an interrupted or stopped job) | HAVE | | Start here on the scrubber; after a stopped plot of the same bed, Run offers Resume there (the stroke cut short is drawn whole) |
 | Plot only selected objects or layers | HAVE | | layers via enable; Run: Plot only the selection (the rest fade on the bed, Plot all objects returns) |
 | Repeat job N times with a paper-change hold between | HAVE |  | Job, Copies (1-50): back at S after each copy, a paper-change pause, the pen swapped back when it differs; the time shows all copies; a resume point applies to the first copy only |
-| Live speed override during a run | TODO | P3 | applies from the next chunk |
+| Live speed override during a run | HAVE |  | Run: a Speed slider (25-150%) while a plot runs, from the next move, never above 40 mm/s |
 | Finish position: S, a named spot, or stay | HAVE |  | Job, When done: back to S, clear of the paper (the bed's right edge, level with S), or stay at the last stroke; no named spots yet |
 | Job history (what ran, when, result, duration) | HAVE |  | Run, Recent jobs: the last 100 jobs (results/web/history.jsonl keeps 500) with result, time, duration, strokes done |
 | Job queue | SKIP | | one machine, one operator; repeat N covers batches |
@@ -320,7 +320,7 @@ niche.
 | Click on the bed to move there (arms for a few seconds) | HAVE | | Click to go arms one click (no timeout) |
 | Move to selection anchor (check placement) | HAVE |  | Machine control: To the selection moves pen up to the selection's reference point (Arrange's 9-point anchor) |
 | Pen up / pen down buttons | HAVE | | in machine control |
-| Short "pen touch" at layer pressure | TODO | P3 | time-limited |
+| Short "pen touch" at layer pressure | HAVE |  | Machine control: Touch, pen down for under a second at a pressure, then up |
 | Motors off (release to park by hand) | HAVE | | Finish here / Finish at S switch the motors off; Stop too |
 | Set start here / re-zero here | HAVE | | Set S here: the carriage becomes S (pen over the paper corner) |
 | Saved positions (pen-swap spot, parking, paper corner) | TODO | P3 | |
@@ -351,7 +351,7 @@ niche.
 | Squareness and backlash test patterns | TODO | P3 | |
 | Lost-steps test in the UI | TODO | P3 | `lost_steps_test.py` CLI only |
 | Speed and acceleration limits shown and editable within ceilings | PART | P2 | shown; editable only in files |
-| Simulator time scale and estimate tuning | PART | P3 | `--sim-speed` flag only |
+| Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
 | Lifetime stats (jobs, pen-down metres; pen wear) | TODO | P3 | |
 | Firmware version shown | HAVE | | Machine tab, Plotter: version, port and time of the last answer; Check the plotter asks again (nothing moves) |

@@ -691,7 +691,8 @@ class App:
                     self.plans[pid]["used"] = True
             argv = plotjob.build_argv(self.s, plan / "drawing.svg", v, "trace" if mode == "trace" else "plot", g,
                                       layers_json=plan / "layers.json", machine=plan / "machine.json",
-                                      bed=self._bed(plan), sim=sim, sim_speed=self.s.sim_speed if sim else None,
+                                      bed=self._bed(plan), sim=sim,
+                                      sim_speed=(_sim_speed(body.get("sim_speed")) or self.s.sim_speed) if sim else None,
                                       control=True)
             word = None if sim else ("TRACE\n" if mode == "trace" else "PLOT\n")
             job_pv = {"order": pv["order"], "strokes": _thin(pv["strokes"]), "placement": pv["placement"],
@@ -1011,6 +1012,15 @@ def planner_hash():
     if _PLANNER.get("key") != key:
         _PLANNER.update(key=key, hash=hashlib.sha256(p.read_bytes()).hexdigest()[:12])
     return _PLANNER["hash"]
+
+
+def _sim_speed(v):
+    """A simulated run's real-time factor asked for by the page: 1 to 1000, else None (the server's default)."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if 1 <= v <= 1000 else None
 
 
 def _thin(strokes):
@@ -1524,6 +1534,10 @@ class Handler(BaseHTTPRequestHandler):
     def r_pause(self):
         self._control(self.app.runner.pause, self.json_body().get("job"))
 
+    def r_speed(self):
+        b = self.json_body()
+        self._control(self.app.runner.set_speed, b.get("job"), b.get("factor"))
+
     def r_continue(self):
         b = self.json_body()
         self._control(self.app.runner.resume, b.get("job"), b.get("pause"))
@@ -1705,6 +1719,7 @@ ROUTES_POST = {
     "/api/projects/delete": (Handler.r_project_delete, True),
     "/api/job/start": (Handler.r_start, True),
     "/api/job/pause": (Handler.r_pause, True),
+    "/api/job/speed": (Handler.r_speed, True),
     "/api/job/continue": (Handler.r_continue, True),
     "/api/job/return": (Handler.r_return, True),
     "/api/tools/run": (Handler.r_tool, True),

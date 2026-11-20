@@ -291,6 +291,8 @@ button.icon[aria-pressed="true"] { background: var(--info-bg); border-color: var
 .hist-menu button { text-align: left; justify-content: flex-start; display: flex; gap: 8px; }
 .hist-menu small { color: var(--muted); margin-left: auto; }
 .workspace.no-panels > .panel { display: none; }
+.speed-live input { width: 100%; }
+#checklistText { width: 100%; }
 .layer-more summary { cursor: pointer; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .layer-head .eye { min-height: 24px; padding: 0 6px; font-size: 12px; }
 .layer.hidden-view .layer-grid, .layer.hidden-view .layer-foot { opacity: .55; }

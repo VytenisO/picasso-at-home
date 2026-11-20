@@ -175,6 +175,7 @@ class Control:
         self.pause = threading.Event()
         self.ret = threading.Event()
         self.paused_s = 0.0          # real seconds spent waiting, kept out of the ETA
+        self.speed_factor = 1.0      # SPEED f from the operator: drawing speed times f (0.25..1.5) from the next move
         self.stream = stream or sys.stdin
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -188,6 +189,12 @@ class Control:
                     self.pause.set()
                 elif word == "RETURN":
                     self.ret.set()
+                elif word.startswith("SPEED "):
+                    try:
+                        self.speed_factor = min(1.5, max(0.25, float(word.split()[1])))
+                    except (ValueError, IndexError):
+                        pass
+                    continue
                 self.lines.put(word)
         finally:
             self.stop.set()
@@ -351,6 +358,27 @@ def depth_tiers(strokes, idxs, closed_tol=0.1):
     for i in idxs:
         tiers.setdefault(depth[i], []).append(i)
     return [tiers[k] for k in sorted(tiers, reverse=True)]
+
+
+def convex_hull(points):
+    """Monotone chain: the convex outline of points, closed."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts + pts[:1]
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, hi = [], []
+    for p in pts:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], p) <= 0:
+            lo.pop()
+        lo.append(p)
+    for p in reversed(pts):
+        while len(hi) >= 2 and cross(hi[-2], hi[-1], p) <= 0:
+            hi.pop()
+        hi.append(p)
+    ring = lo[:-1] + hi[:-1]
+    return ring + ring[:1]
 
 
 def same_pen(la, lb):
@@ -998,6 +1026,10 @@ def main():
     ap.add_argument("--dedupe", action="store_true", help="drop strokes that repeat an earlier stroke of the same ink")
     ap.add_argument("--start-at", type=int, default=0, metavar="N",
                     help="skip the first N strokes of the plot order (resume a stopped plot)")
+    ap.add_argument("--trace-shape", choices=("box", "hull", "objects"), default="box",
+                    help="trace mode: the drawing's box, its convex outline, or each object's box")
+    ap.add_argument("--trace-repeat", action="store_true",
+                    help="trace mode: go round again (up to 50 times) until RETURN or STOP, to line up paper")
     ap.add_argument("--corner-starts", action="store_true",
                     help="closed paths start at a corner (a turn of 30 degrees or more) when they have one")
     ap.add_argument("--inner-first", action="store_true",
@@ -1465,10 +1497,31 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
     try:
         p.setup()
         if a.mode == "trace":
-            corners = [(gx0, gy0), (gx1, gy0), (gx1, gy1), (gx0, gy1), (gx0, gy0), (0.0, 0.0)]
-            for cx, cy in corners:
-                log(f"trace -> ({cx:.1f},{cy:.1f}) mm")
-                p.move_to(*to_steps((cx, cy), spmm), a.travel_speed)
+            # the frame: the drawing's box, its convex outline, or each object's box; pen up throughout
+            on = [i for i in range(len(strokes)) if lset[stroke_group[i]].get("enabled", True)]
+            if a.trace_shape == "hull":
+                frames = [convex_hull([(x + ox, y + oy) for i in on for x, y in strokes[i]])]
+            elif a.trace_shape == "objects":
+                by = {}
+                for i in on:
+                    by.setdefault(metas[i].get("obj"), []).append(strokes[i])
+                frames = []
+                for ss in by.values():
+                    bx0, by0, bx1, by1 = bbox(ss)
+                    frames.append([(bx0 + ox, by0 + oy), (bx1 + ox, by0 + oy), (bx1 + ox, by1 + oy),
+                                   (bx0 + ox, by1 + oy), (bx0 + ox, by0 + oy)])
+            else:
+                frames = [[(gx0, gy0), (gx1, gy0), (gx1, gy1), (gx0, gy1), (gx0, gy0)]]
+            rounds = 50 if a.trace_repeat else 1
+            for r in range(rounds):
+                for fr in frames:
+                    for cx, cy in fr:
+                        p.move_to(*to_steps((cx, cy), spmm), a.travel_speed)
+                if a.ctl and a.ctl.ret.is_set():
+                    break
+                if r == 0 and a.trace_repeat:
+                    log("Tracing again until Return to start (or Stop): line the paper up now.")
+            p.move_to(0, 0, a.travel_speed)
             p.idle()
         else:
             n = len(order) + (a.copies - 1) * len(full_order)
@@ -1507,8 +1560,9 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 dwell = (lset[gi].get("dwell") or 0) / 1000
                 if dwell:
                     p.idle(); p.sleep(dwell)
+                sp = min(MAX_SPEED, speed_of[i] * (ctl.speed_factor if ctl else 1.0))
                 for tx, ty in pts_s[1:]:
-                    p.move_to(tx, ty, speed_of[i])
+                    p.move_to(tx, ty, sp)
                 if dwell:
                     p.idle(); p.sleep(dwell)
                 p.pen(True, a.pen_delay)

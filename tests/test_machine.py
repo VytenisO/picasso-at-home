@@ -85,6 +85,17 @@ class TestMachine(MachineServer):
         st = self.wait_state(("complete",))
         self.assertIn("at S", st["job"]["message"])
 
+    def test_01b_touch(self):
+        job = self.start()
+        self.send(job, "touch", pressure=0.3, ms=200)
+        time.sleep(1.0)
+        code, r = self.call("POST", "/api/machine/send", {"job": job, "cmd": "touch", "args": {"pressure": 2, "ms": 200}})
+        self.assertEqual(code, 409)
+        code, log = self.call("GET", "/api/log?since=0")
+        self.assertFalse(any("Traceback" in e["text"] for e in log["events"]))
+        self.send(job, "quit")
+        self.wait_state(("complete",))
+
     def test_02_finish_here_and_stop(self):
         job = self.start()
         self.pos_after(lambda: self.send(job, "move", dx=30, dy=30))

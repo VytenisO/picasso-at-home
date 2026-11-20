@@ -9,14 +9,15 @@ const cache = new WeakMap();      // plan data -> [[layer, Path2D]]
 export function layerPaths(pv) {
   let hit = cache.get(pv);
   if (hit) return hit;
-  const by = new Map();
+  const by = new Map();           // per layer and pen pressure: a lighter touch is drawn lighter
   for (const s of pv.strokes || []) {
-    if (!by.has(s.l)) by.set(s.l, new Path2D());
-    const p = by.get(s.l);
+    const key = `${s.l}|${s.p ?? ''}`;
+    if (!by.has(key)) by.set(key, new Path2D());
+    const p = by.get(key);
     s.pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y)));
     if (s.pts.length === 1) p.lineTo(s.pts[0][0] + 0.01, s.pts[0][1]);
   }
-  hit = [...by.entries()];
+  hit = [...by.entries()].map(([k, path]) => { const [l, p] = k.split('|'); return [Number(l), path, p === '' ? null : Number(p)]; });
   cache.set(pv, hit);
   return hit;
 }
@@ -54,10 +55,10 @@ export function drawInk(ctx, pv, { px, layers, pens, css, alpha = 1, ink = inkMo
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  for (const [l, path] of layerPaths(pv)) {
+  for (const [l, path, pr] of layerPaths(pv)) {
     const k = layerInk(pv, l, layers, pens, css);
     if (hide && hide.has(k.key)) continue;           // hidden in the view only; it still plots
-    ctx.globalAlpha = alpha * (k.off ? 0.15 : ink ? 0.92 : 1);
+    ctx.globalAlpha = alpha * (k.off ? 0.15 : ink ? 0.92 : 1) * (pr ? 1 - 0.7 * Math.min(1, pr / 0.9) : 1);
     ctx.strokeStyle = k.color;
     ctx.lineWidth = (ink ? Math.max(k.width, 0.8 * px) : Math.max(0.3, 1.2 * px)) / lineScale;
     ctx.stroke(path);

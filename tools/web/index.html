@@ -278,6 +278,9 @@
               <div class="seg" id="mcSteps" role="group" aria-label="Step"></div>
               <label class="field"><span>Jog speed (mm/s)</span><input id="mcSpeed" type="number" min="1" max="200" step="1" value="30"></label>
               <div class="row"><button type="button" id="mcPenUp">Pen up</button><button type="button" id="mcPenDown">Pen down</button></div>
+              <div class="row" title="Pen down for under a second at this pressure (0 = the configured pen-down, larger = lighter), then up: feel a layer's setting without drawing">
+                <input id="mcTouchP" type="number" min="0" max="0.9" step="0.05" value="0" aria-label="Touch pressure" style="width: 5em">
+                <button type="button" id="mcTouch">Touch</button></div>
             </div>
           </div>
           <p class="hint">Arrow keys on the bed jog one step too.</p>
@@ -377,6 +380,9 @@
     <div class="scrub" id="scrubBar" hidden>
       <button class="icon" id="travelBtn" aria-pressed="false" title="Show the pen-up moves (T)">Travel</button>
       <button class="icon" id="playBtn" title="Play the plot order">Play</button>
+      <select id="playSpeed" aria-label="Play speed" title="How fast Play runs: the whole plan in about 12 s, or a multiple of the real plotting time">
+        <option value="fit">12 s</option><option value="0.1">0.1x</option><option value="0.5">0.5x</option><option value="1">1x</option>
+        <option value="2">2x</option><option value="5">5x</option><option value="10">10x</option><option value="40">40x</option></select>
       <input type="range" id="scrubRange" min="0" max="1" value="1" step="1" aria-label="Plot order: strokes drawn so far">
       <span id="scrubLabel" class="muted"></span>
       <button class="icon" id="scrubStart" title="Plot from this stroke on, skipping the ones before" disabled>Start here</button>
@@ -431,6 +437,8 @@
         <button id="traceBtn" title="Pen-up trace of the drawing's frame">Trace frame</button>
         <button id="plotBtn" class="primary">Start plot</button>
       </div>
+      <label class="field speed-live" id="speedLive" hidden title="Drawing speed of the running plot, from the next move; never above the 40 mm/s limit">
+        <span>Speed <b id="speedPct">100%</b></span><input type="range" id="speedRange" min="25" max="150" step="5" value="100"></label>
       <div class="run-buttons" id="jobButtons" hidden>
         <button id="pauseBtn" title="Pause at the end of the current stroke (Space)">Pause</button>
         <button id="continueBtn" class="primary" title="Continue (Space)">Continue</button>
@@ -446,6 +454,11 @@
         <label class="check inline" title="A browser notification at pen changes, paper changes and the end"><input type="checkbox" id="notifyOn"> Notify me</label>
         <label class="check inline" title="A short tone with each notification"><input type="checkbox" id="soundOn"> Sound</label>
       </div>
+      <details class="hist">
+        <summary>Start checklist</summary>
+        <p class="hint">Your own items for the start dialog, one per line; each must be ticked before a plot starts.</p>
+        <textarea id="checklistText" rows="3" placeholder="e.g. The cap is off the pen"></textarea>
+      </details>
       <details id="histBox" class="hist">
         <summary>Recent jobs</summary>
         <ul id="histList" class="hist-list" aria-label="Recent jobs"></ul>
@@ -564,6 +577,16 @@
         <label class="field"><span>Sweep</span><select name="sweep" title="Work across the sheet in 20 mm bands so the hand and fresh ink stay behind the pen">
           <option value="none">Nearest stroke next</option><option value="down">Top to bottom</option>
           <option value="right">Left to right</option></select></label>
+        <h3>Trace and simulate</h3>
+        <div class="field-row">
+          <label class="field"><span>Trace frame</span><select name="trace_shape">
+            <option value="box">The drawing's box</option><option value="hull">Its outline (convex)</option>
+            <option value="objects">Each object's box</option></select></label>
+          <label class="field" title="How much faster than real time a simulated run goes"><span>Simulate at</span><select name="sim_speed_ui">
+            <option value="">server default</option><option value="1">1x (real time)</option><option value="5">5x</option>
+            <option value="20">20x</option><option value="100">100x</option><option value="400">400x</option></select></label>
+        </div>
+        <label class="check"><input type="checkbox" name="trace_repeat"> Trace again and again until Return to start: for lining up the paper</label>
         <h3>Copies and finish</h3>
         <div class="field-row">
           <label class="field" title="Plot the bed this many times; the plot waits at S for fresh paper between copies"><span>Copies (1-50)</span><input name="copies" type="number" min="1" max="50" step="1"></label>

@@ -554,6 +554,9 @@ function fillJobForm() {
   f.keep_motors.checked = !!st.keep_motors;
   set_('simplify', st.simplify ?? 0.05);
   f.corner_starts.checked = !!st.corner_starts;
+  if (document.activeElement !== f.trace_shape) f.trace_shape.value = st.trace_shape || 'box';
+  f.trace_repeat.checked = !!st.trace_repeat;
+  f.sim_speed_ui.value = String(prefs('simSpeed') || '');
   f.inner_first.checked = !!st.inner_first;
   set_('approach', st.approach || 0); set_('start_delay', st.start_delay || 0); set_('end_delay', st.end_delay || 0);
   f.paper_custom.checked = !!st.paper;
@@ -575,6 +578,9 @@ function fromJobForm(e) {
   if (simp === null || !(simp >= 0 && simp <= 2)) { toast('Simplify: 0 to 2 mm.', true); f.simplify.value = st.simplify ?? 0.05; return; }
   patch.simplify = Math.abs(simp - 0.05) < 1e-9 ? null : simp;
   patch.corner_starts = f.corner_starts.checked || null;
+  patch.trace_shape = f.trace_shape.value === 'box' ? null : f.trace_shape.value;
+  patch.trace_repeat = f.trace_repeat.checked || null;
+  prefs('simSpeed', f.sim_speed_ui.value ? Number(f.sim_speed_ui.value) : null);
   patch.inner_first = f.inner_first.checked || null;
   for (const [k, hi, label] of [['approach', 10, 'Approach'], ['start_delay', 60, 'Delay before'], ['end_delay', 60, 'Delay after']]) {
     const v = num(k) || 0;
