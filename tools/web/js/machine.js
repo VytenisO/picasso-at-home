@@ -492,12 +492,17 @@ function initPot() {
   };
 }
 
+let potShown = '';      // the saved knob settings last put in the form: refill only when they change, so knob
+                        // readings arriving while it is being set up never wipe what was typed or picked
 function renderPot() {
   const mc = state.me && state.me.machine_cfg;
   if (!mc || !mc.pen_pot) return;
   const p = mc.pen_pot, f = $('potForm'), k = state.pot;
-  for (const n of ['adc_shallow', 'adc_deep', 'depth_max']) if (document.activeElement !== f[n] && !f[n].dataset.touched) f[n].value = p[n];
-  if (document.activeElement !== f.enabled) f.enabled.checked = !!p.enabled;
+  if (JSON.stringify(p) !== potShown) {
+    potShown = JSON.stringify(p);
+    for (const n of ['adc_shallow', 'adc_deep', 'depth_max']) f[n].value = p[n];
+    f.enabled.checked = !!p.enabled;
+  }
   const busy = jobActive();
   for (const b of f.querySelectorAll('button')) b.disabled = busy;
   $('potLive').textContent = state.me.sim ? 'Simulator: the knob is not read.'
