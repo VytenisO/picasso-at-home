@@ -197,6 +197,30 @@ TECH_MAX_PX = 12000          # full resolution for scans of drawings: thin lines
 TECH_LIVE = ("cover", "aspect", "tone_min", "fill_min_mm2", "overrides")    # decided in the browser, live
 
 
+TECH_WORK_PX = 3000         # small images are enlarged to about this long side before tracing
+TECH_MAX_ENLARGE = 4
+
+
+def tech_factor(size, enlarge=True):
+    """How much a technical drawing is enlarged before tracing: thinning needs a few pixels per
+    line, and a small picture's lettering and junctions fall apart without them."""
+    if not enlarge:
+        return 1
+    return max(1, min(TECH_MAX_ENLARGE, math.ceil(TECH_WORK_PX / max(size))))
+
+
+def tech_grey(path, enlarge=True):
+    """-> (grey image array, enlargement factor) as the technical method traces it."""
+    from PIL import Image
+    import numpy as np
+    with Image.open(path) as im:
+        im = im.convert("L")
+        k = tech_factor(im.size, enlarge)
+        if k > 1:
+            im = im.resize((im.width * k, im.height * k), Image.LANCZOS)
+        return np.asarray(im), k
+
+
 def tech_shading(p, mm_per_px):
     """Method params -> find_fills thresholds (min_area in px from mm2 on paper)."""
     return {"cover": p["cover"] / 100.0, "aspect": p["aspect"], "tone_min": p["tone_min"],
@@ -204,24 +228,21 @@ def tech_shading(p, mm_per_px):
 
 
 def _technical(src, dst, p, ctx):
-    from PIL import Image
     import find_fills
-    import numpy as np
     import trace_centerline as tc
     progress = ctx.get("progress")
-    with Image.open(src) as im:
-        g = np.asarray(im.convert("L"))
+    g, k = tech_grey(src, p["enlarge"])
     c = ctx["canvas"]
     width_mm = min(p["width_mm"], c[2] - c[0])
     mm_per_px = width_mm / g.shape[1]
     an = None
     if p["fills"] and ctx.get("analysis"):
-        an = ctx["analysis"](g, p["threshold"], p["max_pen"] / mm_per_px, tc.stage(progress, 0.0, 0.4))
+        an = ctx["analysis"](g, k, p["threshold"], p["max_pen"] / mm_per_px, tc.stage(progress, 0.0, 0.4))
     st = tc.trace_grey(g, dst, width_mm, threshold=p["threshold"], pens=p["pens"], eps=p["smooth_px"],
                        fills=p["fills"], max_pen_mm=p["max_pen"], shading=tech_shading(p, mm_per_px),
                        overrides=find_fills.parse_overrides(p.get("overrides")), analysis=an, progress=progress)
     return {"technical": {k: v for k, v in st.items() if k not in ("layers", "widths_mm")},
-            "image_px": [int(g.shape[1]), int(g.shape[0])]}
+            "image_px": [int(g.shape[1]), int(g.shape[0])], "enlarged": k}
 
 
 def _svg_as_is(src, dst, p, ctx):
@@ -444,6 +465,9 @@ STEPS = {s.id: s for s in [
         {"key": "threshold", "label": "Dark cutoff", "type": "number", "default": 170, "min": 20, "max": 250,
          "step": 1, "integer": True, "slider": True,
          "help": "Pixels darker than this count as ink. Raise it to keep faint grey lines, lower it if paper grain shows."},
+        {"key": "enlarge", "label": "Enlarge small images first", "type": "bool", "default": True,
+         "help": "Pictures under 3000 px are scaled up (up to 4x) before tracing: lettering, junctions and small "
+                 "dark parts then survive. Slower; turn off for large clean scans."},
         {"key": "pens", "label": "Pens by line weight", "type": "number", "default": 3, "min": 1, "max": 4, "step": 1,
          "integer": True, "help": "Lines are sorted by drawn width into this many pens, thinnest first."},
         {"key": "smooth_px", "label": "Simplify", "type": "number", "default": 1.0, "min": 0.3, "max": 4, "step": 0.1,
@@ -761,7 +785,7 @@ class Workshop:
             tmp = self.dir / f".m_{key}_{secrets.token_hex(4)}.svg"
             tmp_mask = self.dir / f".m_{key}_{secrets.token_hex(4)}_mask.png"
             ctx = {"canvas": canvas, "mask": str(tmp_mask), "progress": progress,
-                   "analysis": lambda g, thr, max_w, pr: self.analysis(image, g, thr, max_w, pr)[0]}
+                   "analysis": lambda g, k, thr, max_w, pr: self.analysis(image, g, k, thr, max_w, pr)[0]}
             try:
                 stats = step.fn(cur, tmp, p, ctx) or {}
             except PrepareError:
@@ -802,13 +826,14 @@ class Workshop:
 
     # ---- shading analysis (technical drawings)
     @staticmethod
-    def _analysis_key(image, threshold, max_w):
-        return hashlib.sha256(f"{image.name}|{int(threshold)}|{max_w:.2f}|fills1".encode()).hexdigest()[:24]
+    def _analysis_key(image, k, threshold, max_w):
+        return hashlib.sha256(f"{image.name}|{k}|{int(threshold)}|{max_w:.2f}|fills1".encode()).hexdigest()[:24]
 
-    def analysis(self, image, g, threshold, max_w, progress=None):
-        """The shading analysis of an image stage, from memory when it was just made. -> (Analysis, key)."""
+    def analysis(self, image, g, k, threshold, max_w, progress=None):
+        """The shading analysis of an image stage (enlarged k times), from memory when it was just made.
+        -> (Analysis, key)."""
         import find_fills
-        key = self._analysis_key(image, threshold, max_w)
+        key = self._analysis_key(image, k, threshold, max_w)
         with ANALYSES_LOCK:
             an = ANALYSES.get(key)
             if an is not None:
@@ -830,20 +855,19 @@ class Workshop:
             raise PrepareError("Shading is only measured for the Technical drawing method on an image.")
         Image = _pil()[0]
         with Image.open(image) as im:
-            w_px = im.size[0]
+            k = tech_factor(im.size, p["enlarge"])
+            w_px = im.size[0] * k
         width_mm = min(p["width_mm"], canvas[2] - canvas[0])
         mm_per_px = width_mm / w_px
         max_w = p["max_pen"] / mm_per_px
-        key = self._analysis_key(image, p["threshold"], max_w)
+        key = self._analysis_key(image, k, p["threshold"], max_w)
         out = self.dir / f"st_{key}_shading.json"
         if out.is_file():
             return json.loads(out.read_text())
         if cached_only:
             return None
-        import numpy as np
-        with Image.open(image) as im:
-            g = np.asarray(im.convert("L"))
-        an, _ = self.analysis(image, g, p["threshold"], max_w, progress)
+        g, k = tech_grey(image, p["enlarge"])
+        an, _ = self.analysis(image, g, k, p["threshold"], max_w, progress)
         pub = dict(an.public(), key=key, mm_per_px=mm_per_px, image=image.name[3:-4])
         self._atomic(out, json.dumps(pub).encode())
         return pub

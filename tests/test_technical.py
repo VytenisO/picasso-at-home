@@ -114,7 +114,7 @@ def png(im):
 
 class TechnicalWeb(SimServer):
     def recipe(self, sid, **p):
-        params = {"width_mm": 100, "fill_min_mm2": 1, "max_pen": 3}
+        params = {"width_mm": 100, "fill_min_mm2": 1, "max_pen": 3, "enlarge": False}
         params.update(p)
         return {"source": sid, "steps": [{"step": "technical", "params": params}]}
 
@@ -168,6 +168,21 @@ class TechnicalWeb(SimServer):
         self.assertTrue(any("fill" in n for n in names), names)
         # an estimate is learned from the run
         self.assertIsNotNone(self.app.tasks.estimate("trace", 0.12))
+
+    def test_01b_small_images_are_enlarged(self):
+        im = sheet().resize((200, 150))
+        code, d = self.call("POST", "/api/prepare/source", raw=png(im), headers={"X-Filename": "small.png"})
+        sid = d["source"]["id"]
+        rec = self.recipe(sid, enlarge=True)
+        code, d = self.call("POST", "/api/prepare/shading", {"recipe": rec})
+        if d["pending"]:
+            self.assertEqual(self.wait_task(d["task"]["id"])["state"], "done")
+            code, d = self.call("POST", "/api/prepare/shading", {"recipe": rec})
+        self.assertEqual(d["shading"]["size"], [800, 600])       # 4x, the most it enlarges
+        from plotweb.prepare import tech_factor
+        self.assertEqual(tech_factor((1419, 597)), 3)
+        self.assertEqual(tech_factor((3825, 6825)), 1)
+        self.assertEqual(tech_factor((500, 400), enlarge=False), 1)
 
     def test_02_cancel(self):
         def slow(report):
