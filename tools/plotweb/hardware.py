@@ -3,6 +3,7 @@
   precheck()   read-only 'V' query: is the plotter there and answering?
   last_resort_safe()  after a job process had to be killed: pen up and motors off, best effort
   ServoGuard   after every power-on or reset: put this lift's pen positions into the board
+  PenButton    a push button on B0: first press locks the motors and lowers the pen, second press raises it again
 """
 import json
 import os
@@ -261,3 +262,90 @@ class ServoGuard(threading.Thread):
                 seen = ident
                 self.log("error", f"Could not set the pen servo after power-on: {ex}. If it buzzes at the top, "
                                   "start a jog or switch the plotter off.")
+
+
+# A push button between B0 and GND, for checking the pen height by eye. The firmware counts B0 pulled low as a PRG
+# press ("alt PRG", on by default, B0 has a pull-up) and keeps it until QB reads it, so polling cannot miss a tap.
+# First press: motors locked, pen down at machine.json's pen_down. Second press: pen up, motors released.
+# Only between jobs; a press during a job is thrown away, and no job starts while the pen is down.
+BUTTON_POLL = 0.2        # s between QB reads
+BUTTON_STALE = 1.0       # s without a read (a job ran, the port was busy): whatever QB latched is old, drop it
+BUTTON_AUTO_UP = 120.0   # s: the pen goes back up by itself if the second press never comes
+
+
+class PenButton(threading.Thread):
+    def __init__(self, settings, runner, lock, log, interval=BUTTON_POLL):
+        super().__init__(daemon=True, name="pen-button")
+        self.s, self.runner, self.lock, self.log, self.interval = settings, runner, lock, log, interval
+        self.down = False          # pen down and motors locked by the button
+        self.since = 0.0
+        self.armed = True          # False until the button is let go after a press (a long hold is one press)
+        self.last_read = 0.0
+
+    def hold_reason(self):
+        """For JobRunner.reserve: why no job may start now, or None."""
+        return ("The pen is down for a height check: press the plotter's button again to raise it first."
+                if self.down else None)
+
+    def poll(self, ser, now):
+        """One look at the button over an open port. -> 'down', 'up' or None."""
+        ser.reset_input_buffer()
+        q = _ask(ser, "QB")
+        pressed = bool(q) and q[0].split(",")[-1].strip() == "1"
+        stale = now - self.last_read > BUTTON_STALE
+        self.last_read = now
+        if not self.armed:
+            pi = _ask(ser, "PI,B,0", one_line=True)
+            if pi and pi[0].split(",")[-1].strip() == "1":
+                self.armed = True
+            return None
+        if self.down and now - self.since > BUTTON_AUTO_UP:
+            self._up(ser)
+            self.log("warn", f"Pen check: no second press in {BUTTON_AUTO_UP:.0f} s, pen raised and motors released.")
+            return "up"
+        if not pressed or stale:
+            return None
+        self.armed = False
+        if self.down:
+            self._up(ser)
+            self.log("info", "Pen check: pen up, motors released.")
+            return "up"
+        with self.runner.lock:              # atomic with JobRunner.reserve: a job and the pen check never overlap
+            if self.runner.busy():
+                return None
+            self.down, self.since = True, now
+        servo = self.s.machine()["servo"]
+        for line in ("EM,1,1", f"SC,4,{int(servo['pen_up'])}", f"SC,5,{int(servo['pen_down'])}", "SP,0,300"):
+            _ask(ser, line)
+        self.log("info", "Pen check: motors locked, pen down. Press the button again to raise it.")
+        return "down"
+
+    def _up(self, ser):
+        _ask(ser, "SP,1,300")
+        time.sleep(0.35)
+        _ask(ser, "EM,0,0")
+        self.down = False
+
+    def run(self):
+        extra = {"exclusive": True} if os.name == "posix" else {}
+        while True:
+            time.sleep(self.interval)
+            try:
+                if self.runner.busy() or not self.lock.acquire(timeout=0.1):
+                    continue
+                try:
+                    if self.runner.busy():
+                        continue
+                    port = find_port()
+                    if not port:
+                        self.down = False            # unplugged or off: the board comes back with the pen up
+                        continue
+                    with serial.Serial(port, 9600, timeout=0.5, **extra) as ser:
+                        self.poll(ser, time.monotonic())
+                finally:
+                    self.lock.release()
+            except Exception as ex:  # noqa: BLE001
+                if self.down:
+                    self.log("error", f"Pen check: lost the plotter with the pen down ({ex}). Switch it off and on.")
+                self.down = False
+                time.sleep(2)

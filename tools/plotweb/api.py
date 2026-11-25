@@ -62,6 +62,9 @@ class App:
         hardware.load_port_choice(settings)
         if not settings.sim:
             hardware.ServoGuard(settings, self.runner, self.hw_lock, self.ev.log).start()
+            self.button = hardware.PenButton(settings, self.runner, self.hw_lock, self.ev.log)
+            self.runner.hold = self.button.hold_reason
+            self.button.start()
         self.plan_dir = settings.cache / "plans"
         self.plan_dir.mkdir(parents=True, exist_ok=True)
         for old in self.plan_dir.iterdir():          # staged plans are only needed for a day

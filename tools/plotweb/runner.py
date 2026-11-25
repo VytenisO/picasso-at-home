@@ -72,6 +72,7 @@ class JobRunner:
                          "note": "Park the carriage by hand at the paper's top-left before the first run."}
         self._last_state_emit = 0.0
         self.notify = lambda title, text: None      # set by the app: a push message (ntfy) when configured
+        self.hold = lambda: None                    # set by the app: a reason no real job may start (pen check)
 
     # ------------------------------------------------------------------ state
     def snapshot(self):
@@ -100,6 +101,9 @@ class JobRunner:
             if self.busy():
                 j = self.job
                 return False, f"A {j['kind']} job is already {j['state']}. Wait for it to finish or stop it first."
+            reason = None if sim else self.hold()
+            if reason:
+                return False, reason
             job_id = time.strftime("%Y%m%d_%H%M%S") + "_" + os.urandom(2).hex()
             self.job = _new_job(job_id, kind, mode, sim, meta)
             self.preview = None
