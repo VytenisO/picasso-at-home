@@ -107,7 +107,7 @@ async function syncState() {
 }
 
 function applyState(st) {
-  set({ job: st.job, position: st.position, lastEventAt: Date.now() });
+  set({ job: st.job, position: st.position, pot: st.pot || null, lastEventAt: Date.now() });
 }
 
 async function loadJobPreview() {
@@ -130,6 +130,7 @@ function onEvent(ev) {
   switch (ev.type) {
     case 'log': addEvents([ev]); break;
     case 'state': set({ job: ev.job, position: ev.position, lastEventAt: Date.now() }); break;
+    case 'pot': set({ pot: ev.pot || null }); break;
     case 'pos': set({ pos: { x: ev.x, y: ev.y, pen: ev.pen } }); break;
     case 'files': refreshFiles(); break;
     case 'doc': D.onDocEvent(ev); break;

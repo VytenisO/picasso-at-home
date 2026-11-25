@@ -3,13 +3,17 @@
   precheck()   read-only 'V' query: is the plotter there and answering?
   last_resort_safe()  after a job process had to be killed: pen up and motors off, best effort
   ServoGuard   after every power-on or reset: put this lift's pen positions into the board
-  PenButton    a push button on B0: first press locks the motors and lowers the pen, second press raises it again
+  PenButton    a push button on B0: first press locks the motors and lowers the pen, second press raises it again;
+               also reads the pen-depth knob between jobs (and moves the pen with it during a pen check)
 """
 import json
 import os
 import re
 import threading
 import time
+
+from . import config  # noqa: F401  (puts tools/ on sys.path)
+import penpot  # noqa: E402
 
 try:
     import serial
@@ -274,9 +278,12 @@ BUTTON_AUTO_UP = 120.0   # s: the pen goes back up by itself if the second press
 
 
 class PenButton(threading.Thread):
-    def __init__(self, settings, runner, lock, log, interval=BUTTON_POLL):
+    def __init__(self, settings, runner, lock, log, interval=BUTTON_POLL, emit=None):
         super().__init__(daemon=True, name="pen-button")
         self.s, self.runner, self.lock, self.log, self.interval = settings, runner, lock, log, interval
+        self.emit = emit or (lambda **kw: None)
+        self.pot = None            # the depth knob as last read: {adc, raw, pen_down, problem}; None when not used
+        self.applied = None        # pen-down the servo is at during a pen check
         self.down = False          # pen down and motors locked by the button
         self.since = 0.0
         self.armed = True          # False until the button is let go after a press (a long hold is one press)
@@ -290,6 +297,8 @@ class PenButton(threading.Thread):
     def poll(self, ser, now):
         """One look at the button over an open port. -> 'down', 'up' or None."""
         ser.reset_input_buffer()
+        cfg = self.s.machine()
+        self.read_pot(ser, cfg)
         q = _ask(ser, "QB")
         pressed = bool(q) and q[0].split(",")[-1].strip() == "1"
         stale = now - self.last_read > BUTTON_STALE
@@ -303,6 +312,10 @@ class PenButton(threading.Thread):
             self._up(ser)
             self.log("warn", f"Pen check: no second press in {BUTTON_AUTO_UP:.0f} s, pen raised and motors released.")
             return "up"
+        if self.down and self.pot and self.pot["pen_down"] is not None                 and abs(self.pot["pen_down"] - self.applied) >= penpot.STEP:
+            v = self.applied = self.pot["pen_down"]           # the knob turned during a pen check: follow it now
+            _ask(ser, f"SC,5,{v}")
+            _ask(ser, f"S2,{v},{PEN_PIN}")
         if not pressed or stale:
             return None
         self.armed = False
@@ -314,11 +327,35 @@ class PenButton(threading.Thread):
             if self.runner.busy():
                 return None
             self.down, self.since = True, now
-        servo = self.s.machine()["servo"]
-        for line in ("EM,1,1", f"SC,4,{int(servo['pen_up'])}", f"SC,5,{int(servo['pen_down'])}", "SP,0,300"):
+        servo = cfg["servo"]
+        knob = self.pot and self.pot["pen_down"]
+        self.applied = int(knob or servo["pen_down"])
+        for line in ("EM,1,1", f"SC,4,{int(servo['pen_up'])}", f"SC,5,{self.applied}", "SP,0,300"):
             _ask(ser, line)
-        self.log("info", "Pen check: motors locked, pen down. Press the button again to raise it.")
+        self.log("info", f"Pen check: motors locked, pen down ({self.applied}{', from the knob' if knob else ''}). "
+                         "Press the button again to raise it.")
         return "down"
+
+    def read_pot(self, ser, cfg):
+        """Read the depth knob, when used; keep self.pot and tell the UI when it changed."""
+        pot = penpot.settings(cfg)              # read even when off, so the Machine tab can show the ends
+        ch = pot["channel"]
+
+        def look():
+            return [penpot.parse((_ask(ser, "A", one_line=True) or [""])[0], ch) for _ in range(penpot.READS)]
+        vals = look()
+        if vals[0] is None:                     # channel off: the board was reset since it was switched on
+            _ask(ser, f"AC,{ch},1")
+            vals = look()
+        adc, why = penpot.judge(vals, pot)
+        steady = None not in vals and max(vals) - min(vals) <= penpot.SPREAD_MAX
+        use = bool(pot["enabled"]) and adc is not None
+        new = {"adc": adc, "raw": round(sum(vals) / len(vals)) if steady else None, "enabled": bool(pot["enabled"]),
+               "pen_down": penpot.pen_down(cfg["servo"], pot, adc) if use else None, "problem": why}
+        old = self.pot
+        if old is None or old["problem"] != why or old["enabled"] != new["enabled"] or old["raw"] is None or new["raw"] is None                 or abs(old["raw"] - new["raw"]) >= 2:
+            self.pot = new
+            self.emit(pot=new)
 
     def _up(self, ser):
         _ask(ser, "SP,1,300")

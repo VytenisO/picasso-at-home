@@ -19,7 +19,8 @@ export const state = {
   previewStale: true,  // settings changed since the preview
   previewing: false,
   job: null,           // runner snapshot job
-  position: null,      // {state: at_start|moved|unknown, at, note}
+  position: null,
+  pot: null,           // the pen-depth knob as last read: {adc, raw, pen_down, problem}; null when not used      // {state: at_start|moved|unknown, at, note}
   jobPreview: null,    // immutable preview of the running/last job (strokes, order)
   liveStrokes: [],     // strokes written on the current page of a live session (machine mm)
   pos: null,           // live carriage position {x, y, pen}

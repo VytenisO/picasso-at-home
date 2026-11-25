@@ -237,6 +237,8 @@ export function initMachine() {
   on(['job', 'me'], renderCal);
   on(['me', 'job'], renderPaper);
   on(['me', 'job'], renderPens);
+  on(['me', 'job', 'pot'], renderPot);
+  initPot();
 }
 
 // ------------------------------------------------------------------ control
@@ -464,6 +466,45 @@ function renderPaper() {
   const sv = m.servo || {};
   $('servoNote').textContent = `Pen servo: up ${sv.pen_up}, down ${sv.pen_down}. These are set by hand with a pen mounted ` +
     '(Tools, Pen height test, and config/machine.json), never here: a wrong pen-down value can gouge the paper.';
+}
+
+// ------------------------------------------------------------- depth knob
+function initPot() {
+  const f = $('potForm');
+  const grab = (k) => () => {
+    const raw = state.pot && state.pot.raw;
+    if (raw == null) { toast('No steady reading from the knob right now.', true); return; }
+    f[k].value = raw;
+  };
+  $('potShallow').onclick = grab('adc_shallow');
+  $('potDeep').onclick = grab('adc_deep');
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const pot = { enabled: f.enabled.checked, channel: 1, adc_shallow: Number(f.adc_shallow.value),
+      adc_deep: Number(f.adc_deep.value), depth_max: Number(f.depth_max.value) };
+    try { set({ me: (await post('/api/machine/pot', { pot })).me }); toast('Knob saved.'); } catch (err) { toast(err.message, true); }
+  };
+  $('potKeep').onclick = async () => {
+    const v = state.pot && state.pot.pen_down;
+    if (v == null) { toast('The knob has no good reading right now.', true); return; }
+    if (!(await ask('Keep as saved pen-down', `Store ${v}, the knob's depth now, as the saved pen-down. Plans need a new preview.`, 'Keep'))) return;
+    try { set({ me: (await post('/api/machine/pot/keep', {})).me }); } catch (err) { toast(err.message, true); }
+  };
+}
+
+function renderPot() {
+  const mc = state.me && state.me.machine_cfg;
+  if (!mc || !mc.pen_pot) return;
+  const p = mc.pen_pot, f = $('potForm'), k = state.pot;
+  for (const n of ['adc_shallow', 'adc_deep', 'depth_max']) if (document.activeElement !== f[n] && !f[n].dataset.touched) f[n].value = p[n];
+  if (document.activeElement !== f.enabled) f.enabled.checked = !!p.enabled;
+  const busy = jobActive();
+  for (const b of f.querySelectorAll('button')) b.disabled = busy;
+  $('potLive').textContent = state.me.sim ? 'Simulator: the knob is not read.'
+    : !k ? 'Waiting for a reading (the knob is read between jobs).'
+      : !p.enabled ? `Off: the saved pen-down is used. The knob reads ${k.raw ?? 'unsteady'}.`
+        : k.problem ? `Not used: ${k.problem}${k.raw != null ? ` (reads ${k.raw})` : ''}. The saved pen-down applies.`
+          : `Knob reads ${k.adc}: pen-down ${k.pen_down}.`;
 }
 
 async function savePaper(e) {

@@ -1,7 +1,8 @@
 """Edits of config/machine.json and config/pens.json from the UI: calibration, paper, pen profiles.
 
 Every write keeps the previous file under results/web/backups/ and replaces the file atomically. The servo
-pen-up/pen-down values are never written here: they are tuned by hand with a pen mounted (pen height test).
+pen-up/pen-down values are tuned by hand with a pen mounted (pen height test); the only write here is keeping the
+pen-down that the depth knob set, by hand, at the user's request.
 """
 import datetime
 import json
@@ -110,6 +111,41 @@ def set_machine(settings, raw):
     cfg["limits"] = lim
     _write(settings, settings.machine_path, cfg)
     return cfg
+
+
+def set_pot(settings, raw):
+    """The pen-depth knob's settings (machine.json "pen_pot"): on/off, channel, the readings at its two ends and the
+    deepest it may set. The servo values themselves are not touched."""
+    import penpot
+    raw = raw if isinstance(raw, dict) else {}
+    cfg = json.loads(settings.machine_path.read_text())
+    sh = int(_num(raw.get("adc_shallow"), 0, 1023, "Shallow-end reading"))
+    dp = int(_num(raw.get("adc_deep"), 0, 1023, "Deep-end reading"))
+    if abs(sh - dp) < 50:
+        raise ConfigError("The two ends of the knob read almost the same: turn it fully each way and read again.")
+    swing = abs(int(cfg["servo"]["pen_down"]) - int(cfg["servo"]["pen_up"]))
+    cap = max(3 * swing, 1000)
+    cfg["pen_pot"] = {"enabled": bool(raw.get("enabled")), "channel": int(_num(raw.get("channel", 1), 0, 12, "Channel")),
+                      "adc_shallow": sh, "adc_deep": dp,
+                      "depth_max": int(_num(raw.get("depth_max"), 50, cap, "Deepest setting"))}
+    penpot.settings(cfg)
+    _write(settings, settings.machine_path, cfg)
+    return cfg["pen_pot"]
+
+
+def keep_pen_down(settings, value):
+    """Store the depth the knob set as servo.pen_down, so the knob can be switched off or removed. Same side of
+    pen-up as before and within the servo limits."""
+    import penpot
+    cfg = json.loads(settings.machine_path.read_text())
+    sv = cfg["servo"]
+    v = int(_num(value, penpot.SERVO_LO, penpot.SERVO_HI, "Pen-down"))
+    up, old = int(sv["pen_up"]), int(sv["pen_down"])
+    if v == up or (v < up) != (old < up):
+        raise ConfigError("That pen-down is not below pen-up: turn the knob deeper first.")
+    sv["pen_down"] = v
+    _write(settings, settings.machine_path, cfg)
+    return old, v
 
 
 def save_pen(settings, name, fields, rename_from=None):

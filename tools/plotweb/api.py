@@ -25,6 +25,8 @@ from .events import EventLog
 from .library import MAX_UPLOAD, Library
 from .runner import JobRunner
 
+import penpot  # noqa: E402  (tools/ is on sys.path through .config)
+
 TOOL_LOCK = threading.Lock()   # test-sheet and result tools rewrite shared files: one at a time
 
 MAX_DISPLAY_POINTS = 300_000     # preview strokes sent to the browser are thinned beyond this (display only)
@@ -62,7 +64,8 @@ class App:
         hardware.load_port_choice(settings)
         if not settings.sim:
             hardware.ServoGuard(settings, self.runner, self.hw_lock, self.ev.log).start()
-            self.button = hardware.PenButton(settings, self.runner, self.hw_lock, self.ev.log)
+            self.button = hardware.PenButton(settings, self.runner, self.hw_lock, self.ev.log,
+                                             emit=lambda **kw: self.ev.emit("pot", **kw))
             self.runner.hold = self.button.hold_reason
             self.button.start()
         self.plan_dir = settings.cache / "plans"
@@ -87,13 +90,15 @@ class App:
                 "plotter": hardware.LAST if authed else None,
                 "machine_cfg": {"travel": cfg.get("travel_mm"), "signs": {a: cfg["axis"][a].get("sign", 1) for a in ("x", "y")},
                                 "limits": cfg.get("limits") or {}, "ceilings": CEILINGS,
-                                "steps_per_mm": cfg.get("steps_per_mm"), "measured": cfg.get("measured")}
+                                "steps_per_mm": cfg.get("steps_per_mm"), "measured": cfg.get("measured"),
+                                "pen_pot": penpot.settings(cfg)}
                 if authed else None}
 
     def state(self):
         seq = self.ev.seq           # first: events after it are replayed; the snapshot is at least this new
         snap = self.runner.snapshot()
         snap.update(epoch=self.ev.epoch, seq=seq, files_rev=self.lib.rev, sim=self.s.sim)
+        snap["pot"] = self.button.pot if getattr(self, "button", None) else None
         return snap
 
     def _entry(self, ident):
@@ -2034,6 +2039,21 @@ class Handler(BaseHTTPRequestHandler):
                                 f"{paper['y0']:g}), margin {paper['margin_mm']:g} mm.")
         self.send(200, {"me": self.app.me(True)})
 
+    def r_pot(self):
+        pot = self._config_edit(machinecfg.set_pot, self.json_body().get("pot"))
+        self.app.ev.log("info", f"Depth knob {'on' if pot['enabled'] else 'off'}: ends read {pot['adc_shallow']} (shallow) "
+                                f"and {pot['adc_deep']} (deep), deepest {pot['depth_max']} servo units.")
+        self.send(200, {"me": self.app.me(True)})
+
+    def r_pot_keep(self):
+        pot = getattr(self.app, "button", None) and self.app.button.pot
+        if not pot or pot.get("pen_down") is None:
+            raise ApiError(409, "The knob has no good reading right now" + (f": {pot['problem']}" if pot and pot.get("problem")
+                                                                             else "."))
+        old, new = self._config_edit(machinecfg.keep_pen_down, pot["pen_down"])
+        self.app.ev.log("warn", f"Pen-down set from the knob: {old} -> {new}. Preview again before plotting.")
+        self.send(200, {"me": self.app.me(True)})
+
     def r_machine_settings(self):
         cfg = self._config_edit(machinecfg.set_machine, self.json_body().get("machine"))
         self.app.ev.log("warn", f"Machine settings: travel {cfg['travel_mm']['x']:g} x {cfg['travel_mm']['y']:g} mm, "
@@ -2234,6 +2254,8 @@ ROUTES_POST = {
     "/api/machine/calibrate": (Handler.r_calibrate, True),
     "/api/machine/paper": (Handler.r_paper, True),
     "/api/machine/settings": (Handler.r_machine_settings, True),
+    "/api/machine/pot": (Handler.r_pot, True),
+    "/api/machine/pot/keep": (Handler.r_pot_keep, True),
     "/api/pens/save": (Handler.r_pen_save, True),
     "/api/pens/delete": (Handler.r_pen_delete, True),
     "/api/pens/import": (Handler.r_pens_import, True),

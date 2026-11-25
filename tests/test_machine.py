@@ -192,6 +192,23 @@ class TestConfig(MachineServer):
                             travel_max=ceil["travel_speed"], speed_default=15, travel_default=100)})
         self.assertEqual(code, 200, r)
 
+    def test_02c_depth_knob(self):
+        me = self.call("GET", "/api/me")[1]
+        self.assertFalse(me["machine_cfg"]["pen_pot"]["enabled"])
+        pot = {"enabled": True, "channel": 1, "adc_shallow": 620, "adc_deep": 5, "depth_max": 1400}
+        code, r = self.call("POST", "/api/machine/pot", {"pot": pot})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["me"]["machine_cfg"]["pen_pot"], pot)
+        self.assertEqual(json.loads((self.tmp / "machine.json").read_text())["pen_pot"], pot)
+        for bad, word in (({"adc_deep": 600}, "same"), ({"depth_max": 99999}, "deepest"), ({"adc_shallow": 2000}, "shallow")):
+            code, r = self.call("POST", "/api/machine/pot", {"pot": dict(pot, **bad)})
+            self.assertEqual(code, 400, bad)
+            self.assertIn(word, r["error"].lower())
+        code, r = self.call("POST", "/api/machine/pot/keep", {})
+        self.assertEqual(code, 409)                       # the simulator never reads a knob
+        self.assertIsNone(self.call("GET", "/api/state")[1]["pot"])
+        self.call("POST", "/api/machine/pot", {"pot": dict(pot, enabled=False)})
+
     def test_04_backup_restore_and_doctor(self):
         with urllib.request.urlopen(self.base + "/api/backup") as r:
             self.assertIn("plotter-settings-", r.headers["Content-Disposition"])

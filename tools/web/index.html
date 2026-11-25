@@ -423,6 +423,25 @@
         </details>
         <p class="hint">S is the paper's top-left corner. Changing it means parking the carriage at the new corner.</p>
         <p class="hint" id="servoNote"></p>
+        <details class="mc-more" id="potBox">
+          <summary>Pen-depth knob</summary>
+          <p class="hint">A knob (pot) on analog input A1 sets how deep the pen goes. Press the pen button and turn
+            the knob: the pen follows at once. Jobs pick up a turn at their next pen-down. A loose or broken knob is
+            ignored and the saved pen-down is used.</p>
+          <p class="note" id="potLive"></p>
+          <form id="potForm">
+            <label class="check"><input type="checkbox" name="enabled"> Use the knob</label>
+            <div class="field-row">
+              <label class="field" title="The reading with the knob turned to its shallow end: the pen just stays off the paper"><span>Shallow end reads</span><input name="adc_shallow" type="number" min="0" max="1023" step="1"></label>
+              <label class="field" title="The reading with the knob turned to its deep end"><span>Deep end reads</span><input name="adc_deep" type="number" min="0" max="1023" step="1"></label>
+              <label class="field" title="Servo units below pen-up at the deep end"><span>Deepest (servo units)</span><input name="depth_max" type="number" min="50" step="10"></label>
+            </div>
+            <div class="row"><button type="button" id="potShallow">Shallow end is here</button>
+              <button type="button" id="potDeep">Deep end is here</button></div>
+            <div class="row"><button type="submit">Save knob</button>
+              <button type="button" id="potKeep" title="Store the knob's depth as the saved pen-down, so the knob can be switched off or removed">Keep as saved pen-down</button></div>
+          </form>
+        </details>
       </div>
       <div class="section">
         <h2>Machine settings</h2>

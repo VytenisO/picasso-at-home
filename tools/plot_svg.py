@@ -48,6 +48,7 @@ import xml.etree.ElementTree as ET
 import fill as fillmod
 import motion
 import pathplan
+import penpot
 
 try:
     import serial
@@ -877,6 +878,10 @@ class Plotter:
         self.ctl = getattr(args, "ctl", None)
         self.ms_carry = 0.0
         self.sim_speed = getattr(args, "sim_speed", None) or 0.0
+        self.base_down = cfg["servo"]["pen_down"]    # pen-down at pressure 0: machine.json, or the depth knob
+        self.frac = 0.0                              # the pressure last set
+        self.pot = None if self.sim or EMIT is not None else penpot.active(cfg)
+        self.pot_t = -1e9
         if not self.sim:
             port = args.port
             if not port:
@@ -958,16 +963,41 @@ class Plotter:
         if "QS" in self.caps:
             self.cmd("CS")              # step counters from here: QS then reads the position relative to S
         self.cmd(f"SC,4,{s['pen_up']}")
-        self.cmd(f"SC,5,{s['pen_down']}")
-        self.down = s["pen_down"]
+        if self.pot:
+            self.cmd(f"AC,{self.pot['channel']},1")
+            self.pot_check(force=True)
+        self.cmd(f"SC,5,{self.base_down}")
+        self.down = self.base_down
         self.pen(True)
 
-    def set_pressure(self, frac):
+    def pot_check(self, force=False):
+        """Read the depth knob (at most twice a second) and follow it for the next pen-down. Pen up only."""
+        if not self.pot or (not force and self.now() - self.pot_t < 0.5):
+            return
+        self.pot_t = self.now()
+        vals = []
+        for _ in range(penpot.READS):
+            self.ser.reset_input_buffer()
+            self.ser.write(b"A\r")
+            vals.append(penpot.parse(self.ser.readline().decode(errors="replace"), self.pot["channel"]))
+        adc, why = penpot.judge(vals, self.pot)
+        new = self.cfg["servo"]["pen_down"] if adc is None else penpot.pen_down(self.cfg["servo"], self.pot, adc)
+        if force or abs(new - self.base_down) >= penpot.STEP:
+            if why and (force or self.base_down != new):
+                log(f"Depth knob not used ({why}): pen-down {new} from machine.json")
+            elif not why:
+                log(f"Depth knob {adc}: pen-down {new}")
+            self.base_down = new
+            if not force:
+                self.set_pressure(self.frac, force=True)
+
+    def set_pressure(self, frac, force=False):
         """Set the next pen-down by a fraction from the configured pen-down (0, heaviest) toward pen-up (1).
-        Only call with the pen up: SC,5 takes effect at the next SP,0."""
+        Only call with the pen up: SC,5 takes effect at the next SP,0. The depth knob, when used, moves the 0."""
         s = self.cfg["servo"]
-        val = round(s["pen_down"] + (frac or 0.0) * (s["pen_up"] - s["pen_down"]))
-        if val != self.down:
+        self.frac = frac or 0.0
+        val = round(self.base_down + self.frac * (s["pen_up"] - self.base_down))
+        if val != self.down or force:
             self.cmd(f"SC,5,{val}")
             self.down = val
 
@@ -975,6 +1005,8 @@ class Plotter:
         self.idle()
         if self.ctl:
             self.ctl.check_stop()   # after the wait: no pen move is sent once STOP is in
+        if not up and self.pen_state:
+            self.pot_check()
         self.pen_state = up
         self.cmd(f"SP,{1 if up else 0},{delay}")
         self.sleep(delay / 1000 + 0.05)
