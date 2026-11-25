@@ -881,7 +881,7 @@ class Plotter:
         self.base_down = cfg["servo"]["pen_down"]    # pen-down at pressure 0: machine.json, or the depth knob
         self.frac = 0.0                              # the pressure last set
         self.pot = None if self.sim or EMIT is not None else penpot.active(cfg)
-        self.pot_t = self.pot_moved = -1e9
+        self.pot_adc = None                          # the knob's last trusted reading
         if not self.sim:
             port = args.port
             if not port:
@@ -971,20 +971,21 @@ class Plotter:
         self.pen(True)
 
     def pot_check(self, force=False):
-        """Read the depth knob and follow it for the next pen-down. Pen up only. Every JOB_SLOW s, or every
-        JOB_FAST s for a while after it was turned."""
+        """Read the depth knob and follow it for this pen-down. Pen up only; at every stroke start. One reading
+        (one round trip) when it has not moved; only a change gets the full look that catches a loose wire."""
         if not self.pot:
             return
-        every = penpot.JOB_FAST if self.now() - self.pot_moved < penpot.FAST_FOR else penpot.JOB_SLOW
-        if not force and self.now() - self.pot_t < every:
-            return
-        self.pot_t = self.now()
-        vals = []
-        for _ in range(penpot.READS):
+
+        def read():
             self.ser.reset_input_buffer()
             self.ser.write(b"A\r")
-            vals.append(penpot.parse(self.ser.readline().decode(errors="replace"), self.pot["channel"]))
+            return penpot.parse(self.ser.readline().decode(errors="replace"), self.pot["channel"])
+        first = read()
+        if not force and first is not None and self.pot_adc is not None and abs(first - self.pot_adc) <= penpot.NOISE:
+            return
+        vals = [first] + [read() for _ in range(penpot.READS - 1)]
         adc, why = penpot.judge(vals, self.pot)
+        self.pot_adc = adc
         new = self.cfg["servo"]["pen_down"] if adc is None else penpot.pen_down(self.cfg["servo"], self.pot, adc)
         if force or abs(new - self.base_down) >= penpot.STEP:
             if why and (force or self.base_down != new):
@@ -993,7 +994,6 @@ class Plotter:
                 log(f"Depth knob {adc}: pen-down {new}")
             self.base_down = new
             if not force:
-                self.pot_moved = self.now()
                 self.set_pressure(self.frac, force=True)
 
     def set_pressure(self, frac, force=False):

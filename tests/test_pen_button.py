@@ -220,12 +220,15 @@ class TestDriverFollowsKnob(unittest.TestCase):
         p.set_pressure(0.5)
         port.knob = [600]
         port.sent.clear()
-        p.pen_t = 0
-        p.pot_t = -1e9
         p.pen(False)
         v = 14000 - round(600 / 640 * 1440)
         half = round(v + 0.5 * (14000 - v))
         self.assertEqual([c for c in port.sent if c[:2] in ("SC", "SP")], [f"SC,5,{half}", "SP,0,250"])
+        p.pen(True)
+        port.sent.clear()
+        port.knob = [601]                                    # untouched (noise): one reading, nothing sent
+        p.pen(False)
+        self.assertEqual(port.sent, ["A", "SP,0,250"])
 
 
 class TestReserveRefused(unittest.TestCase):
