@@ -18,7 +18,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import converters, document, hardware, machinecfg, plotjob, prepare, shapes, tools
+from . import converters, document, hardware, machinecfg, plotjob, prepare, shapes, tasks, tools
 from .auth import COOKIE, SESSION_AGE, Auth
 from .config import CEILINGS, LIMITS, WEB, apply_limits
 from .events import EventLog
@@ -52,6 +52,7 @@ class App:
         if self.ntfy:
             self.runner.notify = self._push
         self.prep = prepare.Workshop(settings)
+        self.tasks = tasks.Tasks(self.ev, settings.cache / "tasks.json")
         self.presets = prepare.Presets(settings)
         self.docs = document.DocStore(settings, self.lib, self.ev)
         self.plans = {}
@@ -1080,11 +1081,53 @@ class App:
         except prepare.PrepareError as ex:
             raise ApiError(400, str(ex))
 
+    def _prep_task(self, recipe, fill, angle):
+        """A slow method that is not made yet: run it and its dry run as a background task. -> task dict."""
+        canvas = self.s.bed()["canvas"]
+        try:
+            step, _ = self.prep.method_cached(recipe, canvas)
+            mp = self.prep.input_megapixels(recipe, canvas)
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+        src = self.prep.check(recipe)[0]
+        name = src["name"] if src else step.title
+
+        def work(report):
+            run = self.prep.run(recipe, canvas, progress=lambda st, f: report(st, 0.92 * f))
+            report("Planning the plot preview", 0.93)
+            self._prep_dry(run, fill, angle)
+            return {"key": run["key"]}
+
+        return self.tasks.start("trace", f"Tracing {name}", work, key=self._prep_task_key(recipe, fill, angle), size=mp)
+
+    def _prep_task_key(self, recipe, fill, angle):
+        return "trace:" + hashlib.sha256(json.dumps([recipe, self.s.bed()["canvas"], fill, angle], sort_keys=True,
+                                                    default=str).encode()).hexdigest()
+
     def prepare_run(self, body):
-        """Run a recipe and dry-run the result: the same strokes and summary a Plot preview gets."""
+        """Run a recipe and dry-run the result: the same strokes and summary a Plot preview gets. A slow
+        method that is not made yet answers {pending: task} and runs in the background; ask again when
+        the task is done (it is then cached)."""
         t0 = time.time()
-        run = self._prep_run(body.get("recipe"))
+        recipe = body.get("recipe")
         fill, angle = self._prep_fill(body.get("settings"))
+        try:
+            step, made = self.prep.method_cached(recipe, self.s.bed()["canvas"])
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+        if step.slow and not made:
+            running = self.tasks.find(self._prep_task_key(recipe, fill, angle))
+            if running:
+                return {"ok": True, "pending": True, "task": running, "method": step.id}
+            if not body.get("go"):
+                try:
+                    mp = self.prep.input_megapixels(recipe, self.s.bed()["canvas"])
+                except prepare.PrepareError as ex:
+                    raise ApiError(400, str(ex))
+                return {"ok": True, "pending": False, "needs_trace": True, "method": step.id,
+                        "estimate": self.tasks.estimate("trace", mp), "megapixels": mp and round(mp, 2)}
+            return {"ok": True, "pending": True, "task": self._prep_task(recipe, fill, angle), "method": step.id}
+        run = self._prep_run(recipe)
         pv, out = self._prep_dry(run, fill, angle)
         sm = pv["summary"]
         b, c = sm["bbox_machine_mm"], sm["canvas_mm"]
@@ -1100,6 +1143,32 @@ class App:
                 "order": pv["order"], "strokes": _thin(pv["strokes"]), "fit": round(fit, 4),
                 "layers": [{k: ly.get(k) for k in ("key", "name", "color", "strokes")} for ly in sm["layers"]],
                 "problems": problems, "fill": fill, "fill_angle": angle, "ms": round((time.time() - t0) * 1000)}
+
+    def prepare_shading(self, body):
+        """Shading candidates of a technical-drawing recipe for the live preview: from the cache, else
+        measured as a background task ({pending: task}; ask again when it is done)."""
+        recipe = body.get("recipe")
+        canvas = self.s.bed()["canvas"]
+        try:
+            pub = self.prep.shading(recipe, canvas, cached_only=True)
+            if pub is not None:
+                return {"ok": True, "pending": False, "shading": pub}
+            mp = self.prep.input_megapixels(recipe, canvas)
+            src = self.prep.check(recipe)[0]
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+
+        def work(report):
+            self.prep.shading(recipe, canvas, progress=report)
+            return True
+
+        key = "shading:" + hashlib.sha256(json.dumps([recipe["source"], [s for s in recipe["steps"]
+                                                       if prepare.STEPS.get(s.get("step")) is not None
+                                                       and prepare.STEPS[s["step"]].stage != "clean"], canvas],
+                                                      sort_keys=True, default=str).encode()).hexdigest()
+        t = self.tasks.start("shading", f"Measuring the shading in {src['name'] if src else 'the image'}", work,
+                             key=key, size=mp)
+        return {"ok": True, "pending": True, "task": t}
 
     def _prep_layers(self, raw, keys):
         """Pens chosen in Prepare -> layer settings, with the pen's own speed and pressure when it has them."""
@@ -1251,7 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
         out.update(extra)
         self.send(code, out)
 
-    def raw_body(self):
+    def raw_body(self, limit=MAX_UPLOAD):
         # read once per request (the headers object is new for each): a second read would wait forever
         if getattr(self, "_body_for", None) is self.headers:
             return self._body
@@ -1259,8 +1328,8 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
         except ValueError:
             n = 0
-        if n > MAX_UPLOAD + 4096:
-            raise ApiError(413, f"The upload is larger than {MAX_UPLOAD // (1024 * 1024)} MB.")
+        if n > limit + 4096:
+            raise ApiError(413, f"The upload is larger than {limit // (1024 * 1024)} MB.")
         self._body = self.rfile.read(n) if n > 0 else b""
         self._body_for = self.headers
         return self._body
@@ -1715,7 +1784,7 @@ class Handler(BaseHTTPRequestHandler):
     def r_prep_source(self):
         name, _ = self._upload_meta()
         try:
-            src = self.app.prep.add_source(self.raw_body(), name)
+            src = self.app.prep.add_source(self.raw_body(prepare.MAX_SOURCE), name)   # scans of drawings are large
         except prepare.PrepareError as ex:
             raise ApiError(400, str(ex))
         self.send(200, {"ok": True, "source": {k: v for k, v in src.items() if k != "path"}})
@@ -1725,6 +1794,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def r_prep_run(self):
         self.send(200, self.app.prepare_run(self.json_body()))
+
+    def r_prep_shading(self):
+        self.send(200, self.app.prepare_shading(self.json_body()))
+
+    def r_tasks(self):
+        self.send(200, {"tasks": self.app.tasks.list()})
+
+    def r_task_cancel(self):
+        tid = str(self.json_body().get("id") or "")
+        if not self.app.tasks.cancel(tid):
+            raise ApiError(409, "That task is not running or waiting any more.")
+        self.send(200, {"ok": True, "task": self.app.tasks.get(tid)})
 
     def r_prep_save(self):
         self.send(200, self.app.prepare_save(self.json_body()))
@@ -2105,6 +2186,7 @@ ROUTES_GET = {
     "/api/prepare/steps": (Handler.r_prep_steps, True),
     "/api/prepare/presets": (Handler.r_presets, True),
     "/api/prepare/file": (Handler.r_prep_file, True),
+    "/api/tasks": (Handler.r_tasks, True),
 }
 ROUTES_POST = {
     "/api/login": (Handler.r_login, False),
@@ -2162,6 +2244,8 @@ ROUTES_POST = {
     "/api/prepare/source": (Handler.r_prep_source, True),
     "/api/prepare/from_library": (Handler.r_prep_from, True),
     "/api/prepare/run": (Handler.r_prep_run, True),
+    "/api/prepare/shading": (Handler.r_prep_shading, True),
+    "/api/tasks/cancel": (Handler.r_task_cancel, True),
     "/api/prepare/save": (Handler.r_prep_save, True),
     "/api/prepare/presets/save": (Handler.r_preset_put, True),
     "/api/prepare/presets/delete": (Handler.r_preset_delete, True),

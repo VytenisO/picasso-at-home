@@ -17,6 +17,7 @@ import { initWs, showWs } from './ws.js';
 import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
 import { initMachine, reloadConfig } from './machine.js';
 import { initMenuBar, maybeWizard } from './menubar.js';
+import { initTasks, loadTasks, onTaskEvent } from './tasks.js';
 
 let stream = null;
 
@@ -70,6 +71,7 @@ function initOnce() {
   initConsole();
   initTabs();
   initWs();
+  initTasks();
   initPrepare();
   initMachine();
   initTheme();
@@ -132,7 +134,8 @@ function onEvent(ev) {
     case 'files': refreshFiles(); break;
     case 'doc': D.onDocEvent(ev); break;
     case 'config': reloadConfig().then(() => { if (state.doc && state.doc.objects.length) { set({ previewStale: true }); runPreview(); } }); break;
-    case 'reset': syncState().catch((e) => toast(e.message, true)); break;
+    case 'task': onTaskEvent(ev.task); break;
+    case 'reset': syncState().catch((e) => toast(e.message, true)); loadTasks(); break;
     default: set({ lastEventAt: Date.now() });
   }
 }

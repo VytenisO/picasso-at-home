@@ -8,6 +8,7 @@ import { drawInk, inkMode, setInkMode } from './ink.js';
 import { openFile, refreshFiles } from './workspace.js';
 import { showWs } from './ws.js';
 import { SAMPLE, parseControls, applyValues, runTurtle, toSvg, titleOf } from './turtle.js';
+import { waitTask, cancelTask, taskLine, fmtDur, live as liveTask } from './tasks.js';
 
 const STAGE = {
   adjust: { title: 'Adjust the image', add: 'Add an adjustment', hint: 'Applied in order, before tracing.' },
@@ -24,6 +25,10 @@ const P = {
   name: '', replace: null, replaceName: '',
   turtle: null,         // {code, values, size, src}: turtletoy code that made the source (src = its source id)
   result: null, error: null, busy: false, stale: false,
+  // slow methods (technical drawings): traced only on request, in the background
+  needsTrace: null,     // {estimate, megapixels} when the settings have not been traced yet
+  task: null,           // the running trace task
+  shading: null, shadeSig: '', shadeTask: null, shadeErr: null,
 };
 let uid = 1, gen = 0, timer = null;
 let cv, ctx, W = 0, H = 0, dpr = 1, raf = 0;
@@ -58,6 +63,10 @@ export async function initPrepare() {
   $('prepSend').onclick = () => send(true);
   $('prepSaveNew').onclick = () => send(false, true);
   $('prepReset').onclick = reset;
+  $('prepTrace').onclick = trace;
+  $('prepTaskCancel').onclick = () => { if (P.task) cancelTask(P.task.id); };
+  $('prepShadeView').onclick = () => setMode('shading');
+  $('prepShadeReset').onclick = () => setOverrides([]);
   initDrop();
   // The sheet and ink colours come from the theme: redraw when it changes.
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -432,19 +441,31 @@ function schedule(ms = 350) {
   P.stale = true;
   redraw();
   if (!methodOf()) return;
-  timer = setTimeout(run, ms);
+  if (isSlow()) { renderShade(); renderTrace(); }
+  timer = setTimeout(() => run(), ms);
 }
 
-async function run() {
+async function run(go = false) {
   clearTimeout(timer);
   const my = ++gen;
-  setBusy('Working...');
+  if (isSlow()) refreshShading();
+  setBusy(go ? 'Starting the trace...' : 'Working...');
   try {
-    const r = await post('/api/prepare/run', { recipe: recipe(), settings: { fill: P.settings.fill, fill_angle: P.settings.fill_angle } });
+    const r = await post('/api/prepare/run', { recipe: recipe(), settings: { fill: P.settings.fill, fill_angle: P.settings.fill_angle }, go });
     if (my !== gen) return;
-    P.result = r; P.error = null; P.stale = false;
+    if (r.needs_trace) {            // a slow method: the last result (if any) stays, faded, until Trace
+      P.needsTrace = { estimate: r.estimate, megapixels: r.megapixels };
+      P.error = null; P.stale = !!P.result;
+      // a trace of earlier settings may still run: keep following it, Trace is free again when it ends
+      if (!P.task) setBusy(P.result ? 'Changed: not traced' : 'Not traced yet', true);
+      renderResult(); redraw();
+      return;
+    }
+    if (r.pending) { follow(r.task, my); return; }
+    P.result = r; P.error = null; P.stale = false; P.needsTrace = null; P.task = null;
     if (!view.user) fitSoon();
     setBusy(r.ms < 60 ? 'from cache' : `${(r.ms / 1000).toFixed(1)} s`, true);
+    autoFill(r);
   } catch (e) {
     if (my !== gen) return;
     P.error = e.message; P.stale = false;
@@ -458,6 +479,251 @@ function setBusy(text, done = false) {
   const b = $('prepBusy');
   b.textContent = text;
   b.classList.toggle('working', !!text && !done);
+}
+
+// ------------------------------------------------------------------ slow methods: trace on request, in the background
+const isSlow = () => { const m = methodOf(); return !!(m && byId[m.step] && byId[m.step].slow); };
+const isTech = () => { const m = methodOf(); return !!(m && m.step === 'technical' && P.source && P.source.kind === 'image'); };
+
+function trace() {
+  if (!isSlow() || P.task) return;
+  run(true);
+}
+
+// Follow a trace task: progress in the Result panel and the busy tag, then fetch the (now cached) result.
+async function follow(task, my) {
+  P.task = task; P.needsTrace = null;
+  renderTrace();
+  const t = await waitTask(task.id, (u) => { if (P.task && P.task.id === u.id) { P.task = u; renderTrace(); } });
+  if (!P.task || P.task.id !== t.id) return;
+  P.task = null;
+  if (t.state === 'done') { if (my === gen) run(); else schedule(0); return; }
+  if (t.state === 'error') { P.error = t.error; setBusy(''); renderResult(); redraw(); }
+  else { setBusy('Trace cancelled', true); run(); }
+}
+
+function renderTrace() {
+  const box = $('prepTraceBox'), t = P.task;
+  box.hidden = !isSlow() || !(P.source || methodOf());
+  if (box.hidden) return;
+  const btn = $('prepTrace');
+  const bar = $('prepTaskBar'), line = $('prepTaskLine');
+  btn.disabled = !!t || !!(P.result && !P.stale && !P.needsTrace);
+  bar.hidden = !t;
+  $('prepTaskCancel').hidden = !t;
+  if (t) {
+    const lt = liveTask(t);
+    bar.firstElementChild.style.width = `${Math.floor(lt.frac * 100)}%`;
+    line.textContent = taskLine(t);
+    btn.textContent = 'Tracing...';
+    setBusy(`Tracing: ${lt.state === 'queued' ? 'waiting' : `${Math.floor(lt.frac * 100)} %`}` + (lt.eta != null ? `, ${fmtDur(lt.eta)} left` : ''));
+    return;
+  }
+  const est = P.needsTrace && P.needsTrace.estimate;
+  btn.textContent = P.result && !P.stale && !P.needsTrace ? 'Traced' : est ? `Trace (about ${fmtDur(est)})` : 'Trace';
+  line.textContent = P.needsTrace ? (P.needsTrace.megapixels ? `${P.needsTrace.megapixels} megapixels. ` : '') +
+    'Runs in the background: you can keep adjusting, or leave the page.' : P.result && P.result.stats && P.result.stats.technical
+    ? `${P.result.stats.technical.fills} fills, ${P.result.stats.technical.kept_as_lines} wide areas kept as lines.` : '';
+}
+
+// The first technical result with fills and no fill spacing: set a spacing so the shading is hatched.
+function autoFill(r) {
+  const t = r.stats && r.stats.technical;
+  if (!t || !t.fills || P.settings.fill) return;
+  P.settings.fill = 0.6;
+  save();
+  toast('The drawing has shaded areas: fill spacing set to 0.6 mm so they are hatched. Change it under Fill.');
+  schedule(0);
+}
+
+// ---- shading: measured once per image, threshold and pen width (a task); decided here, live
+const methodParams = () => { const m = methodOf(); return { ...(m ? byId[m.step].params.reduce((o, p) => ({ ...o, [p.key]: p.default }), {}) : {}), ...(m ? m.params : {}) }; };
+
+function shadeSig() {
+  const m = methodOf();
+  if (!m) return '';
+  const liveKeys = new Set(byId[m.step].live || []);
+  const params = Object.fromEntries(Object.entries(methodParams()).filter(([k]) => !liveKeys.has(k)));
+  return JSON.stringify([P.source && P.source.id, P.list.filter((s) => byId[s.step].stage === 'adjust' && s.on !== false)
+    .map(({ step, params: q }) => [step, q]), params]);
+}
+
+async function refreshShading() {
+  if (!isTech()) { P.shading = null; P.shadeSig = ''; renderShade(); return; }
+  const p = methodParams();
+  if (p.fills === false) { P.shading = null; P.shadeSig = ''; renderShade(); redraw(); return; }
+  const sig = shadeSig();
+  if (sig === P.shadeSig && (P.shading || P.shadeTask)) { renderShade(); redraw(); return; }
+  P.shadeSig = sig; P.shadeErr = null;
+  try {
+    let r = await post('/api/prepare/shading', { recipe: recipe() });
+    if (r.pending) {
+      P.shadeTask = r.task; renderShade();
+      const t = await waitTask(r.task.id, (u) => { P.shadeTask = u; renderShade(); });
+      P.shadeTask = null;
+      if (sig !== P.shadeSig) return;               // settings moved on meanwhile
+      if (t.state !== 'done') { P.shadeErr = t.state === 'error' ? t.error : 'Measuring the shading was cancelled.'; P.shadeSig = ''; renderShade(); return; }
+      r = await post('/api/prepare/shading', { recipe: recipe() });
+    }
+    if (sig !== P.shadeSig) return;
+    P.shading = r.shading;
+    if (!P.result && mode === 'result') setMode('shading');
+  } catch (e) { P.shadeErr = e.message; P.shadeSig = ''; }
+  renderShade(); redraw();
+}
+
+function overrides() {
+  const t = methodParams().overrides || '';
+  return t.split(';').map((x) => { const [k, xy] = x.split(':'); const [a, b] = (xy || '').split(',').map(Number);
+    return (k === 'fill' || k === 'line') && isFinite(a) && isFinite(b) ? { kind: k, x: a, y: b } : null; }).filter(Boolean);
+}
+
+function setOverrides(list) {
+  const m = methodOf();
+  if (!m) return;
+  m.params = { ...m.params, overrides: list.map((o) => `${o.kind}:${Math.round(o.x)},${Math.round(o.y)}`).join(';') };
+  const inp = document.querySelector(`#prep-${m.uid} input[name="overrides"]`);
+  if (inp) inp.value = m.params.overrides;
+  save(); schedule(0);
+}
+
+function pointInRings(rings, x, y) {
+  let inside = false;
+  for (const r of rings) {
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i], [xj, yj] = r[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function candAt(x, y, slack = 0) {
+  const sh = P.shading;
+  if (!sh) return null;
+  let best = null;
+  for (const c of sh.cands) {
+    const [y0, x0, y1, x1] = c.bbox;
+    if (x < x0 - slack || x > x1 + slack || y < y0 - slack || y > y1 + slack) continue;
+    if (pointInRings(c.rings, x, y)) return c;
+    if (slack && !best) best = c;
+  }
+  return best;
+}
+
+// Every candidate's decision with the current sliders and hand changes. -> Map id -> {kind, hand}
+function decisions() {
+  const sh = P.shading, out = new Map();
+  if (!sh) return out;
+  const p = methodParams();
+  const minArea = (p.fill_min_mm2 || 0) / (sh.mm_per_px * sh.mm_per_px);
+  const hand = new Map();
+  for (const o of overrides()) { const c = candAt(o.x, o.y, 4); if (c) hand.set(c.id, o.kind); }
+  for (const c of sh.cands) {
+    let kind = c.area < minArea ? 'line' : (c.cover < p.cover / 100 || c.elong < p.aspect) ? 'fill' : 'line';
+    if (hand.has(c.id)) kind = hand.get(c.id);
+    out.set(c.id, { kind, hand: hand.has(c.id) });
+  }
+  return out;
+}
+
+function toneShare(c, toneMin) {
+  const k = Math.ceil(toneMin / (P.shading.hist_step || 4));
+  const tot = c.hist.reduce((a, b) => a + b, 0);
+  return tot ? c.hist.slice(k).reduce((a, b) => a + b, 0) / tot : 0;
+}
+
+// Why a candidate is what it is, and which setting would change it.
+function explain(c, d) {
+  const p = methodParams(), sh = P.shading;
+  const mm = (v) => (v * sh.mm_per_px).toFixed(2);
+  const facts = `strokes cover ${Math.round(c.cover * 100)} %, ${c.elong.toFixed(1)}x longer than wide, ${mm(c.width)} mm wide, ` +
+    `${(c.area * sh.mm_per_px * sh.mm_per_px).toFixed(1)} mm2`;
+  const kind = d.kind === 'fill' ? (toneShare(c, p.tone_min) >= 0.5 ? 'grey fill (lines on it kept)' : 'solid fill') : 'line';
+  return `${kind}${d.hand ? ' (by hand)' : ''}: ${facts}. Click to make it ${d.kind === 'fill' ? 'a line' : 'a fill'}${d.hand ? ' (back to automatic)' : ''}.`;
+}
+
+function toggleAt(x, y) {
+  const c = candAt(x, y, 3);
+  if (!c) return;
+  const d = decisions().get(c.id);
+  const list = overrides().filter((o) => { const cc = candAt(o.x, o.y, 4); return !cc || cc.id !== c.id; });
+  if (!d.hand) list.push({ kind: d.kind === 'fill' ? 'line' : 'fill', x, y });
+  setOverrides(list);
+}
+
+function renderShade() {
+  const box = $('prepShade');
+  box.hidden = !isTech();
+  if (box.hidden) return;
+  const line = $('prepShadeLine');
+  if (methodParams().fills === false) { line.textContent = 'Shading is off: every ink area is traced as lines.'; $('prepShadeReset').hidden = true; return; }
+  if (P.shadeTask) { line.textContent = `Measuring the shading: ${taskLine(P.shadeTask)}`; return; }
+  if (P.shadeErr) { line.textContent = P.shadeErr; return; }
+  if (!P.shading) { line.textContent = 'The shading is measured once the image is in.'; return; }
+  const ds = [...decisions().values()];
+  const fills = ds.filter((d) => d.kind === 'fill').length, hand = ds.filter((d) => d.hand).length;
+  line.textContent = `${ds.length} wide ink areas: ${fills} become fills, ${ds.length - fills} stay lines` +
+    (hand ? `, ${hand} by hand` : '') + '. In the Shading view, click an area to change it; hover for why.';
+  $('prepShadeReset').hidden = !overrides().length;
+  $('prepShadeView').hidden = mode === 'shading';
+}
+
+// where the image sits on the sheet: the result's placement, or the natural size at the canvas top-left
+function shadePlacement() {
+  const r = P.result, sh = P.shading;
+  if (r && r.placement && !P.error) return r.placement;
+  if (!sh || !state.me) return null;
+  const c = state.me.machine.canvas, p = methodParams();
+  const w = Math.min(p.width_mm, c[2] - c[0]);
+  return { origin: [c[0], c[1]], size: [w, (w * sh.size[1]) / sh.size[0]] };
+}
+
+function drawShading(px) {
+  const sh = P.shading, pl = shadePlacement();
+  if (!sh || !pl) return;
+  const k = pl.size[0] / sh.size[0];
+  const im = image(`/api/prepare/file?kind=png&key=${sh.image}`);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(pl.origin[0], pl.origin[1], pl.size[0], pl.size[1]);
+  if (im) {
+    ctx.globalAlpha = Number($('prepFade').value) / 100;
+    ctx.drawImage(im, pl.origin[0], pl.origin[1], pl.size[0], pl.size[1]);
+    ctx.globalAlpha = 1;
+  }
+  const ds = decisions();
+  for (const c of sh.cands) {
+    const d = ds.get(c.id);
+    ctx.beginPath();
+    for (const r of c.rings) {
+      r.forEach(([x, y], i) => { const X = pl.origin[0] + x * k, Y = pl.origin[1] + y * k; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+      ctx.closePath();
+    }
+    if (d.kind === 'fill') { ctx.fillStyle = 'rgba(36, 120, 220, .45)'; ctx.fill('evenodd'); }
+    ctx.lineWidth = (d.hand ? 2.5 : 1.5) * px;
+    ctx.setLineDash(d.hand ? [5 * px, 3 * px] : []);
+    ctx.strokeStyle = d.hand ? '#c0329e' : d.kind === 'fill' ? '#2478dc' : '#d9822b';
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (hoverCand) {
+    ctx.beginPath();
+    for (const r of hoverCand.rings) {
+      r.forEach(([x, y], i) => { const X = pl.origin[0] + x * k, Y = pl.origin[1] + y * k; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+      ctx.closePath();
+    }
+    ctx.lineWidth = 3 * px; ctx.strokeStyle = css('--focus'); ctx.stroke();
+  }
+}
+let hoverCand = null;
+
+// canvas point (css px) -> image px of the shading view, or null
+function toImage(x, y) {
+  const sh = P.shading, pl = shadePlacement();
+  if (!sh || !pl) return null;
+  const mx = (x - view.ox) / view.s, my = (y - view.oy) / view.s;
+  const k = sh.size[0] / pl.size[0];
+  return [(mx - pl.origin[0]) * k, (my - pl.origin[1]) * k];
 }
 
 // ------------------------------------------------------------------ left: source and recipe
@@ -598,6 +864,8 @@ function stepForm(s, def) {
 
 // ------------------------------------------------------------------ right: result, pens, save
 function renderResult() {
+  renderTrace();
+  renderShade();
   const r = P.result, err = P.error;
   $('prepError').hidden = !err;
   $('prepError').textContent = err || '';
@@ -620,7 +888,8 @@ function renderResult() {
   if (document.activeElement !== f.fill_angle) f.fill_angle.value = P.settings.fill_angle ?? 45;
   for (const b of $('prepModes').querySelectorAll('button')) {
     const m = b.dataset.mode;
-    b.disabled = (m === 'mask' && !(r && r.mask)) || (m !== 'result' && !sideUrl(m === 'mask' ? 'mask' : 'source'));
+    b.disabled = m === 'shading' ? !isTech() : (m === 'mask' && !(r && r.mask)) || (m !== 'result' && !sideUrl(m === 'mask' ? 'mask' : 'source'));
+    b.hidden = m === 'shading' && !isTech();
   }
   if (mode !== 'result' && $('prepModes').querySelector(`[data-mode="${mode}"]`).disabled) setMode('result');
   else setMode(mode);
@@ -727,7 +996,9 @@ function setMode(m) {
   mode = m;
   $('prepStage').dataset.mode = m;
   for (const b of $('prepModes').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === m));
-  $('prepFadeBox').hidden = m !== 'overlay';
+  $('prepFadeBox').hidden = m !== 'overlay' && m !== 'shading';
+  hoverCand = null;
+  if (isTech()) renderShade();
   const side = m === 'compare' || m === 'mask';
   if (side) {
     const url = sideUrl(m === 'mask' ? 'mask' : 'source');
@@ -780,6 +1051,8 @@ function bounds() {
     const d = r.summary.bbox_machine_mm;
     b = [Math.min(b[0], d[0]), Math.min(b[1], d[1]), Math.max(b[2], d[2]), Math.max(b[3], d[3])];
   }
+  const pl = mode === 'shading' && shadePlacement();
+  if (pl) b = [Math.min(b[0], pl.origin[0]), Math.min(b[1], pl.origin[1]), Math.max(b[2], pl.origin[0] + pl.size[0]), Math.max(b[3], pl.origin[1] + pl.size[1])];
   return b;
 }
 
@@ -828,6 +1101,15 @@ function render() {
   ctx.strokeRect(c[0], c[1], c[2] - c[0], c[3] - c[1]);
   ctx.setLineDash([]);
   const r = P.result;
+  if (mode === 'shading') {
+    drawShading(px);
+    if (!P.shading) {
+      ctx.fillStyle = css('--muted');
+      ctx.font = `${12 * px}px system-ui, sans-serif`;
+      ctx.fillText(P.shadeTask ? `Measuring the shading: ${taskLine(P.shadeTask)}` : P.shadeErr || 'No shading measured yet.', c[0], c[1] + 14 * px);
+    }
+    return;
+  }
   if (r) {
     const pl = r.placement;
     if (mode === 'overlay') {
@@ -858,18 +1140,31 @@ function render() {
 // pan with a drag; coordinates under the pointer in paper mm
 let pan = null;
 function local(e) { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
-function panStart(e) { cv.setPointerCapture(e.pointerId); const [x, y] = local(e); pan = { x, y, ox: view.ox, oy: view.oy }; cv.classList.add('dragging'); }
+function panStart(e) { cv.setPointerCapture(e.pointerId); const [x, y] = local(e); pan = { x, y, ox: view.ox, oy: view.oy, moved: 0 }; cv.classList.add('dragging'); }
 function panMove(e) {
   const [x, y] = local(e);
+  if (mode === 'shading' && P.shading && !pan) {
+    const ip = toImage(x, y), c = ip && candAt(ip[0], ip[1], 3);
+    if (c !== hoverCand) { hoverCand = c; redraw(); }
+    if (c) { $('prepCoords').textContent = explain(c, decisions().get(c.id)); return; }
+  }
   if (state.me) {
     const [px0, py0] = state.me.machine.paper;
     $('prepCoords').textContent = `${((x - view.ox) / view.s - px0).toFixed(1)}, ${((y - view.oy) / view.s - py0).toFixed(1)} mm on the sheet`;
   }
   if (!pan) return;
+  pan.moved = Math.max(pan.moved, Math.hypot(x - pan.x, y - pan.y));
   view.ox = pan.ox + x - pan.x; view.oy = pan.oy + y - pan.y; view.user = true;
   redraw();
 }
-function panEnd() { pan = null; cv.classList.remove('dragging'); }
+function panEnd(e) {
+  const click = pan && pan.moved < 4 && e && e.type === 'pointerup';
+  pan = null; cv.classList.remove('dragging');
+  if (click && mode === 'shading' && P.shading) {
+    const [x, y] = local(e), ip = toImage(x, y);
+    if (ip) toggleAt(ip[0], ip[1]);
+  }
+}
 
 // ------------------------------------------------------------------ drop anywhere, job indicator, keys
 function initDrop() {

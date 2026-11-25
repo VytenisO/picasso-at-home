@@ -33,6 +33,14 @@
   <span id="modeBadge" class="badge" title="Where jobs run"></span>
   <span id="linkPill" class="pill" title="Live connection to the server" aria-live="polite">connecting</span>
   <span id="statePill" class="pill" aria-live="polite">Idle</span>
+  <span class="task-anchor">
+    <button id="taskPill" type="button" class="pill task-pill" hidden aria-expanded="false" aria-controls="taskPop">Tasks</button>
+    <div id="taskPop" class="task-pop" role="dialog" aria-label="Background tasks" hidden>
+      <h3>Background tasks</h3>
+      <p class="hint">Slow work (tracing a large drawing, measuring its shading) runs here, one at a time. Pages can be closed meanwhile.</p>
+      <ul id="taskList" class="task-list"></ul>
+    </div>
+  </span>
   <span class="spacer"></span>
   <button id="stopTop" class="danger" hidden title="Stop the job (Shift+S)">Stop</button>
   <button id="themeBtn" class="icon" title="Theme: system, light, dark">Theme</button>
@@ -68,6 +76,7 @@
         <button data-mode="compare" aria-pressed="false" title="Source and result side by side">Compare</button>
         <button data-mode="overlay" aria-pressed="false" title="The source under the result">Overlay</button>
         <button data-mode="mask" aria-pressed="false" title="What the trace counts as ink">Mask</button>
+        <button data-mode="shading" aria-pressed="false" title="Wide ink areas: blue becomes a fill, orange stays a line. Click one to change it.">Shading</button>
       </div>
       <label class="fade" id="prepFadeBox" title="How strongly the source shows under the result">Source
         <input type="range" id="prepFade" min="0" max="100" value="45" aria-label="Source opacity"></label>
@@ -101,6 +110,18 @@
   <aside class="panel right prep-right" aria-label="Result">
     <section class="section">
       <h2>Result</h2>
+      <div class="prep-trace" id="prepTraceBox" hidden>
+        <button id="prepTrace" class="primary big" type="button" title="Trace the drawing with these settings (runs in the background)">Trace</button>
+        <div class="task-bar" id="prepTaskBar" hidden><span></span></div>
+        <div class="row"><small class="muted" id="prepTaskLine" aria-live="polite"></small><span class="spacer"></span>
+          <button id="prepTaskCancel" class="link danger-text" type="button" hidden>Cancel</button></div>
+      </div>
+      <div id="prepShade" hidden>
+        <div class="shade-legend"><span><i class="k-fill"></i>fill</span><span><i class="k-line"></i>stays a line</span><span><i class="k-hand"></i>changed by hand</span></div>
+        <p class="hint" id="prepShadeLine"></p>
+        <div class="row"><button id="prepShadeView" class="link" type="button">Show the shading</button>
+          <button id="prepShadeReset" class="link" type="button" hidden>Undo the hand changes</button></div>
+      </div>
       <div class="result-head"><span class="result-size" id="prepSize">-</span><span class="muted" id="prepMethod"></span></div>
       <dl class="kv" id="prepKv"></dl>
       <div id="prepFit" class="note" hidden></div>

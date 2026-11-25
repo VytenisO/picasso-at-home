@@ -21,6 +21,7 @@ of converters.py, plus type "textarea") and the server clamps every value to it 
 Every stage result is cached by a hash of the source and the steps up to it, so changing a late step does not
 redo the early ones.
 """
+import collections
 import hashlib
 import json
 import math
@@ -29,6 +30,7 @@ import re
 import os
 import secrets
 import sys
+import threading
 import time
 from xml.sax.saxutils import escape
 
@@ -36,7 +38,8 @@ from .converters import IMG, clamp_params
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-MAX_SOURCE = 12 * 1024 * 1024
+MAX_SOURCE = 40 * 1024 * 1024
+IMAGE_MAX_PX = 2400          # image side for most methods: plenty for a trace capped at 500 px, keeps stages fast
 SRC_ID = re.compile(r"^[0-9a-f]{16}$")
 KEY = re.compile(r"^[0-9a-f]{24}$")
 KINDS = {"image": IMG, "svg": (".svg",), "mesh": (".stl", ".obj"), "pdf": (".pdf",)}
@@ -47,14 +50,26 @@ class PrepareError(ValueError):
     pass
 
 
+ANALYSES = collections.OrderedDict()      # shading analyses in memory, newest last (see Workshop.analysis)
+ANALYSES_LOCK = threading.Lock()
+STAGE_LOCK = threading.Lock()             # image stages are made one at a time (see Workshop._image_stage)
+
+
 class Step:
-    def __init__(self, sid, title, stage, accepts, params, fn, help="", group=""):
+    """slow: a method that can take minutes; it runs as a background task and only when asked (the
+    browser shows a Trace button instead of re-running on every change). max_px: the largest image
+    side it gets (others get IMAGE_MAX_PX). live: params the browser applies itself, without a run."""
+
+    def __init__(self, sid, title, stage, accepts, params, fn, help="", group="", slow=False, max_px=None,
+                 live=()):
         self.id, self.title, self.stage, self.accepts = sid, title, stage, tuple(accepts)
         self.params, self.fn, self.help, self.group = params, fn, help, group
+        self.slow, self.max_px, self.live = slow, max_px, tuple(live)
 
     def public(self):
         return {"id": self.id, "title": self.title, "stage": self.stage, "accepts": list(self.accepts),
-                "params": self.params, "help": self.help, "group": self.group}
+                "params": self.params, "help": self.help, "group": self.group, "slow": self.slow,
+                "live": list(self.live)}
 
 
 def kind_of(ext):
@@ -175,6 +190,38 @@ def _raster(style, extra_keys):
                         max_width_mm=c[2] - c[0], max_height_mm=c[3] - c[1], **kw)
         return stats
     return fn
+
+
+# ---- technical drawing: centre lines, pens by line weight, shading found as fills
+TECH_MAX_PX = 12000          # full resolution for scans of drawings: thin lines need every pixel
+TECH_LIVE = ("cover", "aspect", "tone_min", "fill_min_mm2", "overrides")    # decided in the browser, live
+
+
+def tech_shading(p, mm_per_px):
+    """Method params -> find_fills thresholds (min_area in px from mm2 on paper)."""
+    return {"cover": p["cover"] / 100.0, "aspect": p["aspect"], "tone_min": p["tone_min"],
+            "min_area": p["fill_min_mm2"] / (mm_per_px * mm_per_px)}
+
+
+def _technical(src, dst, p, ctx):
+    from PIL import Image
+    import find_fills
+    import numpy as np
+    import trace_centerline as tc
+    progress = ctx.get("progress")
+    with Image.open(src) as im:
+        g = np.asarray(im.convert("L"))
+    c = ctx["canvas"]
+    width_mm = min(p["width_mm"], c[2] - c[0])
+    mm_per_px = width_mm / g.shape[1]
+    an = None
+    if p["fills"] and ctx.get("analysis"):
+        an = ctx["analysis"](g, p["threshold"], p["max_pen"] / mm_per_px, tc.stage(progress, 0.0, 0.4))
+    st = tc.trace_grey(g, dst, width_mm, threshold=p["threshold"], pens=p["pens"], eps=p["smooth_px"],
+                       fills=p["fills"], max_pen_mm=p["max_pen"], shading=tech_shading(p, mm_per_px),
+                       overrides=find_fills.parse_overrides(p.get("overrides")), analysis=an, progress=progress)
+    return {"technical": {k: v for k, v in st.items() if k not in ("layers", "widths_mm")},
+            "image_px": [int(g.shape[1]), int(g.shape[0])]}
 
 
 def _svg_as_is(src, dst, p, ctx):
@@ -392,6 +439,40 @@ STEPS = {s.id: s for s in [
                                                        DETAIL],
          _raster("contour", ("levels", "simplify_px", "min_len_px", "width_px")),
          "Outlines of the dark shapes. Tone levels nest outlines for shading.", "Trace an image"),
+    Step("technical", "Technical drawing (centre lines, pens by weight, shading as fill)", "method", ["image"], [
+        WIDTH,
+        {"key": "threshold", "label": "Dark cutoff", "type": "number", "default": 170, "min": 20, "max": 250,
+         "step": 1, "integer": True, "slider": True,
+         "help": "Pixels darker than this count as ink. Raise it to keep faint grey lines, lower it if paper grain shows."},
+        {"key": "pens", "label": "Pens by line weight", "type": "number", "default": 3, "min": 1, "max": 4, "step": 1,
+         "integer": True, "help": "Lines are sorted by drawn width into this many pens, thinnest first."},
+        {"key": "smooth_px", "label": "Simplify", "type": "number", "default": 1.0, "min": 0.3, "max": 4, "step": 0.1,
+         "unit": "px", "help": "How far a stroke may stray from the traced centre line. Higher: fewer points."},
+        {"key": "fills", "label": "Find shading and solid areas (fills)", "type": "bool", "default": True,
+         "section": "Shading",
+         "help": "Wide ink that a pen line cannot draw becomes a filled shape for the hatch fill."},
+        {"key": "max_pen", "label": "Widest pen line", "type": "number", "default": 1.0, "min": 0.2, "max": 5,
+         "step": 0.05, "unit": "mm", "slider": True,
+         "help": "Ink wider than this on paper can only be a fill. Changing it measures the image again."},
+        {"key": "cover", "label": "Line if strokes cover at least", "type": "number", "default": 60, "min": 5,
+         "max": 100, "step": 1, "integer": True, "unit": "%", "slider": True,
+         "help": "How much of a wide ink area the pen strokes along it must cover for it to stay a line. "
+                 "Higher: more areas become fills."},
+        {"key": "aspect", "label": "Line if longer than wide by", "type": "number", "default": 4, "min": 1, "max": 30,
+         "step": 0.5, "unit": "x", "slider": True,
+         "help": "Thick long ink along a line is a heavy pen line; short stubby blobs are fills."},
+        {"key": "tone_min", "label": "Grey shade from", "type": "number", "default": 40, "min": 0, "max": 200,
+         "step": 4, "integer": True, "slider": True,
+         "help": "A fill lighter than this is a grey shade: the black lines drawn on it are traced on top. "
+                 "Darker is solid ink."},
+        {"key": "fill_min_mm2", "label": "Smallest fill", "type": "number", "default": 4, "min": 0, "max": 400,
+         "step": 0.5, "unit": "mm2", "slider": True, "help": "Smaller wide spots stay lines (a dot, an arrow head)."},
+        {"key": "overrides", "label": "Hand changes", "type": "hidden", "default": "", "maxlength": 20000},
+    ], _technical,
+         "For scans of technical drawings: each line becomes one stroke down its middle, sorted into pens by its "
+         "width, at full resolution. Shaded and solid areas become fills. Slow on large scans: press Trace when "
+         "the settings look right in the Shading view.",
+         "Trace an image", slow=True, max_px=TECH_MAX_PX, live=TECH_LIVE),
     Step("lineart", "Line art (centre lines)", "method", ["image"], [WIDTH, THRESHOLD, INKS, BLUR, SMOOTH, SPECKS],
          _raster("lineart", ("simplify_px", "min_len_px")),
          "One stroke down the middle of each drawn line, instead of two outlines. For drawings and sketches.",
@@ -634,34 +715,60 @@ class Workshop:
             raise PrepareError("Choose one method." if not staged["method"] else "A recipe has exactly one method.")
         return src, staged
 
-    def run(self, recipe, canvas):
-        """-> {svg, image (adjusted PNG or None), mask, key, stats, source}. Cached per stage."""
+    def _plan(self, recipe, canvas):
+        """Check the recipe and make the image stages. -> (src, staged, hash up to the method, the
+        method's input path, adjusted image path or None, method key)."""
         src, staged = self.check(recipe)
+        step, p = staged["method"][0]
+        max_px = step.max_px or IMAGE_MAX_PX
         h = hashlib.sha256(json.dumps({"src": src and src["id"], "canvas": canvas}).encode())
         cur = src["path"] if src else None
         image = None
         if src and src["kind"] == "image":
             # Every image passes through here once: alpha is flattened onto white paper.
-            h.update(b"flatten")
-            cur = self._image_stage(h, cur, None, None)
+            h.update(b"flatten" if max_px == IMAGE_MAX_PX else f"flatten{max_px}".encode())
+            cur = self._image_stage(h, cur, None, {"max_px": max_px})
             image = cur
-            for step, p in staged["adjust"]:
-                h.update(json.dumps([step.id, p], sort_keys=True).encode())
-                cur = self._image_stage(h, cur, step, p)
+            for st, sp in staged["adjust"]:
+                h.update(json.dumps([st.id, sp], sort_keys=True).encode())
+                cur = self._image_stage(h, cur, st, sp)
                 image = cur
-        step, p = staged["method"][0]
         h.update(json.dumps(["method", step.id, p], sort_keys=True).encode())
-        key = h.hexdigest()[:24]
+        return src, staged, h, cur, image, h.hexdigest()[:24]
+
+    def method_cached(self, recipe, canvas):
+        """-> (method Step, whether its result is already made). Makes the image stages (fast)."""
+        _, staged, _, _, _, key = self._plan(recipe, canvas)
+        step = staged["method"][0][0]
+        return step, (self.dir / f"st_{key}.svg").is_file() and (self.dir / f"st_{key}.json").is_file()
+
+    def input_megapixels(self, recipe, canvas):
+        image = self._plan(recipe, canvas)[4]
+        if not image:
+            return None
+        Image = _pil()[0]
+        with Image.open(image) as im:
+            return im.size[0] * im.size[1] / 1e6
+
+    def run(self, recipe, canvas, progress=None):
+        """-> {svg, image (adjusted PNG or None), mask, key, stats, source}. Cached per stage.
+        progress(stage, fraction) for slow methods; it may raise to cancel."""
+        src, staged, h, cur, image, key = self._plan(recipe, canvas)
+        step, p = staged["method"][0]
         svg, mask = self.dir / f"st_{key}.svg", self.dir / f"st_{key}_mask.png"
         stats_p = self.dir / f"st_{key}.json"
         if not (svg.is_file() and stats_p.is_file()):
             tmp = self.dir / f".m_{key}_{secrets.token_hex(4)}.svg"
             tmp_mask = self.dir / f".m_{key}_{secrets.token_hex(4)}_mask.png"
+            ctx = {"canvas": canvas, "mask": str(tmp_mask), "progress": progress,
+                   "analysis": lambda g, thr, max_w, pr: self.analysis(image, g, thr, max_w, pr)[0]}
             try:
-                stats = step.fn(cur, tmp, p, {"canvas": canvas, "mask": str(tmp_mask)}) or {}
+                stats = step.fn(cur, tmp, p, ctx) or {}
             except PrepareError:
                 raise
             except Exception as ex:  # noqa: BLE001
+                if ex.__class__.__name__ == "Cancelled":
+                    raise
                 raise PrepareError(f"{step.title} failed: {ex}")
             finally:
                 if not tmp.is_file():
@@ -693,7 +800,61 @@ class Workshop:
         return {"svg": svg, "key": key, "image": image, "mask": mask if mask.is_file() else None, "stats": stats,
                 "source": src, "method": step}
 
+    # ---- shading analysis (technical drawings)
+    @staticmethod
+    def _analysis_key(image, threshold, max_w):
+        return hashlib.sha256(f"{image.name}|{int(threshold)}|{max_w:.2f}|fills1".encode()).hexdigest()[:24]
+
+    def analysis(self, image, g, threshold, max_w, progress=None):
+        """The shading analysis of an image stage, from memory when it was just made. -> (Analysis, key)."""
+        import find_fills
+        key = self._analysis_key(image, threshold, max_w)
+        with ANALYSES_LOCK:
+            an = ANALYSES.get(key)
+            if an is not None:
+                ANALYSES.move_to_end(key)
+                return an, key
+        an = find_fills.analyze(g, threshold, max_w, progress=progress)
+        with ANALYSES_LOCK:
+            ANALYSES[key] = an
+            while len(ANALYSES) > 2:          # whole-image arrays: keep only the latest few
+                ANALYSES.popitem(last=False)
+        return an, key
+
+    def shading(self, recipe, canvas, progress=None, cached_only=False):
+        """The shading candidates of a technical-drawing recipe, for the live preview. Cached on disk
+        per image stage, threshold and pen width. -> public dict, or None when cached_only and not made."""
+        _, staged, _, _, image, _ = self._plan(recipe, canvas)
+        step, p = staged["method"][0]
+        if step.id != "technical" or not image:
+            raise PrepareError("Shading is only measured for the Technical drawing method on an image.")
+        Image = _pil()[0]
+        with Image.open(image) as im:
+            w_px = im.size[0]
+        width_mm = min(p["width_mm"], canvas[2] - canvas[0])
+        mm_per_px = width_mm / w_px
+        max_w = p["max_pen"] / mm_per_px
+        key = self._analysis_key(image, p["threshold"], max_w)
+        out = self.dir / f"st_{key}_shading.json"
+        if out.is_file():
+            return json.loads(out.read_text())
+        if cached_only:
+            return None
+        import numpy as np
+        with Image.open(image) as im:
+            g = np.asarray(im.convert("L"))
+        an, _ = self.analysis(image, g, p["threshold"], max_w, progress)
+        pub = dict(an.public(), key=key, mm_per_px=mm_per_px, image=image.name[3:-4])
+        self._atomic(out, json.dumps(pub).encode())
+        return pub
+
     def _image_stage(self, h, cur, step, p):
+        # One at a time: two requests making the same large stage at once both pay for it, and on Windows
+        # the second rename fails while the first file is open.
+        with STAGE_LOCK:
+            return self._image_stage_locked(h, cur, step, p)
+
+    def _image_stage_locked(self, h, cur, step, p):
         key = h.hexdigest()[:24]
         out = self.dir / f"st_{key}.png"
         if out.is_file():
@@ -708,8 +869,9 @@ class Workshop:
                         bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
                         im = Image.alpha_composite(bg, im)
                     im = im.convert("RGB")
-                    if max(im.size) > 2400:           # plenty for a trace capped at 500 px; keeps stages fast
-                        im.thumbnail((2400, 2400))
+                    cap = (p or {}).get("max_px") or IMAGE_MAX_PX
+                    if max(im.size) > cap:
+                        im.thumbnail((cap, cap))
                 else:
                     im = step.fn(im.convert("RGB"), p)
                 tmp = self.dir / f".i_{key}_{secrets.token_hex(4)}.png"

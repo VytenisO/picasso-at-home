@@ -71,6 +71,11 @@ export function schemaForm(form, params, pens, values = {}) {
   for (const p of params) {
     const id = `${form.id}-${p.key}`;
     let input;
+    if (p.section) form.append(el('h3', { class: 'form-section', text: p.section }));
+    if (p.type === 'hidden') {          // carried with the form, edited elsewhere (e.g. by clicking the preview)
+      form.append(el('input', { id, name: p.key, type: 'hidden', value: values[p.key] ?? p.default ?? '' }));
+      continue;
+    }
     if (p.type === 'select') {
       input = el('select', { id, name: p.key }, p.options.map(([v, label]) => el('option', { value: v, text: label })));
       input.value = values[p.key] ?? p.default ?? '';
