@@ -495,7 +495,8 @@ function renderPens() {
     const sw = el('span', { class: 'swatch' });
     sw.style.background = p.colour_hex || 'transparent';
     const facts = [p.colour, p.width_mm ? `${p.width_mm} mm` : 'width not set', p.speed ? `${p.speed} mm/s` : null,
-      p.pressure !== undefined && p.pressure !== null ? `pressure ${p.pressure}` : null].filter(Boolean).join(', ');
+      p.pressure !== undefined && p.pressure !== null ? `pressure ${p.pressure}` : null,
+      p.dwell_ms ? `dwell ${p.dwell_ms} ms` : null].filter(Boolean).join(', ');
     return el('li', {}, el('div', { class: 'pen-head' }, sw, el('b', { text: name }), el('span', { class: 'spacer' }),
       el('button', { class: 'icon', text: 'Edit', type: 'button', onclick: () => editPen(name) }),
       el('button', { class: 'icon', text: 'Duplicate', type: 'button', onclick: () => editPen(name, true) })),
@@ -528,8 +529,8 @@ function editPen(name, copy = false) {
       field('Speed (mm/s)', inp('speed', { type: 'number', min: 1, max: state.me.limits.speed.max, step: 1 })),
       field('Pressure', inp('pressure', { type: 'number', min: 0, max: state.me.limits.pressure.max, step: 0.05 }))),
     el('div', { class: 'field-row' },
-      field('Best hatch spacing (mm)', inp('hatch_mm', { type: 'number', min: 0.2, max: 10, step: 0.1 })),
-      field('Dwell (ms)', inp('dwell_ms', { type: 'number', min: 0, max: 3000, step: 50 }))),
+      field('Dwell (ms)', inp('dwell_ms', { type: 'number', min: 0, max: 3000, step: 50,
+        title: 'Wait with the pen down at each stroke start and end so the ink flows: dip pens, brushes, some gel pens. 0 for a ballpoint.' }))),
     field('Notes', inp('notes', { maxlength: 400 })),
     el('div', { class: 'row' }, el('button', { class: 'primary', type: 'submit', text: name ? 'Save' : 'Add pen' }),
       el('button', { type: 'button', text: 'Cancel', onclick: () => box.replaceChildren() }),
@@ -543,7 +544,7 @@ function editPen(name, copy = false) {
     const num = (k) => (f[k].value === '' ? null : Number(f[k].value));
     const pen = { description: f.description.value, colour: f.colour.value, colour_hex: f.no_hex.checked ? null : f.colour_hex.value,
       width_mm: num('width_mm'), speed: num('speed'), pressure: num('pressure'), notes: f.notes.value,
-      hatch_mm: num('hatch_mm'), dwell_ms: num('dwell_ms') };
+      dwell_ms: num('dwell_ms') };
     try {
       const r = await post('/api/pens/save', { name: nameIn.value, pen, rename_from: name && name !== nameIn.value ? name : undefined });
       set({ me: r.me });

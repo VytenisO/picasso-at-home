@@ -925,9 +925,9 @@ function renderLayers() {
     d.settings.layers = order.map((k, r) => ({ ...(cur.find((y) => y.key === k) || { key: k, enabled: true, pen: null, speed: null, pressure: null }), rank: r }));
   });
   list.replaceChildren(...rows.map(({ fl, s }, n) => {
-    // choosing a pen clears the layer's own speed and pressure: it follows the pen profile (empty fields show it)
+    // choosing a pen clears the layer's own speed, pressure and dwell: it follows the pen profile (empty fields show it)
     const pen = el('select', { 'aria-label': `Pen for layer ${n + 1}`, disabled: locked, onchange: (e) => {
-      upd(fl.key, { pen: e.target.value || null, speed: null, pressure: null });
+      upd(fl.key, { pen: e.target.value || null, speed: null, pressure: null, dwell_ms: null });
     } }, el('option', { value: '', text: 'Pen: not set' }),
       Object.entries(pens).map(([nm, p]) => el('option', { value: nm, text: p.colour ? `${nm} (${p.colour})` : nm })));
     pen.value = s.pen || '';
@@ -994,8 +994,10 @@ function renderLayers() {
 // The less common pen behaviours of a layer, folded away: dashes, dwell, overdraw past the seam, pressure per pass.
 function layerMore(fl, s, locked, upd) {
   const open = !!(s.dash || s.dwell_ms || s.overdraw || s.pressure_step);
+  const prof = (s.pen && state.me && state.me.pens && state.me.pens[s.pen]) || {};
   const f = (k, label, min, max, step, title, get = (v) => v, put = (v) => v) => {
-    const i = el('input', { type: 'number', min, max, step, disabled: locked, placeholder: 'off', title, 'aria-label': `${label}, layer ${fl.name}` });
+    const ph = prof[k] > 0 ? `${prof[k]} (pen)` : 'off';        // a layer with a pen follows its dwell unless set here
+    const i = el('input', { type: 'number', min, max, step, disabled: locked, placeholder: ph, title, 'aria-label': `${label}, layer ${fl.name}` });
     const cur = get(s[k]);
     i.value = cur ?? '';
     i.onchange = () => {

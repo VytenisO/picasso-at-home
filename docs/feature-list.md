@@ -255,7 +255,7 @@ niche.
 | Several settings on one geometry (outline + hatch, sub-layers) | HAVE |  | Layers, Filled shapes: Own layer puts a colour's hatch or contour fill on a layer of its own, so the fill and the outline take different pens even in the same colour |
 | Pen-width compensation (offset outlines by half the line width) | HAVE |  | Line tools, Allow for the pen width: closed shapes move inward by half the width (the layer's pen width offered) |
 | Dashed / dotted line mode | HAVE |  | Layers, More: Dash drawn / Dash gap (a short dash and a long gap make dots) |
-| Dwell at stroke start/end | HAVE |  | Layers, More: Dwell (ms), counted in the time |
+| Dwell at stroke start/end | HAVE |  | Layers, More: Dwell (ms), counted in the time; a layer with a pen takes the pen's dwell unless it sets its own |
 | Overdraw closed shapes past the start point | HAVE |  | Layers, More: Overdraw (mm) |
 | Lead-in/lead-out off the shape | SKIP |  | on paper a lead-in is a stray mark; Overdraw closes seams and Approach takes up backlash instead |
 | Copy/paste layer settings | HAVE |  | Layers: Copy and Paste on each card (pen, speed, pressure, passes), per browser |
@@ -371,9 +371,9 @@ niche.
 |---|---|---|---|
 | Pen profiles (name, colour, speed, pressure) | HAVE | | read-only, `config/pens.json` |
 | Pen library editor: create, edit, duplicate, delete | HAVE |  | Machine, Pens: New, Edit, Duplicate, Delete |
-| Pen fields: line width, best hatch spacing, dwell, notes | HAVE |  | line width, colour, speed, pressure, best hatch spacing, dwell, notes |
+| Pen fields: line width, best hatch spacing, dwell, notes | HAVE |  | line width, colour, speed, pressure, dwell, notes. Speed, pressure and dwell drive the plot of every layer using the pen; width and colour drive the preview. Best hatch spacing dropped from the form (2026-11-25): spacing is the look wanted, not a pen property; set it per job or per fill colour |
 | Paper profiles (size, type, notes), paired with pens | HAVE |  | Job, Paper: saved papers with size, type, notes and suitable pens; warns when a layer uses an unlisted pen |
-| Link a layer to a pen profile (retune updates the job) vs copy values | HAVE |  | choosing a pen leaves the layer's speed and pressure empty: they follow the pen profile (shown as placeholders), so retuning the pen changes every job using it; a value typed on the layer wins |
+| Link a layer to a pen profile (retune updates the job) vs copy values | HAVE |  | choosing a pen leaves the layer's speed, pressure and dwell empty: they follow the pen profile (shown as placeholders), so retuning the pen changes every job using it; a value typed on the layer wins |
 | Export / import pen library | HAVE |  | Machine, Pens: Export the pens (JSON), Import pens (merged in, the old file kept) |
 | Stroke and circle test sheet | HAVE | | |
 | Infill (hatch spacing) test sheet | HAVE | | |

@@ -784,6 +784,13 @@ class TestDocument(SimServer):
         code, r = self.call("POST", "/api/pens/save", {"name": "slowpen", "pen": {"speed": 18, "pressure": 0.2}})
         pv = self.doc_preview(objs, {"layers": [{"key": keys[0], "pen": "slowpen"}]})
         self.assertEqual(pv["settings"]["layers"][0]["speed"], 18)                     # retuned pen, same job
+        self.assertNotIn("dwell_ms", pv["settings"]["layers"][0])
+        t0 = pv["summary"]["est_seconds"]
+        code, r = self.call("POST", "/api/pens/save", {"name": "slowpen", "pen": {"dwell_ms": 400}})
+        pv = self.doc_preview(objs, {"layers": [{"key": keys[0], "pen": "slowpen"}, {"key": keys[1], "pen": "slowpen", "dwell_ms": 100}]})
+        ls = {l["key"]: l for l in pv["settings"]["layers"]}
+        self.assertEqual((ls[keys[0]]["dwell_ms"], ls[keys[1]]["dwell_ms"]), (400, 100))  # pen's dwell; its own wins
+        self.assertGreater(pv["summary"]["est_seconds"], t0)                               # the plot waits
         self.call("POST", "/api/pens/delete", {"name": "slowpen"})
 
     def test_04m_break_apart_and_reverse(self):

@@ -133,7 +133,7 @@ def validate(raw, bed, pens, layer_keys):
             "pressure": _num(ent, "pressure", pr["min"], pr["max"], label=f"Layer {i + 1} pressure"),
             "passes": passes, "name": name, "rank": rank, **{k: v for k, v in extra.items() if v is not None},
         }
-    # A layer with a pen and no speed or pressure of its own follows the pen profile, so retuning the pen
+    # A layer with a pen and no speed, pressure or dwell of its own follows the pen profile, so retuning the pen
     # updates every job that uses it.
     for ent in by_key.values():
         prof = pens.get(ent["pen"]) or {} if ent["pen"] else {}
@@ -141,6 +141,8 @@ def validate(raw, bed, pens, layer_keys):
             ent["speed"] = min(max(float(prof["speed"]), sp["min"]), sp["max"])
         if ent["pressure"] is None and isinstance(prof.get("pressure"), (int, float)):
             ent["pressure"] = min(max(float(prof["pressure"]), LIMITS["pressure"]["min"]), LIMITS["pressure"]["max"])
+        if ent.get("dwell_ms") is None and isinstance(prof.get("dwell_ms"), (int, float)) and prof["dwell_ms"] > 0:
+            ent["dwell_ms"] = min(float(prof["dwell_ms"]), 3000.0)
     # Ordered like the drawing's layers; settings for layers the file does not have are dropped.
     out["layers"] = [by_key.get(k) or {"key": k, "enabled": True, "pen": None, "speed": None, "pressure": None,
                                        "passes": 1, "name": None, "rank": None} for k in layer_keys]

@@ -1171,7 +1171,7 @@ class App:
         return {"ok": True, "pending": True, "task": t}
 
     def _prep_layers(self, raw, keys):
-        """Pens chosen in Prepare -> layer settings, with the pen's own speed and pressure when it has them."""
+        """Pens chosen in Prepare -> layer settings, with the pen's own speed, pressure and dwell when it has them."""
         pens = self.s.pens()
         given = {ly.get("key"): ly for ly in raw or [] if isinstance(ly, dict)}
         out = []
@@ -1182,8 +1182,12 @@ class App:
             sp, pr = prof.get("speed"), prof.get("pressure")
             ok_sp = isinstance(sp, (int, float)) and LIMITS["speed"]["min"] <= sp <= LIMITS["speed"]["max"]
             ok_pr = isinstance(pr, (int, float)) and 0 <= pr <= LIMITS["pressure"]["max"]
-            out.append({"key": k, "enabled": g.get("enabled", True) is not False, "pen": pen,
-                        "speed": sp if ok_sp else None, "pressure": pr if ok_pr else None})
+            dw = prof.get("dwell_ms")
+            ent = {"key": k, "enabled": g.get("enabled", True) is not False, "pen": pen,
+                   "speed": sp if ok_sp else None, "pressure": pr if ok_pr else None}
+            if isinstance(dw, (int, float)) and 0 < dw <= 3000:
+                ent["dwell_ms"] = dw
+            out.append(ent)
         return out
 
     def prepare_save(self, body):
