@@ -881,7 +881,7 @@ class Plotter:
         self.base_down = cfg["servo"]["pen_down"]    # pen-down at pressure 0: machine.json, or the depth knob
         self.frac = 0.0                              # the pressure last set
         self.pot = None if self.sim or EMIT is not None else penpot.active(cfg)
-        self.pot_t = -1e9
+        self.pot_t = self.pot_moved = -1e9
         if not self.sim:
             port = args.port
             if not port:
@@ -971,8 +971,12 @@ class Plotter:
         self.pen(True)
 
     def pot_check(self, force=False):
-        """Read the depth knob (at most twice a second) and follow it for the next pen-down. Pen up only."""
-        if not self.pot or (not force and self.now() - self.pot_t < 0.5):
+        """Read the depth knob and follow it for the next pen-down. Pen up only. Every JOB_SLOW s, or every
+        JOB_FAST s for a while after it was turned."""
+        if not self.pot:
+            return
+        every = penpot.JOB_FAST if self.now() - self.pot_moved < penpot.FAST_FOR else penpot.JOB_SLOW
+        if not force and self.now() - self.pot_t < every:
             return
         self.pot_t = self.now()
         vals = []
@@ -989,6 +993,7 @@ class Plotter:
                 log(f"Depth knob {adc}: pen-down {new}")
             self.base_down = new
             if not force:
+                self.pot_moved = self.now()
                 self.set_pressure(self.frac, force=True)
 
     def set_pressure(self, frac, force=False):

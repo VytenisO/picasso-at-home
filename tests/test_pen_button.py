@@ -148,7 +148,7 @@ class TestPenButton(unittest.TestCase):
         self.ebb.knob = [600]                                   # turned deeper during the pen check
         self.tick()
         v = 14000 - round(600 / 640 * 1440)
-        self.assertEqual(self.moves(), [f"SC,5,{v}", f"S2,{v},4"])
+        self.assertEqual(self.moves(), [f"SC,5,{v}", f"S2,{v},4,{hardware.FOLLOW_RATE}"])
         self.assertIsNone(self.tick())                          # no repeat while it stays put
         self.assertEqual(self.moves(), [])
 
@@ -162,6 +162,22 @@ class TestPenButton(unittest.TestCase):
         self.ebb.press()
         self.tick()
         self.assertIn("SC,5,13040", self.moves())               # the saved pen-down
+
+
+    def test_knob_read_rarely_until_it_moves(self):
+        reads = lambda: self.ebb.sent.count("A")           # noqa: E731
+        self.tick()
+        self.tick()
+        self.assertEqual(reads(), 0)                        # idle and untouched: not every button check
+        self.tick(1.0)
+        self.assertEqual(reads(), penpot.READS)
+        self.ebb.knob = [400]
+        self.tick(1.0)
+        self.tick()
+        self.assertEqual(reads(), penpot.READS)             # it moved: every check for a while
+        self.tick(penpot.FAST_FOR + 1)
+        self.tick()
+        self.assertEqual(reads(), 0)                        # and back to slow
 
 
 class TestKnobMaths(unittest.TestCase):

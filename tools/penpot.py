@@ -17,6 +17,12 @@ SPREAD_MAX = 12      # ADC counts: readings further apart than this mean a loose
 RANGE_SLACK = 40     # ADC counts past either end before a reading counts as a fault
 STEP = 6             # servo units: smaller changes are noise, not a turn of the knob
 READS = 3            # readings per look
+# How often to look. Each look is a few serial round trips, so the knob is read rarely until it moves, then often
+# for a while: quick to follow a turn, nearly free when nobody touches it.
+JOB_SLOW = 5.0       # s between looks during a job (at a pen-down)
+JOB_FAST = 0.5       # s between looks during a job right after a turn
+IDLE_SLOW = 1.0      # s between looks between jobs
+FAST_FOR = 10.0      # s of fast looks after the last change
 
 
 def defaults(servo):

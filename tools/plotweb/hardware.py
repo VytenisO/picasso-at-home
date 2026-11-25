@@ -273,6 +273,9 @@ class ServoGuard(threading.Thread):
 # First press: motors locked, pen down at machine.json's pen_down. Second press: pen up, motors released.
 # Only between jobs; a press during a job is thrown away, and no job starts while the pen is down.
 BUTTON_POLL = 0.2        # s between QB reads
+BUTTON_POLL_DOWN = 0.05  # s between reads during a pen check, so the pen follows the knob closely
+FOLLOW_RATE = 40         # S2 rate while following the knob (servo units per 24 ms): glides instead of jumping
+FOLLOW_STEP = 3          # servo units: smaller knob changes during a pen check are ignored
 BUTTON_STALE = 1.0       # s without a read (a job ran, the port was busy): whatever QB latched is old, drop it
 BUTTON_AUTO_UP = 120.0   # s: the pen goes back up by itself if the second press never comes
 
@@ -288,6 +291,8 @@ class PenButton(threading.Thread):
         self.since = 0.0
         self.armed = True          # False until the button is let go after a press (a long hold is one press)
         self.last_read = 0.0
+        self.pot_t = self.pot_moved = -1e9   # last knob read, last time it moved
+        self.pot_cfg = None                  # the knob settings at the last read
 
     def hold_reason(self):
         """For JobRunner.reserve: why no job may start now, or None."""
@@ -298,7 +303,13 @@ class PenButton(threading.Thread):
         """One look at the button over an open port. -> 'down', 'up' or None."""
         ser.reset_input_buffer()
         cfg = self.s.machine()
-        self.read_pot(ser, cfg)
+        fast = self.down or now - self.pot_moved < penpot.FAST_FOR
+        saved = (cfg.get("pen_pot"), cfg["servo"])
+        if fast or now - self.pot_t >= penpot.IDLE_SLOW or saved != self.pot_cfg:   # the button every time, the knob
+            self.pot_t, self.pot_cfg = now, saved                                  # only so often, or when re-set
+            self.pot_t = now
+            if self.read_pot(ser, cfg):
+                self.pot_moved = now
         q = _ask(ser, "QB")
         pressed = bool(q) and q[0].split(",")[-1].strip() == "1"
         stale = now - self.last_read > BUTTON_STALE
@@ -312,10 +323,12 @@ class PenButton(threading.Thread):
             self._up(ser)
             self.log("warn", f"Pen check: no second press in {BUTTON_AUTO_UP:.0f} s, pen raised and motors released.")
             return "up"
-        if self.down and self.pot and self.pot["pen_down"] is not None                 and abs(self.pot["pen_down"] - self.applied) >= penpot.STEP:
+        if (self.down and self.pot and self.pot["pen_down"] is not None
+                and abs(self.pot["pen_down"] - self.applied) >= FOLLOW_STEP):
             v = self.applied = self.pot["pen_down"]           # the knob turned during a pen check: follow it now
+            self.since = now                                  # still being set: the auto pen-up waits
             _ask(ser, f"SC,5,{v}")
-            _ask(ser, f"S2,{v},{PEN_PIN}")
+            _ask(ser, f"S2,{v},{PEN_PIN},{FOLLOW_RATE}")
         if not pressed or stale:
             return None
         self.armed = False
@@ -337,7 +350,7 @@ class PenButton(threading.Thread):
         return "down"
 
     def read_pot(self, ser, cfg):
-        """Read the depth knob, when used; keep self.pot and tell the UI when it changed."""
+        """Read the depth knob (also when not used); keep self.pot and tell the UI when it changed. -> changed"""
         pot = penpot.settings(cfg)              # read even when off, so the Machine tab can show the ends
         ch = pot["channel"]
 
@@ -353,9 +366,12 @@ class PenButton(threading.Thread):
         new = {"adc": adc, "raw": round(sum(vals) / len(vals)) if steady else None, "enabled": bool(pot["enabled"]),
                "pen_down": penpot.pen_down(cfg["servo"], pot, adc) if use else None, "problem": why}
         old = self.pot
-        if old is None or old["problem"] != why or old["enabled"] != new["enabled"] or old["raw"] is None or new["raw"] is None                 or abs(old["raw"] - new["raw"]) >= 2:
+        if (old is None or old["problem"] != why or old["enabled"] != new["enabled"] or old["raw"] is None
+                or new["raw"] is None or abs(old["raw"] - new["raw"]) >= 2):     # 1 count is noise
             self.pot = new
             self.emit(pot=new)
+            return old is not None
+        return False
 
     def _up(self, ser):
         _ask(ser, "SP,1,300")
@@ -366,7 +382,7 @@ class PenButton(threading.Thread):
     def run(self):
         extra = {"exclusive": True} if os.name == "posix" else {}
         while True:
-            time.sleep(self.interval)
+            time.sleep(min(self.interval, BUTTON_POLL_DOWN) if self.down else self.interval)
             try:
                 if self.runner.busy() or not self.lock.acquire(timeout=0.1):
                     continue
