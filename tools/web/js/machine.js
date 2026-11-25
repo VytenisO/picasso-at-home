@@ -4,7 +4,6 @@
 import { api, post } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, ask, askText } from './ui.js';
-import { confirmDialog } from './run.js';
 import { setBedClick } from './bed.js';
 import { selectionAnchor } from './workspace.js';
 
@@ -242,15 +241,7 @@ export function initMachine() {
 
 // ------------------------------------------------------------------ control
 async function take(sim) {
-  if (!sim) {
-    const m = state.me.machine;
-    const ok = await confirmDialog('Take control of the carriage', [['Start', `S, the paper's top-left (${m.start[0]}, ${m.start[1]}) mm`]], [
-      'The carriage is parked by hand at S with the motors off. It was slid there with the motors off.',
-      'The pen is up.',
-      'Nothing is in the carriage\'s way, and the power switch is within reach.',
-    ], 'Take control');
-    if (!ok) return;
-  }
+  // No start dialog: the carriage is assumed parked at S with the motors off and the pen up.
   try {
     await post('/api/machine/start', { mode: sim ? 'simulate' : 'plot', confirm: sim ? undefined : { parked: true } });
   } catch (e) { toast(e.message, true); }

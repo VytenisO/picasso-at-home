@@ -59,12 +59,7 @@ async function run(t, form, btn) {
     toast('Choose the pen type first. Results are valid for that pen only.', true);
     return;
   }
-  let confirm;
-  if (t.kind === 'machine') {
-    const ok = await ask(t.title, t.confirm + (state.me.sim ? ' (Simulator: nothing moves.)' : ''), 'Start');
-    if (!ok) return;
-    confirm = { ok: true };
-  }
+  const confirm = t.kind === 'machine' ? { ok: true } : undefined;      // no start dialog
   btn.disabled = true;
   try {
     const r = await post('/api/tools/run', { tool: t.id, params, confirm });

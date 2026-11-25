@@ -1,4 +1,4 @@
-// Status panel, run controls, the shared start dialog (live writing, take control) and the pen-swap prompt.
+// Status panel, run controls and the pen-swap prompt.
 import { api, post, ApiError } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
@@ -361,24 +361,6 @@ async function start(mode) {
     toast(e.message, true);
     if (e instanceof ApiError && e.status === 409) runPreview();
   }
-}
-
-// The shared start dialog: a title, facts, the checklist that must all be ticked, and a go button.
-export function confirmDialog(titleText, rows, checks, goLabel) {
-  return new Promise((resolve) => {
-    const d = $('confirmDlg');
-    $('confirmTitle').textContent = titleText;
-    $('confirmKv').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]));
-    const box = $('confirmChecks');
-    box.replaceChildren(...checks.map((t, i) => el('label', { class: 'check' }, el('input', { type: 'checkbox', id: `cc${i}` }), ' ', t)));
-    const go = $('confirmGo');
-    go.textContent = goLabel;
-    go.disabled = true;
-    box.onchange = () => { go.disabled = ![...box.querySelectorAll('input')].every((c) => c.checked); };
-    d.returnValue = '';
-    d.onclose = () => resolve(d.returnValue === 'ok');
-    d.showModal();
-  });
 }
 
 // ------------------------------------------------------------- controls

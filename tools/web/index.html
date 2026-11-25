@@ -790,21 +790,6 @@
 </nav>
 </div>
 
-<dialog id="confirmDlg" aria-labelledby="confirmTitle">
-  <form method="dialog" class="dlg" id="confirmForm">
-    <h2 id="confirmTitle">Start plot</h2>
-    <dl class="kv" id="confirmKv"></dl>
-    <div id="confirmChecks"></div>
-    <p class="note">No emergency stop on this firmware. Stop lets the move already sent finish, lifts the pen and
-      releases the motors. For an instant stop, switch the plotter off.</p>
-    <div class="actions">
-      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
-      <button value="cancel" formnovalidate>Cancel</button>
-      <button value="ok" class="primary" id="confirmGo" disabled>Start</button>
-    </div>
-  </form>
-</dialog>
-
 <dialog id="padDlg" aria-labelledby="padTitle">
   <div class="dlg pad-dlg">
     <div class="pad-head">
@@ -889,7 +874,7 @@
       <li>Set pens and speeds per layer in Layers.</li>
       <li><b>Preview</b> checks the plan with the plotter's own rules. <b>Simulate</b> runs it on a virtual machine.</li>
       <li>Switch the plotter on with the motors off, slide the carriage by hand to <b>S</b> (the paper's top-left), pen up.</li>
-      <li><b>Start plot</b>, confirm, and watch. Between layers it pauses for a pen change.</li>
+      <li><b>Start plot</b> and watch. Between layers it pauses for a pen change.</li>
     </ol>
     <h3>Shortcuts</h3>
     <dl class="kv" id="keyList"></dl>

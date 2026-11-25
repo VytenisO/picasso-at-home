@@ -3,7 +3,6 @@
 import { api, post, ordered } from './api.js';
 import { state, set, on, jobActive } from './store.js';
 import { $, el, toast } from './ui.js';
-import { confirmDialog } from './run.js';
 import { initPad } from './pad.js';
 import { refreshFiles } from './workspace.js';
 
@@ -42,22 +41,10 @@ function fillFonts(r) {
 }
 
 async function start(simulate) {
-  const m = state.me.machine;
+  // No start dialog, like Trace and Plot: the carriage is assumed parked at S with the pen up. Ticking sport mode
+  // is the go-ahead for it.
   const font = $('liveFont').value;
-  const simulated = simulate || state.me.sim;
-  const rows = [['Writing', font.startsWith('hand:') ? `handwriting of ${font.slice(5)}` : (font || 'handwriting')], ['Letter height', `${$('liveSize').value} mm`],
-    ['Speed', `${$('liveSpeed').value} mm/s`], ['Mode', simulated ? 'Simulator: nothing moves' : 'Real plotter']];
   const sport = $('liveSport').checked;
-  const checks = [
-    `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${m.start[0]}, ${m.start[1]}) mm. It was slid there with the motors off.`,
-    'The pen is up and seated.',
-    "The paper is taped down, nothing is in the carriage's way, and the power switch is within reach.",
-  ];
-  if (sport) {
-    rows.push(['SPORT MODE', 'The pad drives the plotter at up to 100 mm/s, above the tested 40 mm/s']);
-    checks.push('I understand sport mode can make the motors lose steps. I will check the carriage and park it again afterwards.');
-  }
-  if (!(await confirmDialog(`Start live writing${simulated ? ' (simulator)' : ''}`, rows, checks, 'Start'))) return;
   try {
     version++;
     set({ liveStrokes: [] });

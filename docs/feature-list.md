@@ -294,8 +294,8 @@ niche.
 | Trace frame (pen-up bounding box, back to S) | HAVE | | |
 | Frame as convex hull or per object | HAVE |  | Job, Trace frame: the drawing's box, its convex outline, or each object's box |
 | Repeat frame until stopped | HAVE |  | Job: Trace again and again until Return to start (up to 50 rounds), then back to S |
-| Start plot with three-item checklist | SKIP |  | removed 2026-11-25 at the user's request: Trace and Plot start at once, the dialog only got in the way. Live writing and Take control keep theirs |
-| Editable checklist items | SKIP |  | went with the start dialog (2026-11-25) |
+| Start plot with three-item checklist | SKIP |  | removed 2026-11-25 at the user's request: Trace and Plot start at once, the dialog only got in the way. Later the same day live writing, Take control and the pen test lost theirs too: every start goes at once |
+| Editable checklist items | SKIP |  | no start dialogs at all (2026-11-25) |
 | Pause at stroke end, continue, return to start, stop | HAVE | | |
 | Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
