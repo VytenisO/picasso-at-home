@@ -758,7 +758,8 @@ class App:
         for ln in out.splitlines():
             if ln.strip() and not ln.startswith("__"):
                 self.ev.log("debug", ln, "plot")
-        res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "doc": True, "file": None,
+        res = {"ok": ok, "plan_id": pid, "problems": problems, "warnings": plotjob.speed_warnings(v), "settings": v,
+               "doc": True, "file": None,
                "bed_key": document.bed_key(objs, raw.get("settings")),
                "file_layers": layers, "objects": objs, "time_factor": self.runner.time_factor()}
         if pv:
@@ -798,7 +799,8 @@ class App:
         for ln in out.splitlines():
             if ln.strip() and not ln.startswith("__"):
                 self.ev.log("debug", ln, "plot")
-        res = {"ok": ok, "plan_id": pid, "problems": problems, "settings": v, "file": e["id"],
+        res = {"ok": ok, "plan_id": pid, "problems": problems, "warnings": plotjob.speed_warnings(v), "settings": v,
+               "file": e["id"],
                "file_layers": layers}
         if pv:
             res.update(summary=_public_summary(pv["summary"]), placement=pv["placement"], order=pv["order"],

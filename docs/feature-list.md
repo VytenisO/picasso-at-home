@@ -294,8 +294,8 @@ niche.
 | Trace frame (pen-up bounding box, back to S) | HAVE | | |
 | Frame as convex hull or per object | HAVE |  | Job, Trace frame: the drawing's box, its convex outline, or each object's box |
 | Repeat frame until stopped | HAVE |  | Job: Trace again and again until Return to start (up to 50 rounds), then back to S |
-| Start plot with three-item checklist | HAVE | | |
-| Editable checklist items | HAVE |  | Run, Start checklist: your own items, each must be ticked in the start dialog (per browser) |
+| Start plot with three-item checklist | SKIP |  | removed 2026-11-25 at the user's request: Trace and Plot start at once, the dialog only got in the way. Live writing and Take control keep theirs |
+| Editable checklist items | SKIP |  | went with the start dialog (2026-11-25) |
 | Pause at stroke end, continue, return to start, stop | HAVE | | |
 | Honest stop and kill escalation | HAVE | | `runner.py`. Instant stop with `ES` after the firmware upgrade |
 | Progress, elapsed, ETA, current layer/pen/speed/pressure | HAVE | | |
@@ -303,7 +303,7 @@ niche.
 | Start from stroke N (resume an interrupted or stopped job) | HAVE | | Start here on the scrubber; after a stopped plot of the same bed, Run offers Resume there (the stroke cut short is drawn whole) |
 | Plot only selected objects or layers | HAVE | | layers via enable; Run: Plot only the selection (the rest fade on the bed, Plot all objects returns) |
 | Repeat job N times with a paper-change hold between | HAVE |  | Job, Copies (1-50): back at S after each copy, a paper-change pause, the pen swapped back when it differs; the time shows all copies; a resume point applies to the first copy only |
-| Live speed override during a run | HAVE |  | Run: a Speed slider (25-150%) while a plot runs, from the next move, never above 40 mm/s |
+| Live speed override during a run | HAVE |  | Run: a Speed slider (25-150%) while a plot runs, from the next move, never above the 200 mm/s hard cap |
 | Finish position: S, a named spot, or stay | HAVE |  | Job, When done: back to S, clear of the paper (the bed's right edge, level with S), or stay at the last stroke; no named spots yet |
 | Job history (what ran, when, result, duration) | HAVE |  | Run, Recent jobs: the last 100 jobs (results/web/history.jsonl keeps 500) with result, time, duration, strokes done |
 | Job queue | SKIP | | one machine, one operator; repeat N covers batches |
@@ -354,7 +354,8 @@ niche.
 | Paper edge calibration in the UI | HAVE |  | Machine, Paper, Measure the sheet with the pen: jog to the top-left and bottom-right corners |
 | Squareness and backlash test patterns | HAVE |  | Tools: Squareness sheet (square with diagonals), Backlash sheet (lines drawn towards each other) |
 | Lost-steps test in the UI | HAVE |  | Tools: Lost-steps sheet and Lost-steps result (the drift turned into steps per metre) |
-| Speed and acceleration limits shown and editable within ceilings | HAVE |  | Machine settings: drawing and pen-up limits and defaults, never above the driver's ceilings; acceleration is the firmware's |
+| Speed and acceleration limits shown and editable within ceilings | HAVE |  | Machine settings: drawing and pen-up limits and defaults within the ceilings. Drawing: soft cap 100 mm/s (over it the plan warns, still starts), hard cap 200. Acceleration and corner slowdown are fixed in `tools/motion.py` (400 mm/s^2, junction deviation 0.02 mm), not settings |
+| Motion smoothing: slow into corners and U-turns, ramp back up | HAVE |  | `tools/motion.py`: every path and travel starts and ends at rest, corner speed from the turn angle (a reversal stops), speed changes at most 400 mm/s^2, ramps sent as 25 ms legs; the time estimate includes it. Values are guesses until tried on the machine |
 | Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
 | Lifetime stats (jobs, pen-down metres; pen wear) | HAVE |  | Machine, Lifetime: real jobs, hours, strokes, metres of line per pen (from each job's plan, by the share of strokes per layer) |

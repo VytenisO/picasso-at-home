@@ -8,7 +8,7 @@ Commands, one per line:
   MOVE dx dy               relative move in mm; clamped to the reachable area (the clamp is reported)
   GOTO x y                 absolute move to machine mm
   HOME                     back to S
-  PEN UP | PEN DOWN        pen down only moves at drawing speed (at most 40 mm/s)
+  PEN UP | PEN DOWN        pen down only moves at drawing speed (at most plot_svg.MAX_SPEED)
   TICK dx dy               a short pen-down mark from here by (dx, dy) mm and back, pen up after: calibration ticks
   SPEED v                  pen-up jog speed in mm/s (1..200)
   SETS                     the carriage is at S now: the tracked position becomes S (re-zero after jogging)

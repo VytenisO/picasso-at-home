@@ -253,7 +253,7 @@ class TestConfig(MachineServer):
         self.assertEqual(r["me"]["pens"]["fine"]["stroke_results"], {"single": 0.4})
         self.assertEqual(r["me"]["pens"]["fine"]["description"], "0.3 fineliner")
         for bad in ({"name": "Bad Name", "pen": {}}, {"name": "x", "pen": {"colour_hex": "blue"}},
-                    {"name": "x", "pen": {"speed": 90}}, {"name": "bic", "rename_from": "fine", "pen": {}}):
+                    {"name": "x", "pen": {"speed": 290}}, {"name": "bic", "rename_from": "fine", "pen": {}}):
             code, r = self.call("POST", "/api/pens/save", bad)
             self.assertEqual(code, 400, bad)
         code, r = self.call("POST", "/api/pens/delete", {"name": "fine"})

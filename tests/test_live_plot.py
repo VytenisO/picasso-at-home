@@ -64,7 +64,7 @@ def test_page_full_refuses_everything(tmp_path):
 
 
 def test_speed_ceiling(tmp_path):
-    r = run(tmp_path, "--text", "hi", "--speed", "50")
+    r = run(tmp_path, "--text", "hi", "--speed", "250")
     assert r.returncode != 0
 
 

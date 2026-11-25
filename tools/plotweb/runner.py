@@ -207,7 +207,7 @@ class JobRunner:
         except (TypeError, ValueError):
             return False, "The speed must be a number."
         if not 0.25 <= f <= 1.5:
-            return False, "The speed can be set from 25% to 150% (still never above the 40 mm/s limit)."
+            return False, "The speed can be set from 25% to 150% (still never above the drawing speed limit)."
         with self.lock:
             err = self._check(job_id)
             if err:

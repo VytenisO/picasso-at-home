@@ -150,7 +150,7 @@ def main():
     ap.add_argument("--minutes", type=float, default=20.0, help="target run time at the stress speeds")
     ap.add_argument("--every", type=int, default=8, help="a checkpoint mark after this many jitter patches")
     ap.add_argument("--seed", type=int, default=1, help="random seed; same seed gives the same sheet")
-    ap.add_argument("--stress-speed", type=float, default=40.0, help="drawing speed of the stress command, mm/s (max 40)")
+    ap.add_argument("--stress-speed", type=float, default=40.0, help="drawing speed of the stress command, mm/s (max 200)")
     ap.add_argument("--stress-travel", type=float, default=200.0, help="pen-up speed of the stress command, mm/s (max 200)")
     ap.add_argument("--out-dir", default=str(ROOT / "input"))
     ap.add_argument("--config", default=str(ROOT / "config" / "machine.json"))
@@ -164,8 +164,8 @@ def main():
         if not meta_path.exists():
             sys.exit(f"{meta_path} not found; generate the sheet first")
         return analyse(a.analyse[0], a.analyse[1], meta_path, pathlib.Path(a.config))
-    if not (0 < a.stress_speed <= 40 and 0 < a.stress_travel <= 200):
-        sys.exit("stress speeds: drawing in (0, 40] mm/s, travel in (0, 200] mm/s")
+    if not (0 < a.stress_speed <= 200 and 0 < a.stress_travel <= 200):
+        sys.exit("stress speeds: drawing in (0, 200] mm/s, travel in (0, 200] mm/s")
     if a.width > 267 or a.height > 180 or a.width < 60 or a.height < 60:
         sys.exit("sheet must be 60..267 x 60..180 mm to fit the paper canvas")
 

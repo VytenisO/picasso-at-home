@@ -23,7 +23,7 @@ STOP (honoured before the next move is sent), and WRITE as the first line to con
 QUIT counts as STOP.
 It implies --json and --track, and line_done events carry the strokes in machine mm.
 
-Safety is plot_svg's: drawing speed <= 40 mm/s, pen-up <= 200 mm/s, pressure 0..0.9, every stroke inside the canvas
+Safety is plot_svg's: drawing speed <= MAX_SPEED, pen-up <= MAX_TRAVEL_SPEED, pressure 0..0.9, every stroke inside the canvas
 (the paper minus its margin) and the machine travel, nothing off the paper. A line that would leave the canvas is refused whole.
 """
 import argparse
@@ -138,8 +138,7 @@ class Session:
             p.move_to(*sp[0], a.travel_speed)
             p.set_pressure(a.pressure if a.pressure is not None else st["p"])
             p.pen(False, a.pen_delay)
-            for t in sp[1:]:
-                p.move_to(*t, a.speed)
+            p.move_path(sp[1:], a.speed)
             p.pen(True, a.pen_delay)
             saved.append({"p": st["p"], "pts": [[round(x, 2), round(y, 2)] for x, y in pts]})
         self.lines_done.append({"page": self.page, "text": text, "baseline_mm": round(self.baseline, 2), "strokes": saved})

@@ -1,9 +1,9 @@
-// Status panel, run controls, the start confirmation and the pen-swap prompt.
+// Status panel, run controls, the shared start dialog (live writing, take control) and the pen-swap prompt.
 import { api, post, ApiError } from './api.js';
 import { state, set, on, jobActive, prefs } from './store.js';
 import { $, el, toast, fmtTime, mm } from './ui.js';
 import { runPreview } from './workspace.js';
-import { fileName, setStartAt, setSettings } from './doc.js';
+import { setStartAt, setSettings } from './doc.js';
 import * as G from './geom.js';
 
 const TITLES = {
@@ -16,8 +16,6 @@ const DOT = { running: 'busy', starting: 'busy', returning: 'busy', pausing: 'wa
 
 export function initRun() {
   $('previewBtn').onclick = previewNow;
-  $('checklistText').value = prefs('checklist') || '';
-  $('checklistText').onchange = () => prefs('checklist', $('checklistText').value.slice(0, 2000));
   $('speedRange').oninput = () => { $('speedPct').textContent = `${$('speedRange').value}%`; };
   $('speedRange').onchange = async () => {
     try { await post('/api/job/speed', { job: state.job.id, factor: Number($('speedRange').value) / 100 }); } catch (e) { toast(e.message, true); }
@@ -225,6 +223,10 @@ function renderRun() {
     ps.className = 'note err'; ps.textContent = 'Not ready to plot:';
     list.hidden = false;
     list.replaceChildren(...(pv.problems || []).map((p) => el('li', { text: p })));
+  } else if ((pv.warnings || []).length) {      // over the soft speed cap: allowed, said plainly
+    ps.className = 'note warn'; ps.textContent = 'Ready to plot, but:';
+    list.hidden = false;
+    list.replaceChildren(...pv.warnings.map((p) => el('li', { text: p })));
   } else { ps.className = 'note ok'; ps.textContent = 'Plan checked. Ready to plot.'; }
   if (pv && pv.summary) {
     const s = pv.summary, b = s.bbox_machine_mm;
@@ -348,18 +350,7 @@ async function start(mode) {
   let pv = state.preview;
   if (!pv || state.previewStale) pv = await runPreview();
   if (!pv || !pv.ok) { toast('The plan has problems: see Run.', true); return; }
-  if (mode !== 'simulate') {
-    const ok = await confirmStart(mode, pv);
-    if (!ok) return;
-    // The dialog may have been open a while: check again, and start only if it is still the plan confirmed.
-    const confirmed = pv.plan_id;
-    pv = await runPreview();
-    if (!pv || !pv.ok) { toast('The plan changed and has problems now. Nothing was started.', true); return; }
-    if (pv.plan_id !== confirmed) {
-      toast('The drawing, settings or calibration changed while the dialog was open. Nothing was started: check and start again.', true);
-      return;
-    }
-  }
+  // No start dialog: Trace and Plot go straight away. The carriage is assumed parked at S with the pen up.
   try {
     const d = state.doc;
     const r = await post('/api/job/start', { doc: { name: d.name, objects: d.objects, settings: { ...d.settings, start_at: state.startAt || 0 } },
@@ -370,31 +361,6 @@ async function start(mode) {
     toast(e.message, true);
     if (e instanceof ApiError && e.status === 409) runPreview();
   }
-}
-
-function confirmStart(mode, pv) {
-  return new Promise((resolve) => {
-    const m = state.me.machine, s = pv.summary;
-    const first = s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))[0];
-    const title = mode === 'trace' ? 'Trace the frame (pen up)' : `Start plot${state.me.sim ? ' (simulator)' : ''}`;
-    const b = s.bbox_machine_mm;
-    const objs = state.doc.objects;
-    const rows = [['Drawing', objs.length === 1 ? fileName(objs[0]) : `${objs.length} objects: ${[...new Set(objs.map(fileName))].join(', ')}`],
-      ['Area', `${mm(b[2] - b[0])} x ${mm(b[3] - b[1])} mm at (${mm(b[0])}, ${mm(b[1])}) mm`]];
-    if (mode === 'plot') {
-      rows.push(['Time', `about ${fmtTime(s.est_seconds)}`]);
-      rows.push(['Pens', s.layers.filter((l) => l.enabled !== false).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)).map((l, i) => `${i + 1}. ${l.title || l.name}: ${l.pen || 'pen not set'}, ${l.speed} mm/s` +
-        (l.pressure !== null && l.pressure !== undefined ? `, pressure ${l.pressure}` : '')).join('; ')]);
-      if (s.swaps) rows.push(['Pen changes', `${s.swaps}: the plot pauses and asks for each one`]);
-    } else rows.push(['Moves', 'Pen up around the drawing\'s frame and back to S. Nothing is drawn.']);
-    const checks = [
-      `The plotter is on and the carriage is parked by hand at S, the paper's top-left (${(s.start_mm || m.start)[0]}, ${(s.start_mm || m.start)[1]}) mm. It was slid there with the motors off.`,
-      mode === 'plot' ? `The pen is up and the first pen is in${first && first.pen ? `: ${first.pen}` : ''}.` : 'The pen is up.',
-      'The paper is taped down, nothing is in the carriage\'s way, and the power switch is within reach.',
-      ...String(prefs('checklist') || '').split('\n').map((x) => x.trim()).filter(Boolean),
-    ];
-    return confirmDialog(title, rows, checks, mode === 'trace' ? 'Start trace' : 'Start plot').then(resolve);
-  });
 }
 
 // The shared start dialog: a title, facts, the checklist that must all be ticked, and a go button.

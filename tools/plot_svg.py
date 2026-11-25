@@ -46,6 +46,7 @@ import time
 import xml.etree.ElementTree as ET
 
 import fill as fillmod
+import motion
 import pathplan
 
 try:
@@ -65,7 +66,8 @@ CSS_COLORS = {"black": "#000000", "white": "#ffffff", "red": "#ff0000", "green":
               "grey": "#808080", "gray": "#808080", "orange": "#ffa500", "purple": "#800080",
               "pink": "#ffc0cb", "lime": "#00ff00", "navy": "#000080", "teal": "#008080",
               "brown": "#a52a2a"}
-MAX_SPEED = 40.0        # mm/s hard ceiling for drawing (pen down)
+MAX_SPEED = 200.0       # mm/s hard ceiling for drawing (pen down); corners and U-turns slow down below it (motion.py)
+SOFT_SPEED = 100.0      # mm/s soft cap: faster is allowed, the plan warns that steps may be lost
 MAX_PRESSURE = 0.9      # data-pressure ceiling: a fraction of the way from pen-down toward pen-up
 MAX_TRAVEL_SPEED = 200.0  # mm/s ceiling for pen-up travel; 100 and 200 ran clean on pen-up traces
 CHUNK_STEPS = 3000      # longest single SM leg (per vector) in steps
@@ -873,6 +875,7 @@ class Plotter:
         self.caps = set()            # firmware 3.x: ES (instant stop), QS (step position readback)
         self.readback = False        # the end position was read back from the board, not just counted
         self.ctl = getattr(args, "ctl", None)
+        self.ms_carry = 0.0
         self.sim_speed = getattr(args, "sim_speed", None) or 0.0
         if not self.sim:
             port = args.port
@@ -1035,18 +1038,45 @@ class Plotter:
         self.nsm += 1
 
     def move_to(self, tx, ty, speed):
-        """Absolute world-step target; chunked, vector speed in mm/s."""
+        """Absolute world-step target at up to `speed` mm/s, from rest to rest (ramped up and down)."""
+        self.move_path([(tx, ty)], speed)
+
+    def move_path(self, targets, speed):
+        """Absolute world-step targets as one path from rest to rest, at up to `speed` mm/s: slower into sharp
+        corners and U-turns, back up to speed after (motion.py). A drawn stroke is one path."""
+        pts = [(self.pos[0], self.pos[1])]
+        for tx, ty in targets:
+            if (tx, ty) != pts[-1]:
+                pts.append((tx, ty))
+        if len(pts) < 2:
+            return
+        mm = [(x / self.spmm[0], y / self.spmm[1]) for x, y in pts]
+        v = motion.plan(mm, speed)
+        self.ms_carry = 0.0
+        for i in range(len(pts) - 1):
+            (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+            length = math.dist(mm[i], mm[i + 1])
+            for d, secs in motion.pieces(length, v[i], v[i + 1], speed):
+                f = d / length
+                self._leg(x0 + round((x1 - x0) * f), y0 + round((y1 - y0) * f), secs)
+
+    def _leg(self, tx, ty, secs):
+        """One constant-speed piece, split so no single SM is too long in steps or time."""
         dx, dy = tx - self.pos[0], ty - self.pos[1]
-        mm_total = math.hypot(dx / self.spmm[0], dy / self.spmm[1])
-        n = max(1, math.ceil(math.hypot(dx, dy) / CHUNK_STEPS), math.ceil(mm_total / speed / CHUNK_SECONDS))
+        if dx == 0 and dy == 0:
+            self.ms_carry += secs * 1000
+            return
+        n = max(1, math.ceil(math.hypot(dx, dy) / CHUNK_STEPS), math.ceil(secs / CHUNK_SECONDS))
         for k in range(1, n + 1):
-            nx = self.pos[0] + round((dx) * k / n) - round(dx * (k - 1) / n)
-            ny = self.pos[1] + round((dy) * k / n) - round(dy * (k - 1) / n)
+            nx = self.pos[0] + round(dx * k / n) - round(dx * (k - 1) / n)
+            ny = self.pos[1] + round(dy * k / n) - round(dy * (k - 1) / n)
             sx, sy = nx - self.pos[0], ny - self.pos[1]
+            want = secs * 1000 / n + self.ms_carry
             if sx == 0 and sy == 0:
+                self.ms_carry = want
                 continue
-            mm = math.hypot(sx / self.spmm[0], sy / self.spmm[1])
-            ms = max(4, math.ceil(mm / speed * 1000))
+            ms = max(4, round(want))
+            self.ms_carry = min(4.0, max(-4.0, want - ms))     # rounding to whole ms evens out over the legs
             a = [0, 0]
             for w, s in ((0, sx), (1, sy)):
                 a[self.ax[w]["ebb_axis"] - 1] += s * self.ax[w]["sign"]
@@ -1072,14 +1102,14 @@ def estimate(strokes, spmm, draw_v, trav_v, pen_s, speeds=None, per_stroke=None)
         sd = sum(math.dist(a, b) for a, b in zip(s, s[1:]))
         dist_d += sd
         v = speeds[i] if speeds else draw_v
-        st = sd / v + d / trav_v + 2 * pen_s
+        st = motion.path_time(s, v) + motion.leg_time(d, 0.0, 0.0, trav_v) + 2 * pen_s    # with the slow corners
         t += st
         if per_stroke is not None:
             per_stroke.append(st)
         cur = s[-1]
     back = math.dist(cur, (0.0, 0.0))
     dist_t += back
-    t += back / trav_v
+    t += motion.leg_time(back, 0.0, 0.0, trav_v)
     return dist_d, dist_t, len(strokes), t
 
 
@@ -1706,8 +1736,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 if dwell:
                     p.idle(); p.sleep(dwell)
                 sp = min(MAX_SPEED, speed_of[i] * (ctl.speed_factor if ctl else 1.0))
-                for tx, ty in pts_s[1:]:
-                    p.move_to(tx, ty, sp)
+                p.move_path(pts_s[1:], sp)
                 if dwell:
                     p.idle(); p.sleep(dwell)
                 p.pen(True, a.pen_delay)

@@ -25,7 +25,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import hershey  # noqa: E402
 
-MAX_SPEED = 40.0
+MAX_SPEED = 200.0
 MAX_LEVEL = 0.8
 CELL, GAP, MARGIN, LABEL = 14.0, 4.0, 3.0, 2.5      # mm
 RAMP = [0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0, 2.5, 3.0]
@@ -147,7 +147,7 @@ def main():
     ap.add_argument("--tone", action="store_true", help="the tone ramp instead of the grid")
     ap.add_argument("--square", type=float, metavar="MM", help="the squareness sheet: a square this size with diagonals")
     ap.add_argument("--backlash", action="store_true", help="the backlash sheet: lines drawn towards each other")
-    ap.add_argument("--speeds", default="10,20,30,40", help="mm/s, comma separated, up to 8 (max 40)")
+    ap.add_argument("--speeds", default="10,20,30,40", help="mm/s, comma separated, up to 8 (max 200)")
     ap.add_argument("--pressures", default="0,0.15,0.3,0.45", help="0..0.8, comma separated, up to 8")
     a = ap.parse_args()
     pens = json.loads(pathlib.Path(a.pens_file).read_text())

@@ -296,6 +296,20 @@ def run_dry(argv, timeout=240):
         return -1, f"Could not run plot_svg.py: {ex}"
 
 
+def speed_warnings(v):
+    """Speeds over the soft cap: allowed, but the plan says so. -> list of plain-language warnings."""
+    import plot_svg
+    soft = plot_svg.SOFT_SPEED
+    out = []
+    if (v.get("speed") or 0) > soft:
+        out.append(f"Drawing speed {v['speed']:g} mm/s is over {soft:g} mm/s: allowed, but it may lose steps.")
+    for i, ly in enumerate(v.get("layers") or []):
+        if ly.get("enabled", True) and (ly.get("speed") or 0) > soft:
+            name = ly.get("name") or f"Layer {i + 1}"
+            out.append(f"{name}: {ly['speed']:g} mm/s is over {soft:g} mm/s: allowed, but it may lose steps.")
+    return out
+
+
 def friendly_problems(summary, output):
     """Plain-language versions of the placement problems, plus the raw PROBLEM lines."""
     out = []

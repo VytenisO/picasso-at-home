@@ -94,7 +94,7 @@ class TestApi(SimServer):
         code, me = self.call("GET", "/api/me")
         self.assertEqual(code, 200)
         self.assertTrue(me["sim"])
-        self.assertEqual(me["limits"]["speed"]["max"], 40.0)
+        self.assertEqual(me["limits"]["speed"]["max"], 200.0)
         self.assertEqual(me["limits"]["travel_speed"]["max"], 200.0)
         with urllib.request.urlopen(self.base + "/") as r:
             self.assertIn("Content-Security-Policy", r.headers)
@@ -126,7 +126,7 @@ class TestApi(SimServer):
         body = {"font": "Comic Neue", "xheight": 4.5, "speed": 15, "mode": "simulate"}
         code, d = self.call("POST", "/api/live/start", dict(body, font="No Such Font"))
         self.assertEqual(code, 400)
-        code, d = self.call("POST", "/api/live/start", dict(body, speed=80))
+        code, d = self.call("POST", "/api/live/start", dict(body, speed=280))
         self.assertEqual(code, 400)
         code, d = self.call("POST", "/api/live/start", dict(body, pressure=0.95))
         self.assertEqual(code, 400)
@@ -254,9 +254,14 @@ class TestApi(SimServer):
         self.assertFalse(d["ok"])
         self.assertTrue(any("right edge" in p for p in d["problems"]), d["problems"])
         # ceilings are enforced before anything runs
-        code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {"speed": 41}})
+        code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {"speed": 201}})
         self.assertEqual(code, 400)
         self.assertIn("between", d["error"])
+        code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {"speed": 150}})   # over the soft cap
+        self.assertEqual(code, 200, d)
+        self.assertTrue(any("150 mm/s" in w for w in d["warnings"]), d["warnings"])
+        code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {"speed": 60}})
+        self.assertEqual(d["warnings"], [])
         code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {"travel_speed": 250}})
         self.assertEqual(code, 400)
         code, d = self.call("POST", "/api/preview", {"id": fid, "settings": {

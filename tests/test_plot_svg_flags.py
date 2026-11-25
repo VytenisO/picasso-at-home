@@ -87,11 +87,11 @@ class TestFlags(unittest.TestCase):
             return json.loads(pv.read_text())["summary"]["est_seconds"]
         base = est("")
         self.assertAlmostEqual(est(' data-speed="10"') - base, 5.0, delta=0.3)      # 100 mm at 10 instead of 20
-        self.assertAlmostEqual(est(' data-speed="400"') - base, -2.5, delta=0.3)    # capped at 40 mm/s
+        self.assertAlmostEqual(est(' data-speed="400"') - base, -4.05, delta=0.3)   # capped at 200 mm/s; the ramps take 1 s of it
 
     def test_layer_limits(self):
         svg = FIX / "two_layers.svg"
-        rc, out = run(svg, "--layers", self.layers([{"speed": 41}]))
+        rc, out = run(svg, "--layers", self.layers([{"speed": 201}]))
         self.assertNotEqual(rc, 0)
         self.assertIn("speed must be in", out)
         rc, out = run(svg, "--layers", self.layers([{}, {"pressure": 0.91}]))
