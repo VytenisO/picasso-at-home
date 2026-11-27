@@ -21,9 +21,10 @@ def main(argv=None):
     from PIL import Image
     with Image.open(argv[0]) as im:
         side = max(im.size)
-    # oneDNN in Paddle 3 fails on Windows ("ConvertPirAttribute2RuntimeAttribute"); elsewhere it is the fast path
+    # oneDNN in Paddle 3 fails on Windows and Linux alike ("ConvertPirAttribute2RuntimeAttribute"); without it a
+    # 2400 px sheet takes about 30 s on the plotter host's CPU
     ocr = PaddleOCR(use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=True,
-                    text_det_limit_side_len=side, text_det_limit_type="max", enable_mkldnn=os.name != "nt")
+                    text_det_limit_side_len=side, text_det_limit_type="max", enable_mkldnn=False)
     r = ocr.predict(argv[0])[0]
     boxes = [{"quad": [[round(float(x), 1), round(float(y), 1)] for x, y in poly], "text": str(t), "conf": round(float(c), 3)}
              for poly, t, c in zip(r["rec_polys"], r["rec_texts"], r["rec_scores"])]
