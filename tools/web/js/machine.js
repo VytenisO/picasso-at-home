@@ -296,7 +296,7 @@ function renderControl() {
 async function calTicks(axis) {
   const L = Number($('calLen').value);
   if (!(L >= 20 && L <= 300)) { toast('Test length: 20 to 300 mm.', true); return; }
-  if (!machineRunning()) { toast('Take control first (Control, above), with paper under the pen.', true); return; }
+  if (!machineRunning()) { toast('Take control first, with paper under the pen.', true); return; }
   const tick = axis === 'x' ? { dx: 0, dy: 4 } : { dx: 4, dy: 0 };
   const move = axis === 'x' ? { dx: L, dy: 0 } : { dx: 0, dy: L };
   for (const [cmd, args] of [['tick', tick], ['move', move], ['tick', tick], ['move', { dx: -move.dx, dy: -move.dy }]]) {
@@ -386,7 +386,7 @@ async function regAdd() {
     const c = state.me.machine.canvas;
     await D.addFile(f.id, { at: [c[0], c[1]] });
     await D.addFile(f.id, { at: [c[2] - 8, c[3] - 8] });
-    toast('Two marks at opposite corners of the canvas. Plot them with the first pass.');
+    toast('Two marks added at opposite corners of the drawable area. Plot them with the first pass.');
   } catch (e) { toast(e.message, true); }
 }
 function regPoint(n) {
@@ -448,7 +448,7 @@ function paperCorner(which) {
     const w = p.x - tl[0], h = p.y - tl[1];
     if (w < 20 || h < 20) { toast('The bottom-right corner must be right of and below the top-left one.', true); return; }
     f.width.value = w.toFixed(1); f.height.value = h.toFixed(1);
-    $('paperMeasureNote').textContent = `Sheet ${w.toFixed(1)} x ${h.toFixed(1)} mm. Check the margin, then Save paper.`;
+    $('paperMeasureNote').textContent = `Sheet ${w.toFixed(1)} x ${h.toFixed(1)} mm: filled in under Machine, Paper. Check the margin and save there.`;
   }
 }
 
@@ -464,8 +464,8 @@ function renderPaper() {
   f.querySelector('button').disabled = jobActive();
   renderMachineSettings();
   const sv = m.servo || {};
-  $('servoNote').textContent = `Pen servo: up ${sv.pen_up}, down ${sv.pen_down}. These are set by hand with a pen mounted ` +
-    '(Tools, Pen height test, and config/machine.json), never here: a wrong pen-down value can gouge the paper.';
+  $('servoNote').textContent = `Pen servo: up ${sv.pen_up}, down ${sv.pen_down}.`;
+  $('servoNote').title = 'Set by hand with a pen mounted (Pen tests, Pen height test, or config/machine.json), not here: a wrong pen-down can gouge the paper';
 }
 
 // ------------------------------------------------------------- depth knob
@@ -519,7 +519,7 @@ async function savePaper(e) {
   try {
     const r = await post('/api/machine/paper', { paper });
     set({ me: r.me });
-    toast('Paper saved. Drawings are checked again against the new canvas.');
+    toast('Paper saved. Drawings are checked again against the new drawable area.');
   } catch (err) { toast(err.message, true); }
 }
 

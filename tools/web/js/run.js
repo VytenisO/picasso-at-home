@@ -77,24 +77,24 @@ export function dotClass(job) { return job ? DOT[job.state] || '' : ''; }
 function nextStep(job) {
   if (!job || !jobActive()) {
     if (state.position && state.position.state !== 'at_start')
-      return 'Before the next run: motors off, slide the carriage by hand to S (the paper\'s top-left), pen up.';
-    if (!hasBed()) return 'Add a drawing to the bed from the Library.';
+      return 'Park at S: motors off, slide the carriage by hand to the paper\'s top-left, pen up.';
+    if (!hasBed()) return 'Add a drawing from the Library.';
     if (!state.preview || state.previewStale) return 'Preview to check the plan.';
-    if (!state.preview.ok) return 'Fix the problems listed under Run, then preview again.';
-    return 'Ready. Start plot when the carriage is parked at S with the pen up.';
+    if (!state.preview.ok) return 'Fix the problems below, then Preview.';
+    return 'Ready to plot.';
   }
-  if (job.kind === 'machine' && job.state === 'running') return 'Jog under Machine, Control. Finish there; Stop lifts the pen and releases the motors.';
-  if (job.kind === 'live' && job.state === 'running') return 'Type a line under Tools, Live writing, and press Write. Finish returns to S; Stop finishes the move already sent, then lifts the pen.';
+  if (job.kind === 'machine' && job.state === 'running') return 'Jog under Control. Finish there.';
+  if (job.kind === 'live' && job.state === 'running') return 'Type a line under Write and press Enter.';
   switch (job.state) {
     case 'paused': return job.pause && job.pause.kind === 'swap'
-      ? 'Change the pen, check it is up and seated, then press Continue.'
+      ? 'Change the pen, check it is seated, then Continue.'
       : job.pause && (job.pause.kind === 'paper' || job.pause.kind === 'page')
-        ? 'Put in fresh paper exactly where the last sheet was, then press Continue.'
-        : 'Press Continue to carry on, Return to start, or Stop.';
-    case 'stopping': return 'Wait: the move already sent is finishing. Switch the plotter off for an instant stop.';
-    case 'pausing': return 'The plotter finishes the current stroke and lifts the pen.';
-    case 'returning': return 'Finishing the stroke, then travelling back to S.';
-    default: return 'Watch the plot. Space pauses at the end of a stroke; Shift+S stops.';
+        ? 'Fresh paper exactly where the last sheet was, then Continue.'
+        : 'Continue, Return or Stop.';
+    case 'stopping': return 'Finishing the move already sent. For an instant stop, switch the plotter off.';
+    case 'pausing': return 'Finishing the stroke, then pen up.';
+    case 'returning': return 'Finishing the stroke, then back to S.';
+    default: return 'Space pauses after the stroke; Shift+S stops.';
   }
 }
 
@@ -135,8 +135,12 @@ function renderStatus() {
   pn.className = 'note ' + (p && p.state === 'at_start' ? 'ok' : p && p.state === 'unknown' ? 'err' : 'warn');
   if (active && ['plot', 'live', 'machine'].includes(job.kind)) {
     pn.className = 'note';
-    pn.textContent = 'Carriage: under the job\'s control. The position above is the commanded one (no readback).';
-  } else pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}. ${p.note || ''}` : '';
+    pn.textContent = 'Carriage: moved by the job';
+    pn.title = 'The position shown is the commanded one; the board does not report it back';
+  } else {
+    pn.textContent = p ? `Carriage: ${p.state === 'at_start' ? 'at S' : p.state === 'moved' ? 'away from S' : 'position unknown'}` : '';
+    pn.title = (p && p.note) || '';
+  }
   // pen swap prompt over the bed
   const swap = job && job.state === 'paused' && job.pause;
   $('swapBanner').hidden = !swap;
@@ -216,9 +220,9 @@ function renderRun() {
     $('startAtText').textContent = `Starts at stroke ${state.startAt + 1}${tot ? ` of ${tot}` : ''}: the first ${state.startAt} are skipped. `;
   }
   if (active) return;
-  if (!hasBed()) { ps.className = 'note'; ps.textContent = 'Add a drawing to the bed, then preview it.'; return; }
+  if (!hasBed()) { ps.className = 'note'; ps.textContent = 'Nothing to plot yet.'; return; }
   if (state.previewing) { ps.className = 'note'; ps.textContent = 'Checking the plan...'; }
-  else if (!pv || stale) { ps.className = 'note warn'; ps.textContent = 'Settings changed. Preview to check again.'; }
+  else if (!pv || stale) { ps.className = 'note warn'; ps.textContent = 'Changed since the last Preview.'; }
   else if (!pv.ok) {
     ps.className = 'note err'; ps.textContent = 'Not ready to plot:';
     list.hidden = false;
@@ -349,7 +353,7 @@ async function previewNow() {
 async function start(mode) {
   let pv = state.preview;
   if (!pv || state.previewStale) pv = await runPreview();
-  if (!pv || !pv.ok) { toast('The plan has problems: see Run.', true); return; }
+  if (!pv || !pv.ok) { toast('The plan has problems: see Status.', true); return; }
   // No start dialog: Trace and Plot go straight away. The carriage is assumed parked at S with the pen up.
   try {
     const d = state.doc;

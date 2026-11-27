@@ -28,22 +28,21 @@
   <nav class="menu-bar hide-narrow" id="menuBar" aria-label="Menu"></nav>
   <nav class="ws-switch" role="tablist" aria-label="Workspace">
     <button role="tab" id="wsBtn-prepare" data-ws="prepare" aria-selected="false" title="Turn an image, model or text into a drawing (1)">Prepare</button>
-    <button role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place the drawing on the bed and plot it (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
+    <button role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place drawings on the bed and plot them (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
   </nav>
-  <span id="modeBadge" class="badge" title="Where jobs run"></span>
-  <span id="linkPill" class="pill" title="Live connection to the server" aria-live="polite">connecting</span>
-  <span id="statePill" class="pill" aria-live="polite">Idle</span>
+  <span class="spacer"></span>
   <span class="task-anchor">
-    <button id="taskPill" type="button" class="pill task-pill" hidden aria-expanded="false" aria-controls="taskPop">Tasks</button>
+    <button id="taskPill" type="button" class="pill task-pill" hidden aria-expanded="false" aria-controls="taskPop" title="Background work: tracing, shading. Runs one at a time; the page can be closed meanwhile">Tasks</button>
     <div id="taskPop" class="task-pop" role="dialog" aria-label="Background tasks" hidden>
       <h3>Background tasks</h3>
-      <p class="hint">Slow work (tracing a large drawing, measuring its shading) runs here, one at a time. Pages can be closed meanwhile.</p>
       <ul id="taskList" class="task-list"></ul>
     </div>
   </span>
-  <span class="spacer"></span>
-  <button id="stopTop" class="danger" hidden title="Stop the job (Shift+S)">Stop</button>
-  <button id="themeBtn" class="icon" title="Theme: system, light, dark">Theme</button>
+  <span id="modeBadge" class="badge" title="Where jobs run"></span>
+  <span id="linkPill" class="pill" title="Live link to the server (not to the plotter)" aria-live="polite">connecting</span>
+  <span id="statePill" class="pill" aria-live="polite">Idle</span>
+  <button id="stopTop" class="danger" hidden title="Stop: pen up, motors off. For an instant stop, switch the plotter off (Shift+S)">Stop</button>
+  <button id="themeBtn" class="icon" title="Theme: system">&#9680;</button>
   <button id="helpBtn" class="icon" title="Help and shortcuts (?)" aria-label="Help">?</button>
   <button id="logoutBtn" class="icon hide-narrow" hidden>Log out</button>
 </header>
@@ -161,96 +160,202 @@
 </main>
 
 <main class="workspace" id="plotWs">
-  <!-- left: library, layers, tools -->
+  <!-- main toolbar: files, history, run -->
+  <div class="toolbar" id="plotBar" role="toolbar" aria-label="Plot">
+    <div class="tb-group">
+      <button type="button" id="tbImport" title="Add a finished SVG to the Library. Images, models and text: Prepare">Import</button>
+      <button type="button" id="tbProjects" data-open="projDlg" title="Save the bed as a project, or open one">Projects</button>
+    </div>
+    <div class="tb-group">
+      <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>&#8630;</button>
+      <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631;</button>
+      <span class="tb-anchor">
+        <button class="icon" id="histBtn" aria-haspopup="true" aria-expanded="false" title="Step back to any earlier point">History</button>
+        <div class="view-menu hist-menu" id="histMenu" role="menu" aria-label="Undo history" hidden></div>
+      </span>
+    </div>
+    <div class="tb-group" id="idleButtons">
+      <button type="button" id="previewBtn" title="Plan the plot and check it against the machine (P)">Preview</button>
+      <button type="button" id="simBtn" title="Run the plan on the simulator: nothing moves">Simulate</button>
+      <button type="button" id="traceBtn" title="Pen up, trace the outline of the job: check it sits on the paper">Frame</button>
+      <button type="button" id="plotBtn" class="primary" title="Plot on the machine. Carriage parked at S, pen up">Plot</button>
+      <div class="mbtn">
+        <button type="button" class="mbtn-top icon" aria-haspopup="true" aria-expanded="false" title="Plot part of the bed, export the plan">&#9662;</button>
+        <div class="mbtn-list" role="menu" hidden>
+          <button type="button" id="onlySelBtn" title="Plot only the selected objects; the rest stay on the bed">Plot the selection only</button>
+          <hr>
+          <button type="button" id="exportBtn" title="Exactly what will be plotted: machine mm, fills, pen order">Export plot SVG</button>
+          <button type="button" id="exportPng" title="Every stroke in its pen's colour on white">Export plan PNG</button>
+          <button type="button" class="adv" id="compileBtn" title="The board's command stream, to run later with tools/run_compiled.py without the server">Export compiled job</button>
+        </div>
+      </div>
+    </div>
+    <div class="tb-group" id="jobButtons" hidden>
+      <button type="button" id="pauseBtn" title="Pause at the end of the stroke (Space)">Pause</button>
+      <button type="button" id="continueBtn" class="primary" title="Continue (Space)">Continue</button>
+      <button type="button" id="returnBtn" title="Finish the stroke, travel back to the start point">Return</button>
+      <button type="button" id="stopBtn" class="danger" title="Pen up, motors off. On firmware 3.x the move in flight is cut short; older firmware finishes it first (up to 3 s). For an instant stop, switch the plotter off (Shift+S)">Stop</button>
+    </div>
+    <div class="tb-group" id="pentestButtons" hidden>
+      <button type="button" id="ptToggle" class="primary">Pen up / down</button>
+      <button type="button" id="ptSweep" title="Step through the servo range">Sweep</button>
+      <button type="button" id="ptQuit" title="Pen up and finish">Finish</button>
+    </div>
+    <label class="tb-speed" id="speedLive" hidden title="Drawing speed of the running plot, from the next move. Never above the machine limit">
+      <span>Speed <b id="speedPct">100%</b></span><input type="range" id="speedRange" min="25" max="150" step="5" value="100" aria-label="Speed"></label>
+    <span class="spacer"></span>
+    <div class="tb-group">
+      <button type="button" id="tbTests" data-open="testsDlg" title="Test sheets for a pen: speed, pressure, line width, pen height">Pen tests</button>
+      <button type="button" id="tbMachine" data-open="machineDlg" title="Connection, motion, paper, pen depth, pens, backup">Machine</button>
+    </div>
+  </div>
+
+  <!-- left: library, manual control, live writing -->
   <aside class="panel left" id="leftPanel">
-    <nav class="tabs" role="tablist" aria-label="Side panel">
-      <button role="tab" id="tabBtn-library" aria-controls="tab-library" aria-selected="true">Library</button>
-      <button role="tab" id="tabBtn-layers" aria-controls="tab-layers" aria-selected="false">Layers</button>
-      <button role="tab" id="tabBtn-tools" aria-controls="tab-tools" aria-selected="false">Tools</button>
-      <button role="tab" id="tabBtn-machine" aria-controls="tab-machine" aria-selected="false">Machine</button>
+    <nav class="tabs" role="tablist" data-tabs="left" aria-label="Left panel">
+      <button role="tab" id="tabBtn-library" aria-controls="tab-library">Library</button>
+      <button role="tab" id="tabBtn-control" aria-controls="tab-control">Control</button>
+      <button role="tab" id="tabBtn-write" aria-controls="tab-write">Write</button>
     </nav>
 
     <section id="tab-library" role="tabpanel" aria-labelledby="tabBtn-library">
       <div class="section">
-        <h2>Add a drawing</h2>
-        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a finished SVG to add as it is">
-          Drop a finished <b>SVG</b> here or <b>choose one</b><br><small>Added as it is, ready to place.</small>
+        <div class="row">
+          <div id="drop" class="drop" tabindex="0" role="button" title="Drop a finished SVG here, or click to choose one. It is added as it is">Import SVG</div>
+          <button id="toPrepare" type="button" title="Images, PDFs, 3D models and text need Prepare first">Prepare...</button>
         </div>
         <input id="fileInput" type="file" accept=".svg" hidden>
-        <button id="toPrepare" class="wide-btn" type="button">Image, 3D model or text? Open Prepare</button>
-      </div>
-      <div class="section">
-        <h2>Library</h2>
         <div class="lib-tools">
-          <input id="libSearch" type="search" placeholder="Search names" aria-label="Search the library">
+          <input id="libSearch" type="search" placeholder="Search" aria-label="Search the library">
           <select id="libKind" aria-label="Kind"><option value="">All kinds</option></select>
-          <select id="libSort" aria-label="Sort"><option value="new">Newest first</option><option value="old">Oldest first</option>
-            <option value="name">Name A-Z</option></select>
+          <select id="libSort" aria-label="Sort"><option value="new">Newest</option><option value="old">Oldest</option>
+            <option value="name">A-Z</option></select>
         </div>
-        <ul id="fileList" class="files" aria-label="Uploaded drawings"></ul>
-        <p id="fileEmpty" class="hint">Nothing here yet. Add a drawing above, or paste an SVG or image (Ctrl+V).</p>
+        <ul id="fileList" class="files" aria-label="Drawings"></ul>
+        <p id="fileEmpty" class="hint">No drawings yet. Import an SVG, or paste one (Ctrl+V).</p>
         <input id="replaceInput" type="file" accept=".svg" hidden>
         <details id="trashBox" class="trash">
-          <summary>Trash <span id="trashCount" class="muted"></span></summary>
-          <p class="hint">Deleted drawings stay here for 30 days. Restoring one brings it back to the library; Undo on the
-            bed puts its objects back.</p>
+          <summary title="Deleted drawings are kept 30 days. Restore puts one back in the Library">Trash <span id="trashCount" class="muted"></span></summary>
           <ul id="trashList" class="files" aria-label="Trash"></ul>
           <button type="button" id="trashEmpty" class="danger-text">Empty the trash</button>
         </details>
       </div>
-      <div class="section">
-        <h2>Projects</h2>
-        <p class="hint">A project is the whole bed: the drawings, where they sit, pens and speeds.</p>
-        <form id="projForm" class="proj-form">
-          <input id="projName" maxlength="80" placeholder="Name this bed" aria-label="Project name" required>
-          <button type="submit">Save</button>
-        </form>
-        <label class="check"><input type="checkbox" id="projTemplate"> Save as a template (opens as a fresh copy)</label>
-        <label class="field"><span>Notes, shown when the project opens</span><textarea id="projNotes" rows="2" maxlength="2000" placeholder="e.g. 0.3 fineliner, A4 160 g"></textarea></label>
-        <ul id="projList" class="files projs" aria-label="Saved projects"></ul>
-        <button type="button" id="exportPng" class="link" title="The plan as a picture: every stroke in its pen's colour on white">Export the plan as PNG</button>
-        <button id="bedClear" type="button" class="link">Clear the bed</button>
-      </div>
     </section>
 
-    <section id="tab-layers" role="tabpanel" aria-labelledby="tabBtn-layers" hidden>
+    <section id="tab-control" role="tabpanel" aria-labelledby="tabBtn-control" hidden>
       <div class="section">
-        <h2>Layers and pens</h2>
-        <p class="hint">Each ink layer is plotted in turn; the plot pauses for a pen change between layers. Settings
-          left empty use the job defaults. Pressure is a fraction from pen-down (0, heaviest) toward pen-up, at most 0.9.</p>
-        <div id="layerList"></div>
-        <p id="layerEmpty" class="hint">Open a drawing to see its layers.</p>
-      </div>
-      <div class="section" id="fillSection" hidden>
-        <h2>Filled shapes</h2>
-        <p class="hint">Shapes with a fill colour, by colour. A pen cannot fill, so a fill becomes lines: hatching
-          (parallel lines, optionally crossed) or contour rings that follow the outline inward. The fill lines get
-          a layer of their own colour above, with its own pen.</p>
-        <div id="fillList"></div>
-      </div>
-    </section>
-
-    <section id="tab-tools" role="tabpanel" aria-labelledby="tabBtn-tools" hidden>
-      <div class="section">
-        <h2>Pen tests</h2>
-        <p class="hint">Test sheets and their results belong to one pen type. A result for a ballpoint says nothing about a marker.</p>
-        <div id="toolList"></div>
-      </div>
-      <div class="section" id="liveSection">
-        <h2>Live writing</h2>
-        <p class="hint">Type a line, press Write, and the plotter writes it as you go. Needs the carriage parked at S,
-          like a plot. Use a font, or your own handwriting once you have captured samples.</p>
-        <form id="liveStartForm">
-          <label class="field"><span>Writing</span><select id="liveFont"></select></label>
-          <div class="field-row">
-            <label class="field"><span>Letter height (mm)</span><input id="liveSize" type="number" value="4.5" min="2" max="20" step="0.5"></label>
-            <label class="field"><span>Speed (mm/s)</span><input id="liveSpeed" type="number" value="15" min="1" max="40" step="1"></label>
-            <label class="field" title="0 = the configured pen-down (heaviest), up to 0.9 (lightest); empty = 0"><span>Pressure (0-0.9)</span><input id="livePressure" type="number" min="0" max="0.9" step="0.05" placeholder="0"></label>
+        <p class="row"><span id="mcPos" class="pill">Position unknown</span></p>
+        <div id="mcIdle">
+          <div class="row"><button type="button" id="mcTake" class="primary" title="Jog, go to a point, pen up and down, set S. Park the carriage at S by hand first, pen up">Take control</button>
+            <button type="button" id="mcSim" title="The same on the simulator: nothing moves">Simulate</button></div>
+          <p class="hint" id="mcTakeNote"></p>
+        </div>
+        <div id="mcLive" hidden>
+          <div class="jog">
+            <div class="jog-pad" id="mcPad" role="group" aria-label="Jog" title="Arrow keys on the bed jog one step too">
+              <span></span><button type="button" data-jog="0,-1" title="Away from you (-Y)" aria-label="Jog -Y">&#9650;</button><span></span>
+              <button type="button" data-jog="-1,0" title="Left (-X)" aria-label="Jog -X">&#9664;</button>
+              <button type="button" id="mcHome" title="Back to S">S</button>
+              <button type="button" data-jog="1,0" title="Right (+X)" aria-label="Jog +X">&#9654;</button>
+              <span></span><button type="button" data-jog="0,1" title="Toward you (+Y)" aria-label="Jog +Y">&#9660;</button><span></span>
+            </div>
+            <div class="jog-side">
+              <div class="seg" id="mcSteps" role="group" aria-label="Step"></div>
+              <label class="field inline" title="Jog speed"><input id="mcSpeed" type="number" min="1" max="200" step="1" value="30" aria-label="Jog speed"><span class="unit">mm/s</span></label>
+              <div class="row"><button type="button" id="mcPenUp">Pen up</button><button type="button" id="mcPenDown">Pen down</button></div>
+              <div class="row" title="Pen down for under a second at this pressure (0 = the saved pen-down, larger = lighter), then up">
+                <input id="mcTouchP" class="w-num" type="number" min="0" max="0.9" step="0.05" value="0" aria-label="Touch pressure">
+                <button type="button" id="mcTouch">Touch</button></div>
+            </div>
           </div>
-          <label class="check"><input type="checkbox" id="liveSport"> Sport mode (pad only): the plotter follows the speed of your hand, up to 100 mm/s</label>
-          <p class="hint warn-text">Sport mode is above the tested speed (40 mm/s). The motors can lose steps and the position
-            is not trusted afterwards. Use it rarely.</p>
-          <div class="row"><button type="button" id="liveStart" class="primary">Start live writing</button>
+          <form id="mcGoForm" class="go-row">
+            <label class="field inline"><span class="pre">X</span><input id="mcGoX" type="number" step="any" aria-label="Go to X (mm)"></label>
+            <label class="field inline"><span class="pre">Y</span><input id="mcGoY" type="number" step="any" aria-label="Go to Y (mm)"></label>
+            <button type="submit" title="Pen up to this point (mm from S)">Go</button>
+          </form>
+          <div class="row">
+            <button type="button" id="mcClick" aria-pressed="false" title="The next click on the bed moves the carriage there">Click to go</button>
+            <button type="button" id="mcToSel" title="Pen up to the selection's reference point: check the placement on the paper">To selection</button>
+            <button type="button" id="mcSetS" title="The pen is over the paper's top-left corner: make this S">Set S here</button>
+            <button type="button" id="mcHomeSw" hidden title="Find the homing switches, then go to S">Home</button>
+          </div>
+          <div class="row">
+            <button type="button" id="mcFinishS" class="primary" title="Travel back to S, pen up, motors off">Finish at S</button>
+            <button type="button" id="mcFinishHere" title="Pen up, motors off, here">Finish here</button>
+          </div>
+          <div class="accordion">
+            <details name="mc" class="mc-more">
+              <summary>Saved positions</summary>
+              <ul id="posList" class="mini-list"></ul>
+              <button type="button" id="posSave">Save this position...</button>
+            </details>
+            <details name="mc" class="mc-more">
+              <summary title="For a second pass on a sheet that came out: add marks before the first plot, then jog onto each mark">Registration marks</summary>
+              <div class="row"><button type="button" id="regAdd" title="Add two marks to the bed before the first plot">Add marks</button>
+                <button type="button" id="regA" title="The pen tip is on mark 1">Mark 1 here</button>
+                <button type="button" id="regB" title="The pen tip is on mark 2">Mark 2 here</button></div>
+              <div class="row"><button type="button" id="regUse" disabled title="Turn and shift the bed to match the marks">Use for this bed</button>
+                <button type="button" id="regClear" class="link">Clear</button></div>
+              <p class="hint" id="regNote"></p>
+            </details>
+            <details name="mc" class="mc-more">
+              <summary title="A plate, a coaster, a lid: jog the pen tip to three points spread around its edge">Centre of a round object</summary>
+              <div class="row"><button type="button" id="ctrPt">Edge point here</button>
+                <button type="button" id="ctrReset" class="link">Start again</button></div>
+              <p class="hint" id="ctrNote"></p>
+              <div class="row"><button type="button" id="ctrGo" disabled>Go to centre</button>
+                <button type="button" id="ctrSave" disabled>Save as position</button></div>
+            </details>
+            <details name="mc" class="mc-more adv">
+              <summary title="One command per line: GOTO x y, MOVE dx dy, PEN UP, PEN DOWN, HOME, TICK dx dy, SPEED v, WAIT ms">Macros</summary>
+              <ul id="macroList" class="mini-list"></ul>
+              <input id="macroName" maxlength="40" placeholder="Name" aria-label="Macro name">
+              <textarea id="macroText" rows="4" placeholder="GOTO 200 100&#10;PEN DOWN&#10;WAIT 500&#10;PEN UP" aria-label="Macro commands"></textarea>
+              <button type="button" id="macroSave">Save macro</button>
+            </details>
+            <details name="mc" class="mc-more adv">
+              <summary title="One command straight to the board. Bootloader, reset, flash, configuration and servo setup are refused. A move makes the position unknown">EBB command</summary>
+              <form id="rawForm" class="row"><input id="rawText" maxlength="60" placeholder="QS" aria-label="EBB command" autocomplete="off">
+                <button type="submit">Send</button></form>
+              <pre id="rawOut" class="raw-out"></pre>
+            </details>
+          </div>
+        </div>
+        <div class="accordion">
+          <details name="mc" class="mc-more">
+            <summary title="With control taken and paper under the pen: draw two ticks, measure them with a ruler, save. X and Y separately">Calibrate steps/mm</summary>
+            <p class="hint" id="calNow"></p>
+            <label class="field inline" title="Distance between the ticks"><span class="pre">Length</span><input id="calLen" type="number" min="20" max="300" step="1" value="100"><span class="unit">mm</span></label>
+            <div class="cal-grid">
+              <button type="button" id="calX">Draw X ticks</button>
+              <label class="field inline"><input id="calMeasX" type="number" step="0.1" min="5" aria-label="Measured X (mm)" placeholder="measured"><span class="unit">mm</span></label>
+              <button type="button" id="calSaveX">Save X</button>
+              <button type="button" id="calY">Draw Y ticks</button>
+              <label class="field inline"><input id="calMeasY" type="number" step="0.1" min="5" aria-label="Measured Y (mm)" placeholder="measured"><span class="unit">mm</span></label>
+              <button type="button" id="calSaveY">Save Y</button>
+            </div>
+          </details>
+          <details name="mc" class="mc-more">
+            <summary title="Jog the pen tip onto the paper's top-left corner, then its bottom-right. Machine, Paper fills in">Measure the paper</summary>
+            <div class="row"><button type="button" id="paperTL">Top-left here</button>
+              <button type="button" id="paperBR">Bottom-right here</button></div>
+            <p class="hint" id="paperMeasureNote"></p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-write" role="tabpanel" aria-labelledby="tabBtn-write" hidden>
+      <div class="section" id="liveSection">
+        <form id="liveStartForm">
+          <label class="field"><span>Writing</span><select id="liveFont" title="A font, or your own handwriting once samples are captured"></select></label>
+          <div class="field-row">
+            <label class="field"><span>Height</span><span class="with-unit"><input id="liveSize" type="number" value="4.5" min="2" max="20" step="0.5"><span class="unit">mm</span></span></label>
+            <label class="field"><span>Speed</span><span class="with-unit"><input id="liveSpeed" type="number" value="15" min="1" max="40" step="1"><span class="unit">mm/s</span></span></label>
+            <label class="field" title="0 = the saved pen-down (heaviest), up to 0.9 (lightest)"><span>Pressure</span><input id="livePressure" type="number" min="0" max="0.9" step="0.05" placeholder="0"></label>
+          </div>
+          <label class="check" title="Pad only: the plotter follows your hand at up to 100 mm/s. Above the tested 40 mm/s the motors can lose steps; re-park afterwards"><input type="checkbox" id="liveSport"> Sport mode</label>
+          <div class="row"><button type="button" id="liveStart" class="primary" title="The plotter writes each line as you type it. Carriage parked at S">Start writing</button>
             <button type="button" id="liveSim">Simulate</button></div>
         </form>
         <div id="liveSession" hidden>
@@ -260,272 +365,196 @@
             <div class="row"><button id="liveWrite" class="primary" type="submit">Write</button>
               <button id="liveNewPage" type="button">New page</button>
               <button id="liveContinue" type="button" class="primary" hidden>Paper changed: continue</button>
-              <button id="liveFinish" type="button">Finish and return to S</button></div>
+              <button id="liveFinish" type="button" title="Pen up, back to S, end the session">Finish</button></div>
             <div class="row"><button id="livePause" type="button" title="Nothing more is drawn until Continue; lines typed meanwhile wait">Pause</button>
               <button id="liveHome" type="button" title="Pen up and back to S; the next line carries on where the writing was">Return to S</button>
-              <button id="liveSave" type="button" title="The page written so far as a drawing in the Library, to plot again from the bed">Save the page as a drawing</button></div>
+              <button id="liveSave" type="button" title="The page so far as a drawing in the Library">Save page</button></div>
           </form>
-          <div class="row"><button id="padOpen" type="button">Open the writing pad (tablet or mouse)</button></div>
-          <p id="liveSportNote" class="note err" hidden>SPORT MODE: the pad drives the plotter at up to 100 mm/s. Re-park the carriage afterwards.</p>
+          <div class="row"><button id="padOpen" type="button" title="Write with a tablet or mouse">Writing pad</button></div>
+          <p id="liveSportNote" class="note err" hidden>Sport mode: the pad drives the plotter at up to 100 mm/s. Re-park the carriage afterwards.</p>
         </div>
-      </div>
-    </section>
-
-    <section id="tab-machine" role="tabpanel" aria-labelledby="tabBtn-machine" hidden>
-      <div class="section">
-        <h2>Plotter</h2>
-        <p id="hwInfo" class="hint">Not checked since the server started.</p>
-        <div class="row"><button type="button" id="hwCheck" title="Ask the board for its firmware version (nothing moves)">Check the plotter</button>
-          <button type="button" id="hwDoctor" title="Ports, permissions, the board's answer and the likely cause (nothing moves)">Diagnose the connection</button></div>
-        <ul id="hwReport" class="problems" hidden></ul>
-        <div class="row" title="Normally the plotter is found by its USB id; pick a port only if that fails">
-          <select id="hwPort" aria-label="Serial port"></select><button type="button" id="hwPortSet">Use this port</button></div>
-      </div>
-      <div class="section">
-        <h2>Lifetime</h2>
-        <p id="lifeInfo" class="hint">No real jobs yet.</p>
-      </div>
-      <div class="section">
-        <h2>Backup</h2>
-        <p class="hint">All settings in one file: machine (calibration, paper, servo), pens, colour-to-pen memory and saved
-          projects. Restoring keeps each replaced file under results/web/backups/.</p>
-        <div class="row"><a class="btn" id="bkDownload" href="/api/backup">Download a backup</a>
-          <button type="button" id="bkRestore">Restore from a file...</button></div>
-        <input type="file" id="bkFile" accept=".json,application/json" hidden>
-      </div>
-      <div class="section">
-        <h2>Control</h2>
-        <p><span id="mcPos" class="pill">Position unknown</span></p>
-        <div id="mcIdle">
-          <p class="hint">Move the carriage from here: jog, go to a point, pen up and down, or set S exactly on the
-            paper corner. Starts like a plot, with the carriage parked by hand at S and the pen up. The position is
-            counted from S; nothing can be read back from this firmware.</p>
-          <div class="row"><button type="button" id="mcTake" class="primary">Take control</button>
-            <button type="button" id="mcSim">Simulate</button></div>
-          <p class="hint" id="mcTakeNote"></p>
-        </div>
-        <div id="mcLive" hidden>
-          <div class="jog">
-            <div class="jog-pad" id="mcPad" role="group" aria-label="Jog">
-              <span></span><button type="button" data-jog="0,-1" title="Away from you (-Y)" aria-label="Jog -Y">&#9650;</button><span></span>
-              <button type="button" data-jog="-1,0" title="Left (-X)" aria-label="Jog -X">&#9664;</button>
-              <button type="button" id="mcHome" title="Back to S">S</button>
-              <button type="button" data-jog="1,0" title="Right (+X)" aria-label="Jog +X">&#9654;</button>
-              <span></span><button type="button" data-jog="0,1" title="Toward you (+Y)" aria-label="Jog +Y">&#9660;</button><span></span>
-            </div>
-            <div class="jog-side">
-              <div class="seg" id="mcSteps" role="group" aria-label="Step"></div>
-              <label class="field"><span>Jog speed (mm/s)</span><input id="mcSpeed" type="number" min="1" max="200" step="1" value="30"></label>
-              <div class="row"><button type="button" id="mcPenUp">Pen up</button><button type="button" id="mcPenDown">Pen down</button></div>
-              <div class="row" title="Pen down for under a second at this pressure (0 = the configured pen-down, larger = lighter), then up: feel a layer's setting without drawing">
-                <input id="mcTouchP" type="number" min="0" max="0.9" step="0.05" value="0" aria-label="Touch pressure" style="width: 5em">
-                <button type="button" id="mcTouch">Touch</button></div>
-            </div>
-          </div>
-          <p class="hint">Arrow keys on the bed jog one step too.</p>
-          <form id="mcGoForm" class="field-row go-row">
-            <label class="field"><span>X (mm)</span><input id="mcGoX" type="number" step="any"></label>
-            <label class="field"><span>Y (mm)</span><input id="mcGoY" type="number" step="any"></label>
-            <button type="submit">Go</button>
-            <button type="button" id="mcClick" aria-pressed="false" title="The next click on the bed moves the carriage there">Click to go</button>
-            <button type="button" id="mcToSel" title="Pen up to the selection's reference point (Arrange's 9-point anchor): check the placement on the paper">To the selection</button>
-          </form>
-          <div class="row">
-            <button type="button" id="mcSetS" title="The pen is over the paper's top-left corner: make this S">Set S here</button>
-            <button type="button" id="mcHomeSw" hidden title="Find the homing switches, then go to S: the position is known without parking by hand">Home with switches</button>
-          </div>
-          <details class="mc-more">
-            <summary>Saved positions</summary>
-            <ul id="posList" class="mini-list"></ul>
-            <button type="button" id="posSave">Save this position...</button>
-          </details>
-          <details class="mc-more">
-            <summary>Register on marks already on the paper</summary>
-            <p class="hint">For a second pass on a sheet that came out: Add registration marks before the first plot.
-              With the sheet back in, jog the pen tip onto each mark and press its button; the next preview turns and
-              shifts the whole bed to match.</p>
-            <div class="row"><button type="button" id="regAdd">Add registration marks</button></div>
-            <div class="row"><button type="button" id="regA">Mark 1 is here</button>
-              <button type="button" id="regB">Mark 2 is here</button></div>
-            <div class="row"><button type="button" id="regUse" disabled>Use for this bed</button>
-              <button type="button" id="regClear" class="link">Clear the registration</button></div>
-            <p class="hint" id="regNote"></p>
-          </details>
-          <details class="mc-more">
-            <summary>Find the centre of a round object</summary>
-            <p class="hint">A plate, a coaster, a lid: jog the pen tip to three points on its edge, spread around it.</p>
-            <div class="row"><button type="button" id="ctrPt">Edge point is here</button>
-              <button type="button" id="ctrReset" class="link">Start again</button></div>
-            <p class="hint" id="ctrNote"></p>
-            <div class="row"><button type="button" id="ctrGo" disabled>Go to the centre</button>
-              <button type="button" id="ctrSave" disabled>Save it as a position</button></div>
-          </details>
-          <details class="mc-more">
-            <summary>Macros</summary>
-            <ul id="macroList" class="mini-list"></ul>
-            <p class="hint">One command per line: GOTO x y, MOVE dx dy, PEN UP, PEN DOWN, HOME, TICK dx dy, SPEED v, WAIT ms.
-              Moves stay inside the reachable area and the position stays known.</p>
-            <input id="macroName" maxlength="40" placeholder="Name" aria-label="Macro name">
-            <textarea id="macroText" rows="4" placeholder="GOTO 200 100&#10;PEN DOWN&#10;WAIT 500&#10;PEN UP" aria-label="Macro commands"></textarea>
-            <button type="button" id="macroSave">Save the macro</button>
-          </details>
-          <details class="mc-more">
-            <summary>EBB command line (advanced)</summary>
-            <p class="note warn">Sends one command straight to the board. Bootloader, reset, flash, configuration and servo
-              setup commands are refused. Anything that moves or frees the carriage makes its position unknown.</p>
-            <form id="rawForm" class="row"><input id="rawText" maxlength="60" placeholder="QS" aria-label="EBB command" autocomplete="off">
-              <button type="submit">Send</button></form>
-            <pre id="rawOut" class="raw-out"></pre>
-          </details>
-          <div class="row">
-            <button type="button" id="mcFinishS" class="primary">Finish at S</button>
-            <button type="button" id="mcFinishHere">Finish here</button>
-          </div>
-          <p class="hint">Finishing lifts the pen and switches the motors off. Finish at S travels back first.</p>
-        </div>
-      </div>
-      <div class="section">
-        <h2>Calibrate steps per mm</h2>
-        <p class="hint">With control taken and paper under the pen: draw two ticks a known distance apart, measure
-          between them with a ruler, and save. Do X and Y separately.</p>
-        <p class="hint" id="calNow"></p>
-        <div class="field-row">
-          <label class="field"><span>Test length (mm)</span><input id="calLen" type="number" min="20" max="300" step="1" value="100"></label>
-        </div>
-        <div class="row"><button type="button" id="calX">Draw X ticks</button><button type="button" id="calY">Draw Y ticks</button></div>
-        <div class="field-row">
-          <label class="field"><span>Measured X (mm)</span><input id="calMeasX" type="number" step="0.1" min="5"></label>
-          <label class="field"><span>Measured Y (mm)</span><input id="calMeasY" type="number" step="0.1" min="5"></label>
-        </div>
-        <div class="row"><button type="button" id="calSaveX">Save X</button><button type="button" id="calSaveY">Save Y</button></div>
-      </div>
-      <div class="section">
-        <h2>Paper</h2>
-        <form id="paperForm">
-          <div class="field-row">
-            <label class="field"><span>Left edge X (mm)</span><input name="x0" type="number" step="0.5" min="0"></label>
-            <label class="field"><span>Top edge Y (mm)</span><input name="y0" type="number" step="0.5" min="0"></label>
-          </div>
-          <div class="field-row">
-            <label class="field"><span>Width (mm)</span><input name="width" type="number" step="1" min="20"></label>
-            <label class="field"><span>Height (mm)</span><input name="height" type="number" step="1" min="20"></label>
-            <label class="field"><span>Margin (mm)</span><input name="margin_mm" type="number" step="1" min="0"></label>
-          </div>
-          <button type="submit">Save paper</button>
-        </form>
-        <details class="mc-more">
-          <summary>Measure the sheet with the pen</summary>
-          <p class="hint">Take control, jog the pen tip onto the paper's top-left corner and press the first button;
-            then onto the bottom-right corner and press the second. The fields above fill in; check and save.</p>
-          <div class="row"><button type="button" id="paperTL">Top-left is here</button>
-            <button type="button" id="paperBR">Bottom-right is here</button></div>
-          <p class="hint" id="paperMeasureNote"></p>
-        </details>
-        <p class="hint">S is the paper's top-left corner. Changing it means parking the carriage at the new corner.</p>
-        <p class="hint" id="servoNote"></p>
-        <details class="mc-more" id="potBox">
-          <summary>Pen-depth knob</summary>
-          <p class="hint">A knob (pot) on analog input A1 sets how deep the pen goes. Press the pen button and turn
-            the knob: the pen follows at once. Jobs pick up a turn at their next pen-down. A loose or broken knob is
-            ignored and the saved pen-down is used.</p>
-          <p class="note" id="potLive"></p>
-          <form id="potForm">
-            <label class="check"><input type="checkbox" name="enabled"> Use the knob</label>
-            <div class="field-row">
-              <label class="field" title="The reading with the knob turned to its shallow end: the pen just stays off the paper"><span>Shallow end reads</span><input name="adc_shallow" type="number" min="0" max="1023" step="1"></label>
-              <label class="field" title="The reading with the knob turned to its deep end"><span>Deep end reads</span><input name="adc_deep" type="number" min="0" max="1023" step="1"></label>
-              <label class="field" title="Servo units below pen-up at the deep end"><span>Deepest (servo units)</span><input name="depth_max" type="number" min="50" step="10"></label>
-            </div>
-            <div class="row"><button type="button" id="potShallow">Shallow end is here</button>
-              <button type="button" id="potDeep">Deep end is here</button></div>
-            <div class="row"><button type="submit">Save knob</button>
-              <button type="button" id="potKeep" title="Store the knob's depth as the saved pen-down, so the knob can be switched off or removed">Keep as saved pen-down</button></div>
-          </form>
-        </details>
-      </div>
-      <div class="section">
-        <h2>Machine settings</h2>
-        <form id="mcfgForm">
-          <div class="field-row">
-            <label class="field" title="How far the carriage can travel from the top-left of the bed"><span>Travel X (mm)</span><input name="travel_x" type="number" step="0.5" min="50" max="2000"></label>
-            <label class="field"><span>Travel Y (mm)</span><input name="travel_y" type="number" step="0.5" min="50" max="2000"></label>
-          </div>
-          <div class="field-row">
-            <label class="field" title="1 is the normal direction; -1 reverses the motor for that axis"><span>X direction</span><select name="sign_x"><option value="1">normal</option><option value="-1">reversed</option></select></label>
-            <label class="field"><span>Y direction</span><select name="sign_y"><option value="1">normal</option><option value="-1">reversed</option></select></label>
-          </div>
-          <div class="field-row">
-            <label class="field"><span>Drawing limit (mm/s)</span><input name="speed_max" type="number" step="1" min="1"></label>
-            <label class="field"><span>Default (mm/s)</span><input name="speed_default" type="number" step="1" min="1"></label>
-          </div>
-          <div class="field-row">
-            <label class="field"><span>Pen-up limit (mm/s)</span><input name="travel_max" type="number" step="1" min="1"></label>
-            <label class="field"><span>Default (mm/s)</span><input name="travel_default" type="number" step="1" min="1"></label>
-          </div>
-          <button type="submit">Save machine settings</button>
-        </form>
-        <p class="hint" id="mcfgCeil"></p>
-      </div>
-      <div class="section">
-        <h2>Pens</h2>
-        <p class="hint">Each pen profile: its ink colour and line width (drawn that way in Ink view), and the speed and
-          pressure a layer takes when you choose it. Test results recorded from the sheets are kept.</p>
-        <ul id="penList" class="pens"></ul>
-        <div class="row"><button type="button" id="penNew">New pen</button>
-          <a class="btn" href="/api/pens/export">Export the pens</a>
-          <button type="button" id="penImport">Import pens...</button>
-          <input type="file" id="penFile" accept=".json,application/json" hidden></div>
-        <div id="penEdit"></div>
       </div>
     </section>
   </aside>
+
+  <!-- tool strip -->
+  <nav class="strip" id="toolStrip" role="toolbar" aria-orientation="vertical" aria-label="Tools">
+    <button type="button" class="tool" id="selTool" aria-pressed="true" title="Select and move (Esc)" aria-label="Select">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 9-6 1-3 6z"/></svg></button>
+    <button type="button" class="tool" id="textTool" aria-pressed="false" title="Text: click on the bed where it starts" aria-label="Text">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+    <button type="button" class="tool" id="shapeTool" aria-pressed="false" title="Shape: rectangle, ellipse, polygon, star, line, curve, freehand, QR or bar code" aria-label="Shape">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="10" width="10" height="10"/><circle cx="16" cy="8" r="5"/></svg></button>
+    <button type="button" class="tool" id="nodeTool" title="Edit the nodes of the selected object" aria-label="Edit nodes">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18C8 5 16 19 20 6"/><rect x="2.5" y="16.5" width="3" height="3"/><rect x="18.5" y="4.5" width="3" height="3"/></svg></button>
+    <button type="button" class="tool" id="trimTool" title="Trim: click a piece of line to remove it, cut where lines cross" aria-label="Trim">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5L20 18M8.5 16.5L20 6"/></svg></button>
+  </nav>
 
   <!-- centre: the bed -->
   <section class="center" id="bedPane" aria-label="Bed view">
     <div class="bed-toolbar">
       <span class="title" id="bedTitle">The bed is empty</span>
-      <span class="seg pages" id="pageBar" role="tablist" aria-label="Pages" title="Sheets of this project: each plots on its own paper, with a hold for the next sheet in between"></span>
-      <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
-      <button class="icon" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
-      <button class="icon" id="histBtn" aria-haspopup="true" aria-expanded="false" title="Undo history: step back to any point">History</button>
-      <button class="icon" id="textTool" aria-pressed="false" title="Text: click on the bed where it should go">Text</button>
-      <button class="icon" id="shapeTool" aria-pressed="false" title="Rectangle, ellipse, polygon, star, or a line by clicks">Shape</button>
+      <span class="measure muted" id="measureLine" aria-live="polite"></span>
+      <span class="seg pages" id="pageBar" role="tablist" aria-label="Pages" title="Sheets of this project: each plots on its own paper, with a hold for the next sheet"></span>
       <span class="spacer"></span>
       <button class="icon" id="viewBtn" aria-haspopup="true" aria-expanded="false" aria-controls="viewMenu" title="Grid, snapping, path direction, side panels">View</button>
-      <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Lines: thin lines for detail.">Ink</button>
-      <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
+      <button class="icon" id="inkBtn" aria-pressed="true" title="Ink: real pen width and colour. Off: thin lines for detail">Ink</button>
+      <button class="icon" id="zoomOut" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
       <button class="icon" id="zoomFit" title="Fit the bed (0)">Fit</button>
       <button class="icon" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
     </div>
-    <div class="view-menu hist-menu" id="histMenu" role="menu" aria-label="Undo history" hidden></div>
     <div class="view-menu" id="viewMenu" role="group" aria-label="View" hidden>
       <label class="field"><span>Grid</span><select id="vGrid">
         <option value="0">Off</option><option value="1">1 mm</option><option value="2">2 mm</option>
         <option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
-      <label class="check"><input type="checkbox" id="vSnapGrid"> Moves snap to the grid (else to 0.5 mm)</label>
-      <label class="check"><input type="checkbox" id="vDir"> Path direction and start points (after a preview)</label>
+      <label class="check" title="Off: moves snap to 0.5 mm"><input type="checkbox" id="vSnapGrid"> Snap to grid</label>
+      <label class="check" title="Arrows and start points, after a preview"><input type="checkbox" id="vDir"> Path direction</label>
       <div class="field-row">
-        <label class="field" title="Arrow keys move this far (Shift: ten times, Alt: a tenth)"><span>Nudge (mm)</span><select id="vNudge">
-          <option value="0.1">0.1</option><option value="0.5">0.5</option><option value="1">1</option><option value="2">2</option>
-          <option value="5">5</option><option value="10">10</option></select></label>
-        <label class="field" title="How close (screen pixels) an edge must come to snap; Alt while dragging: no snapping"><span>Snap distance</span><select id="vSnapPx">
+        <label class="field" title="Arrow keys move this far (Shift: ten times, Alt: a tenth)"><span>Nudge</span><select id="vNudge">
+          <option value="0.1">0.1 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option><option value="2">2 mm</option>
+          <option value="5">5 mm</option><option value="10">10 mm</option></select></label>
+        <label class="field" title="How close an edge must come to snap. Alt while dragging: no snapping"><span>Snap distance</span><select id="vSnapPx">
           <option value="0">Off</option><option value="4">4 px</option><option value="7">7 px</option><option value="12">12 px</option></select></label>
       </div>
-      <label class="check"><input type="checkbox" id="vLockGuides"> Lock the guides (no dragging)</label>
-      <label class="check" title="While moving a drawing, the point of it nearest where you grabbed it lands on another drawing's corner, end, midpoint, centre or a crossing of its lines"><input type="checkbox" id="vNodes"> Snap to points of other drawings</label>
-      <label class="field"><span>Show lengths in</span><select id="vUnits"><option value="mm">mm</option><option value="in">inches</option></select></label>
-      <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide side panels</button>
-      <button type="button" id="vResetPanels" title="Side panels back to their default widths">Reset the panel layout</button>
+      <label class="check"><input type="checkbox" id="vLockGuides"> Lock guides</label>
+      <label class="check" title="A dragged drawing snaps to corners, ends, midpoints, centres and crossings of other drawings"><input type="checkbox" id="vNodes"> Snap to other drawings</label>
+      <label class="field"><span>Units</span><select id="vUnits"><option value="mm">mm</option><option value="in">inches</option></select></label>
+      <div class="row">
+        <button type="button" id="vPanels" title="Hide or show the side panels (\)">Hide panels</button>
+        <button type="button" id="vResetPanels" title="Side panels back to their default widths">Reset layout</button>
+      </div>
     </div>
+
+    <!-- options bar: the selection -->
+    <div class="optbar">
+      <span class="optbar-empty muted">Select an object to arrange it</span>
+      <div id="xfBox" class="optbar-row" hidden>
+        <form id="xfForm" class="xf-inline" autocomplete="off" title="mm. Arithmetic and units work: 100/3, 2in, 10cm+5">
+          <div class="anchor-grid" id="anchorGrid" role="radiogroup" aria-label="Reference point for X, Y and resizing"></div>
+          <label class="field inline"><span class="pre">X</span><input name="x" inputmode="decimal" autocomplete="off" aria-label="X (mm)"></label>
+          <label class="field inline"><span class="pre">Y</span><input name="y" inputmode="decimal" autocomplete="off" aria-label="Y (mm)"></label>
+          <label class="field inline"><span class="pre">W</span><input name="w" inputmode="decimal" autocomplete="off" aria-label="Width (mm)"></label>
+          <label class="field inline"><span class="pre">H</span><input name="h" inputmode="decimal" autocomplete="off" aria-label="Height (mm)"></label>
+          <label class="lock-ratio" title="Keep the proportions when width or height changes"><input type="checkbox" name="lock" checked aria-label="Keep proportions"><span aria-hidden="true">&#128279;</span></label>
+          <label class="field inline" title="Rotation in degrees; arithmetic works: 360/7"><span class="pre">&#8635;</span><input name="rot" inputmode="decimal" autocomplete="off" aria-label="Rotation (degrees)"></label>
+        </form>
+        <span class="tb-sep"></span>
+        <button type="button" class="icon" data-act="rot-90" title="Turn 90 degrees left (Shift+R)" aria-label="Turn left">&#8634;</button>
+        <button type="button" class="icon" data-act="rot90" title="Turn 90 degrees right (R)" aria-label="Turn right">&#8635;</button>
+        <button type="button" class="icon" data-act="mirx" title="Mirror left to right (H)" aria-label="Mirror left to right">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><path d="M9 7L3 17h6zM15 7l6 10h-6z"/></svg></button>
+        <button type="button" class="icon" data-act="miry" title="Mirror top to bottom (V)" aria-label="Mirror top to bottom">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/><path d="M7 9L17 3v6zM7 15l10 6v-6z"/></svg></button>
+        <span class="tb-sep"></span>
+        <div class="mbtn">
+          <button type="button" class="mbtn-top icon" aria-haspopup="true" aria-expanded="false" title="Align" aria-label="Align">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18"/><rect x="7" y="6" width="12" height="4"/><rect x="7" y="14" width="7" height="4"/></svg>&#9662;</button>
+          <div class="mbtn-list" role="menu" hidden>
+            <span class="menu-head" id="alignTo">Align to the drawable area</span>
+            <button type="button" data-act="left">Left edges</button>
+            <button type="button" data-act="hcenter">Centres across</button>
+            <button type="button" data-act="right">Right edges</button>
+            <hr>
+            <button type="button" data-act="top">Top edges</button>
+            <button type="button" data-act="vcenter">Centres down</button>
+            <button type="button" data-act="bottom">Bottom edges</button>
+            <hr>
+            <button type="button" data-act="anchor" id="toAnchor" title="The reference point onto the same point of the drawable area">To top-left</button>
+            <button type="button" data-act="fit" title="Scale to fill the drawable area and centre">Fit the drawable area</button>
+          </div>
+        </div>
+        <div class="mbtn">
+          <button type="button" class="mbtn-top icon" aria-haspopup="true" aria-expanded="false" title="Spread, stack, match size" aria-label="Distribute">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4v16M21 4v16"/><rect x="8" y="7" width="8" height="10"/></svg>&#9662;</button>
+          <div class="mbtn-list" role="menu" hidden>
+            <span class="menu-head">Three or more</span>
+            <button type="button" data-act="distx" title="Equal gaps between edges">Spread across</button>
+            <button type="button" data-act="disty" title="Equal gaps between edges">Spread down</button>
+            <button type="button" data-act="distcx" title="Equal steps between centres">Centres across</button>
+            <button type="button" data-act="distcy" title="Equal steps between centres">Centres down</button>
+            <hr><span class="menu-head">Two or more</span>
+            <button type="button" data-act="abutx" title="Side by side with no gap">Butt across</button>
+            <button type="button" data-act="abuty" title="One under the other with no gap">Butt down</button>
+            <button type="button" data-act="samew" title="The width of the first selected">Same width</button>
+            <button type="button" data-act="sameh" title="The height of the first selected">Same height</button>
+          </div>
+        </div>
+        <div class="mbtn">
+          <button type="button" class="mbtn-top" aria-haspopup="true" aria-expanded="false" title="Group, lock, copies">Object&#9662;</button>
+          <div class="mbtn-list" role="menu" hidden>
+            <button type="button" data-act="group" title="Selecting one selects all">Group <kbd>Ctrl+G</kbd></button>
+            <button type="button" data-act="ungroup">Ungroup <kbd>Ctrl+Shift+G</kbd></button>
+            <button type="button" data-act="lock" id="lockBtn" title="A locked object cannot be moved, resized, turned or removed">Lock</button>
+            <hr>
+            <button type="button" data-act="dup">Duplicate <kbd>Ctrl+D</kbd></button>
+            <button type="button" data-act="array" title="Copies in rows and columns">Grid array...</button>
+            <button type="button" data-act="circle" title="Copies around a centre">Circular array...</button>
+          </div>
+        </div>
+        <div class="mbtn">
+          <button type="button" class="mbtn-top" aria-haspopup="true" aria-expanded="false" title="Join, break apart, combine shapes, line tools">Path&#9662;</button>
+          <div class="mbtn-list" role="menu" hidden>
+            <button type="button" data-act="join" title="Lines whose ends touch (same colour) become one stroke: fewer pen lifts">Join lines</button>
+            <button type="button" data-act="split" title="Every stroke an object of its own (at most 64 on the bed)">Break apart</button>
+            <button type="button" data-act="reverse" title="Each stroke drawn from its other end, last first. Only matters with Shorter travel off">Reverse</button>
+            <div id="shapeRow" class="menu-sub" hidden>
+              <hr><span class="menu-head">Closed shapes</span>
+              <button type="button" data-act="union" title="One outline: overlapping lines go">Union</button>
+              <button type="button" data-act="subtract" title="Cut the others out of the first in the list">Subtract</button>
+              <button type="button" data-act="intersect" title="Keep only where all overlap">Intersect</button>
+              <button type="button" data-act="offset" title="A new outline a set distance outside or inside">Offset...</button>
+            </div>
+            <hr>
+            <select id="lineTools" class="adv" aria-label="Line tools"><option value="">More line tools...</option>
+              <optgroup label="Edit">
+                <option value="deform">Deform with a grid</option>
+                <option value="close">Close nearly closed lines</option><option value="smooth">Smooth</option>
+                <option value="arcs">Fit arcs</option><option value="fillet">Round the corners</option>
+              </optgroup>
+              <optgroup label="Outline and fill">
+                <option value="hull">Convex outline</option><option value="fill">Hatch closed shapes</option><option value="unfill">Remove the fill</option>
+                <option value="penwidth">Allow for the pen width</option>
+              </optgroup>
+              <optgroup label="Cut">
+                <option value="cut-out">Cut with the first selected</option>
+                <option value="cut-in">Keep inside the first selected</option>
+              </optgroup>
+              <optgroup label="Transform">
+                <option value="shear">Shear</option><option value="taper">Taper / warp</option>
+                <option value="mirror-line">Mirror about a line</option>
+                <option value="true-size">True size from two points</option>
+              </optgroup>
+              <optgroup label="Along a path">
+                <option value="along">Copies along a path</option>
+                <option value="text-path">Text along a path</option>
+                <option value="pack">Pack onto the drawable area</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        <div class="mbtn">
+          <button type="button" class="mbtn-top icon" aria-haspopup="true" aria-expanded="false" title="Colour: move to the layer of a colour" aria-label="Colour"><span class="swatch-ico" aria-hidden="true"></span>&#9662;</button>
+          <div class="mbtn-list" role="menu" hidden>
+            <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
+            <label class="ink-pick" title="Any colour: a layer of its own"><input type="color" id="inkPick" aria-label="Pick a colour"> Other colour</label>
+            <button type="button" data-act="ink-own" title="Back to the drawing's own colours">Own colours</button>
+          </div>
+        </div>
+        <button type="button" class="icon danger-text push-end" data-act="del" title="Remove from the bed; the drawing stays in the Library (Delete)" aria-label="Remove">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+      </div>
+    </div>
+
     <div class="scrub" id="scrubBar" hidden>
       <button class="icon" id="travelBtn" aria-pressed="false" title="Show the pen-up moves (T)">Travel</button>
       <button class="icon" id="playBtn" title="Play the plot order">Play</button>
-      <select id="playSpeed" aria-label="Play speed" title="How fast Play runs: the whole plan in about 12 s, or a multiple of the real plotting time">
+      <select id="playSpeed" aria-label="Play speed" title="The whole plan in about 12 s, or a multiple of the real plotting time">
         <option value="fit">12 s</option><option value="0.1">0.1x</option><option value="0.5">0.5x</option><option value="1">1x</option>
         <option value="2">2x</option><option value="5">5x</option><option value="10">10x</option><option value="40">40x</option></select>
       <input type="range" id="scrubRange" min="0" max="1" value="1" step="1" aria-label="Plot order: strokes drawn so far">
       <span id="scrubLabel" class="muted"></span>
-      <button class="icon" id="scrubStart" title="Plot from this stroke on, skipping the ones before" disabled>Start here</button>
+      <button class="icon" id="scrubStart" title="The next plot starts at this stroke, skipping the ones before" disabled>Start here</button>
     </div>
     <div class="bed-wrap">
       <canvas id="bed" tabindex="0" aria-label="Bed: click a drawing to select it, drag to move, drag a handle to resize or turn, drag empty space to select several, right-drag to pan, wheel to zoom"></canvas>
@@ -535,243 +564,154 @@
         <div class="row"><button class="primary big" id="swapContinue">Continue</button>
           <button id="swapReturn">Return to start</button><button class="danger" id="swapStop">Stop</button></div>
       </div>
-      <div class="bed-legend" id="bedLegend">S = park the carriage here (paper top-left), pen up</div>
+      <div class="bed-legend" id="bedLegend" title="Park the carriage here by hand, pen up, before a plot">S = start, the paper's top-left</div>
       <div class="bed-coords" id="bedCoords"></div>
     </div>
   </section>
 
-  <!-- right: status, run, placement -->
+  <!-- right: status, layers, objects, job settings -->
   <aside class="panel right" id="rightPanel">
-    <section class="section" id="statusBox" aria-live="polite">
-      <h2>Status</h2>
-      <div class="state-head"><span class="state-dot" id="stDot"></span><span class="state-title" id="stTitle">Idle</span></div>
-      <p class="state-msg" id="stMsg"></p>
-      <div class="next" id="stNext"></div>
-      <div id="stProgress" hidden>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="stBar"><div></div></div>
-        <div class="row"><span id="stPct"></span><span class="spacer"></span><span id="stTimes" class="muted"></span></div>
-      </div>
-      <dl class="kv" id="stKv"></dl>
-      <div class="note" id="stPos"></div>
-      <div class="note warn" id="stStale" hidden></div>
-    </section>
+    <nav class="tabs" role="tablist" data-tabs="right" aria-label="Right panel">
+      <button role="tab" id="tabBtn-status" aria-controls="tab-status">Status</button>
+      <button role="tab" id="tabBtn-layers" aria-controls="tab-layers">Layers</button>
+      <button role="tab" id="tabBtn-objects" aria-controls="tab-objects">Objects</button>
+      <button role="tab" id="tabBtn-job" aria-controls="tab-job">Job</button>
+    </nav>
 
-    <section class="section" id="runBox">
-      <h2>Run</h2>
-      <div id="previewState" class="note">Open a drawing, then preview it.</div>
-      <div id="resumeBox" class="note warn" hidden><span id="resumeText"></span>
-        <div class="row"><button type="button" id="resumeBtn" class="primary">Resume there</button></div></div>
-      <div id="startAtBox" class="note warn" hidden><span id="startAtText"></span>
-        <button type="button" class="link" id="startAtReset">Plot from the start</button></div>
-      <div id="onlyBox" class="note warn" hidden><span id="onlyText"></span>
-        <button type="button" class="link" id="onlyAll">Plot all objects</button></div>
-      <ul id="problemList" class="problems" hidden></ul>
-      <dl class="kv" id="planKv"></dl>
-      <div class="row run-extra">
-        <button type="button" class="link" id="onlySelBtn" title="Plot only the selected objects; the rest stay on the bed">Plot only the selection</button>
-        <button type="button" class="link" id="exportBtn" title="Download exactly what will be plotted: machine mm, fills, pen order">Export plot SVG</button>
-        <button type="button" class="link adv" id="compileBtn" title="The EBB command stream of this plot, to run later with tools/run_compiled.py without the server">Export compiled job</button>
+    <section id="tab-status" role="tabpanel" aria-labelledby="tabBtn-status">
+      <div class="section" id="statusBox" aria-live="polite">
+        <div class="state-head"><span class="state-dot" id="stDot"></span><span class="state-title" id="stTitle">Idle</span></div>
+        <p class="state-msg" id="stMsg"></p>
+        <div class="next" id="stNext"></div>
+        <div id="stProgress" hidden>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="stBar"><div></div></div>
+          <div class="row"><span id="stPct"></span><span class="spacer"></span><span id="stTimes" class="muted"></span></div>
+        </div>
+        <dl class="kv" id="stKv"></dl>
+        <div class="note" id="stPos"></div>
+        <div class="note warn" id="stStale" hidden></div>
       </div>
-      <div class="run-buttons" id="idleButtons">
-        <button id="previewBtn" title="Check the plan (P)">Preview</button>
-        <button id="simBtn" title="Run on the simulator: nothing moves">Simulate</button>
-        <button id="traceBtn" title="Pen-up trace of the drawing's frame">Trace frame</button>
-        <button id="plotBtn" class="primary">Start plot</button>
-      </div>
-      <label class="field speed-live" id="speedLive" hidden title="Drawing speed of the running plot, from the next move; never above the 40 mm/s limit">
-        <span>Speed <b id="speedPct">100%</b></span><input type="range" id="speedRange" min="25" max="150" step="5" value="100"></label>
-      <div class="run-buttons" id="jobButtons" hidden>
-        <button id="pauseBtn" title="Pause at the end of the current stroke (Space)">Pause</button>
-        <button id="continueBtn" class="primary" title="Continue (Space)">Continue</button>
-        <button id="returnBtn" title="Finish the stroke and travel back to the start point">Return to start</button>
-        <button id="stopBtn" class="danger" title="Stop (Shift+S)">Stop</button>
-      </div>
-      <div id="pentestButtons" class="run-buttons" hidden>
-        <button id="ptToggle" class="primary">Pen up / down</button>
-        <button id="ptSweep">Sweep range</button>
-        <button id="ptQuit" class="wide">Finish (pen up)</button>
-      </div>
-      <div class="row notify-row">
-        <label class="check inline" title="A browser notification at pen changes, paper changes and the end"><input type="checkbox" id="notifyOn"> Notify me</label>
-        <label class="check inline" title="A short tone with each notification"><input type="checkbox" id="soundOn"> Sound</label>
-      </div>
-      <details id="histBox" class="hist">
-        <summary>Recent jobs</summary>
-        <ul id="histList" class="hist-list" aria-label="Recent jobs"></ul>
-      </details>
-      <p class="note" id="stopNote"><b>Stop</b> lifts the pen and releases the motors. On firmware 3.x it cuts the move
-        in flight short at once and reads the position back; on older firmware that move finishes first (within 3 s).
-        <b>To cut everything at once, switch the plotter off.</b></p>
-    </section>
-
-    <section class="section" id="placeBox">
-      <h2>Arrange</h2>
-      <ul id="objList" class="objs" aria-label="Objects on the bed, in plot order"></ul>
-      <p id="objEmpty" class="hint">The bed is empty. Add a drawing from the Library.</p>
-      <div id="xfBox">
-        <form id="xfForm" autocomplete="off">
-          <div class="xf-grid">
-            <div class="anchor-grid" id="anchorGrid" role="radiogroup" aria-label="Reference point for X, Y and resizing"></div>
-            <label class="field"><span>X (mm)</span><input name="x" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
-            <label class="field"><span>Y (mm)</span><input name="y" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
-            <label class="field"><span>Width</span><input name="w" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
-            <label class="field"><span>Height</span><input name="h" inputmode="decimal" autocomplete="off" title="mm; arithmetic and units work: 100/3, 2in, 10cm+5"></label>
-            <label class="field"><span>Turn (deg)</span><input name="rot" inputmode="decimal" autocomplete="off" title="degrees; arithmetic works: 360/7"></label>
-            <label class="check lock" title="Keep the proportions when width or height changes"><input type="checkbox" name="lock" checked> Keep proportions</label>
-          </div>
-        </form>
-        <p class="hint" id="measureLine" aria-live="polite"></p>
-        <div class="tool-row" role="group" aria-label="Group and lock">
-          <button type="button" data-act="group" title="One unit: selecting one selects all (Ctrl+G)">Group</button>
-          <button type="button" data-act="ungroup" title="Separate objects again (Ctrl+Shift+G)">Ungroup</button>
-          <button type="button" data-act="lock" id="lockBtn" title="Locked objects cannot be moved, resized, turned or removed">Lock</button>
-        </div>
-        <div class="tool-row" role="group" aria-label="Turn and mirror">
-          <button type="button" data-act="rot-90" title="Turn 90 degrees anticlockwise">Turn left</button>
-          <button type="button" data-act="rot90" title="Turn 90 degrees clockwise">Turn right</button>
-          <button type="button" data-act="mirx" title="Mirror left to right">Mirror H</button>
-          <button type="button" data-act="miry" title="Mirror top to bottom">Mirror V</button>
-        </div>
-        <div class="tool-row" role="group" aria-label="Align">
-          <span class="muted" id="alignTo">Align to canvas</span>
-          <button type="button" data-act="left" title="Align left edges">Left</button>
-          <button type="button" data-act="hcenter" title="Centre horizontally">Centre</button>
-          <button type="button" data-act="right" title="Align right edges">Right</button>
-          <button type="button" data-act="top" title="Align top edges">Top</button>
-          <button type="button" data-act="vcenter" title="Centre vertically">Middle</button>
-          <button type="button" data-act="bottom" title="Align bottom edges">Bottom</button>
-          <button type="button" data-act="distx" title="Equal gaps left to right (three or more)">Spread H</button>
-          <button type="button" data-act="disty" title="Equal gaps top to bottom (three or more)">Spread V</button>
-          <button type="button" data-act="distcx" title="Equal steps between centres, left to right (three or more)">Centres H</button>
-          <button type="button" data-act="distcy" title="Equal steps between centres, top to bottom (three or more)">Centres V</button>
-          <button type="button" data-act="abutx" title="Side by side with no gap, left to right">Together H</button>
-          <button type="button" data-act="abuty" title="One under the other with no gap">Together V</button>
-          <button type="button" data-act="samew" title="The width of the first object selected">Same width</button>
-          <button type="button" data-act="sameh" title="The height of the first object selected">Same height</button>
-        </div>
-        <div class="tool-row" role="group" aria-label="Shapes" id="shapeRow" hidden>
-          <span class="muted">Shapes (closed outlines)</span>
-          <button type="button" data-act="union" title="Merge the selected shapes into one outline: overlapping lines go">Union</button>
-          <button type="button" data-act="subtract" title="Cut the others out of the first one in the list">Subtract</button>
-          <button type="button" data-act="intersect" title="Keep only where all the selected shapes overlap">Intersect</button>
-          <button type="button" data-act="offset" title="A new outline a set distance outside (or inside) the selection">Offset</button>
-        </div>
-        <div class="tool-row" role="group" aria-label="Lines and colour">
-          <button type="button" data-act="join" title="Join lines whose ends touch (same colour) into one stroke: fewer pen lifts. Replaces the selection; Undo brings it back.">Join lines</button>
-          <button type="button" data-act="split" title="Every stroke becomes an object of its own (at most 64 on the bed)">Break apart</button>
-          <button type="button" data-act="reverse" title="Draw every stroke from its other end, last stroke first. Only shows with Shorter pen-up travel off (Job, Path planning).">Reverse</button>
-          <select id="lineTools" aria-label="Line tools"><option value="">Line tools...</option>
-            <option value="nodes">Edit nodes</option><option value="deform">Deform with a grid</option>
-            <option value="close">Close nearly closed lines</option><option value="smooth">Smooth</option>
-            <option value="arcs">Fit arcs (smooth curves from jagged lines)</option>
-            <option value="fillet">Round the corners</option><option value="hull">Convex outline around</option><option value="fill">Fill closed shapes (hatched)</option><option value="unfill">Remove the fill</option>
-            <option value="cut-out">Cut with the first selected (keep outside)</option>
-            <option value="cut-in">Keep inside the first selected</option>
-            <option value="trim">Trim: click a piece to remove</option>
-            <option value="penwidth">Allow for the pen width</option>
-            <option value="shear">Shear</option><option value="taper">Taper / warp</option>
-            <option value="mirror-line">Mirror about a line (two clicks)</option>
-            <option value="true-size">True size from two points</option>
-            <option value="along">Copy along a path (first selected)</option>
-            <option value="text-path">Text along a path (first selected)</option>
-            <option value="pack">Pack onto the canvas</option></select>
-          <span class="muted">Colour</span>
-          <span id="inkSwatches" class="swatches" role="group" aria-label="Move to the layer of this colour"></span>
-          <label class="ink-pick" title="Any colour: a layer of its own"><input type="color" id="inkPick" aria-label="Pick a colour"></label>
-          <button type="button" data-act="ink-own" title="Back to the drawing's own colours">Own colours</button>
-        </div>
-        <div class="tool-row" role="group" aria-label="Place">
-          <button type="button" data-act="anchor" id="toAnchor" title="Put the reference point on the same point of the canvas">To canvas top-left</button>
-          <button type="button" data-act="fit" title="Scale to fill the canvas and centre">Fit canvas</button>
-          <button type="button" data-act="dup" title="Duplicate (Ctrl+D)">Duplicate</button>
-          <button type="button" data-act="array" title="Copies in rows and columns">Array</button>
-          <button type="button" data-act="circle" title="Copies around a centre">Circular array</button>
-          <button type="button" data-act="del" class="danger-text" title="Remove from the bed (Delete)">Remove</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="jobBox">
-      <h2>Job</h2>
-      <form id="placeForm">
-        <h3>Speeds</h3>
-        <div class="field-row">
-          <label class="field"><span id="speedLbl">Drawing (mm/s)</span><input name="speed" type="number" step="1"></label>
-          <label class="field"><span id="travelLbl">Pen up (mm/s)</span><input name="travel_speed" type="number" step="1"></label>
-        </div>
-        <h3>Path planning</h3>
-        <label class="check"><input type="checkbox" name="optimize" checked> Shorter pen-up travel: draw the nearest
-          stroke next, reverse strokes, start closed shapes at the nearest point. Pen changes stay where they are.</label>
-        <label class="check"><input type="checkbox" name="dedupe"> Skip strokes that exactly repeat an earlier one of the same pen</label>
-        <label class="check"><input type="checkbox" name="by_object"> Finish each object before the next, in the Arrange
-          list's order (still one pen at a time): move an object up the list to plot it first</label>
-        <label class="field" title="Points closer than this to a straight line are dropped: fewer, longer moves. 0 keeps every point."><span>Simplify (mm, 0-2)</span><input name="simplify" type="number" min="0" max="2" step="0.01"></label>
-        <label class="check"><input type="checkbox" name="corner_starts"> Start closed shapes at a corner (a seam is less visible there)</label>
-        <label class="check"><input type="checkbox" name="inner_first"> Inner shapes first (the paper has not been touched around them yet)</label>
-        <label class="check" title="Where a stroke runs along an earlier stroke of the same pen, that part is left out: no double inking where shapes share an edge"><input type="checkbox" name="overlaps"> Remove overlapping lines</label>
-        <div class="field-row">
-          <label class="field" title="Arrive at every stroke start from up-left, this far out: the same last move each time takes up gear backlash. 0 = off"><span>Approach (mm)</span><input name="approach" type="number" min="0" max="10" step="0.5"></label>
-          <label class="field" title="Wait before the first stroke (seconds)"><span>Delay before (s)</span><input name="start_delay" type="number" min="0" max="60" step="1"></label>
-          <label class="field" title="Wait after the last stroke, before travelling home (seconds)"><span>Delay after (s)</span><input name="end_delay" type="number" min="0" max="60" step="1"></label>
-        </div>
-        <label class="field"><span>Sweep</span><select name="sweep" title="Work across the sheet in 20 mm bands so the hand and fresh ink stay behind the pen">
-          <option value="none">Nearest stroke next</option><option value="down">Top to bottom</option>
-          <option value="right">Left to right</option></select></label>
-        <h3>Trace and simulate</h3>
-        <div class="field-row">
-          <label class="field"><span>Trace frame</span><select name="trace_shape">
-            <option value="box">The drawing's box</option><option value="hull">Its outline (convex)</option>
-            <option value="objects">Each object's box</option></select></label>
-          <label class="field" title="How much faster than real time a simulated run goes"><span>Simulate at</span><select name="sim_speed_ui">
-            <option value="">server default</option><option value="1">1x (real time)</option><option value="5">5x</option>
-            <option value="20">20x</option><option value="100">100x</option><option value="400">400x</option></select></label>
-        </div>
-        <label class="check"><input type="checkbox" name="trace_repeat"> Trace again and again until Return to start: for lining up the paper</label>
-        <h3>Copies and finish</h3>
-        <div class="field-row">
-          <label class="field" title="Plot the bed this many times; the plot waits at S for fresh paper between copies"><span>Copies (1-50)</span><input name="copies" type="number" min="1" max="50" step="1"></label>
-          <label class="field"><span>When done</span><select name="finish">
-            <option value="start">Back to S</option><option value="clear">Clear of the paper</option>
-            <option value="stay">Stay at the last stroke</option></select></label>
-        </div>
-        <div class="field-row">
-          <label class="field" title="Where the job goes: as placed on the bed, or with its anchor point at the carriage or a saved position"><span>Start from</span>
-            <select name="origin"><option value="">Where it is on the bed</option><option value="here">The carriage's position now</option></select></label>
-          <label class="field" title="Which point of the job's box goes to the start point"><span>Job anchor</span><select name="origin_anchor">
-            <option value="tl">top left</option><option value="tc">top centre</option><option value="tr">top right</option>
-            <option value="ml">middle left</option><option value="mc">centre</option><option value="mr">middle right</option>
-            <option value="bl">bottom left</option><option value="bc">bottom centre</option><option value="br">bottom right</option></select></label>
-        </div>
-        <label class="check"><input type="checkbox" name="keep_motors"> Keep the motors on after a plot that ends normally:
-          they hold the carriage where it is (and get warm). Machine, Take control then Finish switches them off.</label>
-        <p class="hint">Back to S is ready for the next run. Clear of the paper parks at the bed's right edge so the
-          sheet can come out; slide the carriage back to S before the next run.</p>
-        <h3>Fill (default)</h3>
-        <div class="field-row">
-          <label class="field"><span>Hatch spacing (mm, 0 = off)</span><input name="fill" type="number" step="0.1" min="0" max="50"></label>
-          <label class="field"><span>Angle (deg)</span><input name="fill_angle" type="number" step="5" min="0" max="180"></label>
-        </div>
-        <p class="hint">Shapes that have a fill colour are filled with parallel lines at this spacing for full ink. Lighter colours get wider lines, very dark ones a second pass. Shapes without a fill colour stay outlines. Layers, Filled shapes sets each colour on its own (hatch, contour rings, off).</p>
-        <details>
-          <summary>Paper</summary>
-          <p class="hint" id="paperHint"></p>
-          <label class="check"><input type="checkbox" name="paper_custom"> Different sheet size for this job</label>
-          <label class="field"><span>Size</span><select name="paper_preset" aria-label="Sheet size">
-            <option value="">Custom</option><option value="297x210">A4 landscape (297 x 210)</option>
-            <option value="210x148">A5 landscape (210 x 148)</option><option value="148x105">A6 landscape (148 x 105)</option>
-            <option value="279x216">US Letter landscape (279 x 216)</option><option value="152x102">Postcard 6 x 4 in (152 x 102)</option>
-            <option value="210x297">A4 portrait (210 x 297)</option><option value="148x210">A5 portrait (148 x 210)</option></select></label>
-          <div class="field-row">
-            <label class="field"><span>Width (mm)</span><input name="paper_w" type="number" step="1" min="20"></label>
-            <label class="field"><span>Height (mm)</span><input name="paper_h" type="number" step="1" min="20"></label>
-          </div>
-          <div class="row">
-            <select id="paperProf" aria-label="Paper profile" title="A saved paper: size, type, notes and the pens that suit it"></select>
-            <button type="button" id="paperProfSave" title="Keep this size with a type, notes and the pens that suit it">Save as a paper...</button>
-            <button type="button" id="paperProfDel" class="link" title="Delete the chosen paper profile">Delete</button>
-          </div>
-          <p class="hint" id="paperProfNote"></p>
+      <div class="section" id="runBox">
+        <div id="previewState" class="note">Add a drawing, then Preview.</div>
+        <div id="resumeBox" class="note warn" hidden><span id="resumeText"></span>
+          <div class="row"><button type="button" id="resumeBtn" class="primary" title="The next plot starts there">Resume there</button></div></div>
+        <div id="startAtBox" class="note warn" hidden><span id="startAtText"></span>
+          <button type="button" class="link" id="startAtReset">Plot from the start</button></div>
+        <div id="onlyBox" class="note warn" hidden><span id="onlyText"></span>
+          <button type="button" class="link" id="onlyAll">Plot all objects</button></div>
+        <ul id="problemList" class="problems" hidden></ul>
+        <dl class="kv" id="planKv"></dl>
+        <details id="histBox" class="hist">
+          <summary>Recent jobs</summary>
+          <ul id="histList" class="hist-list" aria-label="Recent jobs"></ul>
         </details>
+      </div>
+    </section>
+
+    <section id="tab-layers" role="tabpanel" aria-labelledby="tabBtn-layers" hidden>
+      <div class="section">
+        <h2 title="Each ink layer plots in turn, with a pause for a pen change between layers. Empty settings use the job's. Pressure: 0 is the saved pen-down (heaviest), up to 0.9">Layers and pens</h2>
+        <div id="layerList"></div>
+        <p id="layerEmpty" class="hint">No layers: the bed is empty.</p>
+      </div>
+      <div class="section" id="fillSection" hidden>
+        <h2 title="A pen cannot fill: a fill colour becomes hatching (parallel lines, optionally crossed) or contour rings, on a layer of its own">Filled shapes</h2>
+        <div id="fillList"></div>
+      </div>
+    </section>
+
+    <section id="tab-objects" role="tabpanel" aria-labelledby="tabBtn-objects" hidden>
+      <div class="section">
+        <ul id="objList" class="objs" aria-label="Objects on the bed, in plot order"></ul>
+        <p id="objEmpty" class="hint">The bed is empty. Add a drawing from the Library.</p>
+      </div>
+    </section>
+
+    <section id="tab-job" role="tabpanel" aria-labelledby="tabBtn-job" hidden>
+      <form id="placeForm" class="section">
+        <div class="field-row">
+          <label class="field"><span id="speedLbl">Drawing</span><span class="with-unit"><input name="speed" type="number" step="1"><span class="unit">mm/s</span></span></label>
+          <label class="field"><span id="travelLbl">Pen up</span><span class="with-unit"><input name="travel_speed" type="number" step="1"><span class="unit">mm/s</span></span></label>
+        </div>
+        <div class="field-row">
+          <label class="field" title="Plot the bed this many times; the plot waits at S for fresh paper between copies"><span>Copies</span><input name="copies" type="number" min="1" max="50" step="1"></label>
+          <label class="field" title="Back to S: ready for the next run. Clear of the paper: parks at the bed's right edge so the sheet can come out"><span>When done</span><select name="finish">
+            <option value="start">Back to S</option><option value="clear">Clear of the paper</option>
+            <option value="stay">Stay</option></select></label>
+        </div>
+        <div class="accordion">
+          <details name="job">
+            <summary>Path order</summary>
+            <label class="check" title="Draw the nearest stroke next, reverse strokes, start closed shapes at the nearest point. Pen changes stay where they are"><input type="checkbox" name="optimize" checked> Shorter pen-up travel</label>
+            <label class="check adv" title="Skip strokes that exactly repeat an earlier one of the same pen"><input type="checkbox" name="dedupe"> Skip duplicate strokes</label>
+            <label class="check adv" title="Where a stroke runs along an earlier one of the same pen, that part is left out: no double ink on shared edges"><input type="checkbox" name="overlaps"> Remove overlapping lines</label>
+            <label class="check adv" title="Finish each object before the next, in the Objects list's order (still one pen at a time)"><input type="checkbox" name="by_object"> One object at a time</label>
+            <label class="check adv" title="Inner shapes first, before the paper around them is touched"><input type="checkbox" name="inner_first"> Inner shapes first</label>
+            <label class="check adv" title="A closed shape starts at a corner, where the seam shows least"><input type="checkbox" name="corner_starts"> Start at corners</label>
+            <div class="field-row adv">
+              <label class="field" title="Work across the sheet in 20 mm bands so the hand and fresh ink stay behind the pen"><span>Sweep</span><select name="sweep">
+                <option value="none">Off</option><option value="down">Top to bottom</option>
+                <option value="right">Left to right</option></select></label>
+              <label class="field" title="Points closer than this to a straight line are dropped: fewer, longer moves. 0 keeps every point"><span>Simplify</span><span class="with-unit"><input name="simplify" type="number" min="0" max="2" step="0.01"><span class="unit">mm</span></span></label>
+            </div>
+          </details>
+          <details name="job">
+            <summary>Start and finish</summary>
+            <div class="field-row">
+              <label class="field" title="Where the job goes: as placed on the bed, or with its anchor at the carriage or a saved position"><span>Start from</span>
+                <select name="origin"><option value="">The bed</option><option value="here">The carriage now</option></select></label>
+              <label class="field" title="Which point of the job's box goes to the start point"><span>Anchor</span><select name="origin_anchor">
+                <option value="tl">top left</option><option value="tc">top centre</option><option value="tr">top right</option>
+                <option value="ml">middle left</option><option value="mc">centre</option><option value="mr">middle right</option>
+                <option value="bl">bottom left</option><option value="bc">bottom centre</option><option value="br">bottom right</option></select></label>
+            </div>
+            <div class="field-row adv">
+              <label class="field" title="Arrive at every stroke from up-left, this far out: the same last move takes up gear backlash. 0 = off"><span>Approach</span><span class="with-unit"><input name="approach" type="number" min="0" max="10" step="0.5"><span class="unit">mm</span></span></label>
+              <label class="field" title="Wait before the first stroke"><span>Wait before</span><span class="with-unit"><input name="start_delay" type="number" min="0" max="60" step="1"><span class="unit">s</span></span></label>
+              <label class="field" title="Wait after the last stroke, before travelling home"><span>Wait after</span><span class="with-unit"><input name="end_delay" type="number" min="0" max="60" step="1"><span class="unit">s</span></span></label>
+            </div>
+            <label class="check adv" title="After a plot that ends normally the motors hold the carriage (and get warm). Control, Finish switches them off"><input type="checkbox" name="keep_motors"> Keep motors on</label>
+          </details>
+          <details name="job">
+            <summary>Frame and simulate</summary>
+            <div class="field-row">
+              <label class="field"><span>Frame</span><select name="trace_shape">
+                <option value="box">Box</option><option value="hull">Outline (convex)</option>
+                <option value="objects">Each object's box</option></select></label>
+              <label class="field" title="How much faster than real time a simulated run goes"><span>Simulate at</span><select name="sim_speed_ui">
+                <option value="">Server default</option><option value="1">1x</option><option value="5">5x</option>
+                <option value="20">20x</option><option value="100">100x</option><option value="400">400x</option></select></label>
+            </div>
+            <label class="check adv" title="Frame again and again until Return: for lining up the paper"><input type="checkbox" name="trace_repeat"> Repeat the frame</label>
+          </details>
+          <details name="job">
+            <summary title="Shapes with a fill colour are hatched for solid ink. Lighter colours get wider spacing, very dark ones a second pass. Layers, Filled shapes sets each colour on its own">Fill</summary>
+            <div class="field-row">
+              <label class="field" title="0 = off: filled shapes stay outlines"><span>Hatch spacing</span><span class="with-unit"><input name="fill" type="number" step="0.1" min="0" max="50"><span class="unit">mm</span></span></label>
+              <label class="field"><span>Angle</span><span class="with-unit"><input name="fill_angle" type="number" step="5" min="0" max="180"><span class="unit">deg</span></span></label>
+            </div>
+          </details>
+          <details name="job">
+            <summary>Paper</summary>
+            <p class="hint" id="paperHint"></p>
+            <label class="check" title="The corner stays where it is; only the size changes"><input type="checkbox" name="paper_custom"> Other sheet size for this job</label>
+            <label class="field"><span>Size</span><select name="paper_preset" aria-label="Sheet size">
+              <option value="">Custom</option><option value="297x210">A4 landscape</option>
+              <option value="210x148">A5 landscape</option><option value="148x105">A6 landscape</option>
+              <option value="279x216">US Letter landscape</option><option value="152x102">Postcard 6 x 4 in</option>
+              <option value="210x297">A4 portrait</option><option value="148x210">A5 portrait</option></select></label>
+            <div class="field-row">
+              <label class="field"><span>Width</span><span class="with-unit"><input name="paper_w" type="number" step="1" min="20"><span class="unit">mm</span></span></label>
+              <label class="field"><span>Height</span><span class="with-unit"><input name="paper_h" type="number" step="1" min="20"><span class="unit">mm</span></span></label>
+            </div>
+            <div class="row">
+              <select id="paperProf" aria-label="Paper profile" title="A saved paper: size, type, notes and the pens that suit it"></select>
+              <button type="button" id="paperProfSave" title="Keep this size with a type, notes and the pens that suit it">Save...</button>
+              <button type="button" id="paperProfDel" class="link" title="Delete the chosen paper profile">Delete</button>
+            </div>
+            <p class="hint" id="paperProfNote"></p>
+          </details>
+        </div>
       </form>
     </section>
   </aside>
@@ -784,12 +724,12 @@
         <option value="debug">Debug</option><option value="info" selected>Info</option>
         <option value="warn">Warnings</option><option value="error">Errors</option></select>
       <input id="conSearch" type="search" placeholder="Search" aria-label="Search the console">
-      <label class="check inline"><input type="checkbox" id="conAuto" checked> Auto-scroll</label>
+      <label class="check inline" title="Keep the newest line in view"><input type="checkbox" id="conAuto" checked> Follow</label>
       <span class="spacer"></span>
       <span id="conCount" class="muted"></span>
-      <button id="conCopy" class="icon">Copy</button>
+      <button id="conCopy" class="icon" title="Copy the lines that match the filter">Copy</button>
       <a class="btn icon" href="/api/log/download" title="The whole log since the server started, as a text file">Download</a>
-      <button id="conClear" class="icon" title="Clear this view (the server keeps its history)">Clear</button>
+      <button id="conClear" class="icon" title="Clear this view; the server keeps its history">Clear</button>
     </div>
     <div class="console-body" id="conBody" role="log" aria-live="off" tabindex="0">
       <div id="conLines"></div>
@@ -800,14 +740,137 @@
 
 <nav class="mobile-tabs" aria-label="Views">
   <button data-view="bed" aria-selected="true">Bed</button>
-  <button data-view="library">Library</button>
-  <button data-view="layers">Layers</button>
-  <button data-view="tools">Tools</button>
-  <button data-view="machine">Machine</button>
-  <button data-view="run">Run</button>
+  <button data-view="left" data-tab="library">Library</button>
+  <button data-view="left" data-tab="control">Control</button>
+  <button data-view="right" data-tab="status">Status</button>
+  <button data-view="right" data-tab="layers">Layers</button>
+  <button data-view="right" data-tab="job">Job</button>
   <button data-view="console">Console</button>
 </nav>
 </div>
+
+<dialog id="machineDlg" class="tabbed" aria-labelledby="machineTitle">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="machineTitle">Machine</h2><span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
+    <nav class="tabs" role="tablist" data-tabs="machine" aria-label="Machine settings">
+      <button role="tab" id="tabBtn-m-conn" aria-controls="tab-m-conn">Connection</button>
+      <button role="tab" id="tabBtn-m-motion" aria-controls="tab-m-motion">Motion</button>
+      <button role="tab" id="tabBtn-m-paper" aria-controls="tab-m-paper">Paper</button>
+      <button role="tab" id="tabBtn-m-pen" aria-controls="tab-m-pen">Pen depth</button>
+      <button role="tab" id="tabBtn-m-pens" aria-controls="tab-m-pens">Pens</button>
+      <button role="tab" id="tabBtn-m-backup" aria-controls="tab-m-backup">Backup</button>
+    </nav>
+    <div class="dlg-body">
+      <section id="tab-m-conn" role="tabpanel">
+        <p id="hwInfo">Not checked since the server started.</p>
+        <div class="row"><button type="button" id="hwCheck" title="Ask the board for its firmware version. Nothing moves">Check</button>
+          <button type="button" id="hwDoctor" title="Ports, permissions, the board's answer and the likely cause. Nothing moves">Diagnose</button></div>
+        <ul id="hwReport" class="problems" hidden></ul>
+        <label class="field" title="The plotter is found by its USB id. Pick a port only if that fails"><span>Serial port</span>
+          <span class="row nowrap"><select id="hwPort" aria-label="Serial port"></select><button type="button" id="hwPortSet">Use</button></span></label>
+        <h3>Lifetime</h3>
+        <p id="lifeInfo" class="hint">No real jobs yet.</p>
+      </section>
+      <section id="tab-m-motion" role="tabpanel" hidden>
+        <form id="mcfgForm">
+          <div class="field-row">
+            <label class="field" title="How far the carriage can travel from the top-left of the bed"><span>Travel X</span><span class="with-unit"><input name="travel_x" type="number" step="0.5" min="50" max="2000"><span class="unit">mm</span></span></label>
+            <label class="field"><span>Travel Y</span><span class="with-unit"><input name="travel_y" type="number" step="0.5" min="50" max="2000"><span class="unit">mm</span></span></label>
+          </div>
+          <div class="field-row">
+            <label class="field"><span>X motor</span><select name="sign_x"><option value="1">Normal</option><option value="-1">Reversed</option></select></label>
+            <label class="field"><span>Y motor</span><select name="sign_y"><option value="1">Normal</option><option value="-1">Reversed</option></select></label>
+          </div>
+          <div class="field-row">
+            <label class="field" title="The fastest a job may draw"><span>Drawing limit</span><span class="with-unit"><input name="speed_max" type="number" step="1" min="1"><span class="unit">mm/s</span></span></label>
+            <label class="field" title="A new job's drawing speed"><span>Drawing default</span><span class="with-unit"><input name="speed_default" type="number" step="1" min="1"><span class="unit">mm/s</span></span></label>
+          </div>
+          <div class="field-row">
+            <label class="field" title="The fastest a job may travel pen up"><span>Pen-up limit</span><span class="with-unit"><input name="travel_max" type="number" step="1" min="1"><span class="unit">mm/s</span></span></label>
+            <label class="field" title="A new job's pen-up speed"><span>Pen-up default</span><span class="with-unit"><input name="travel_default" type="number" step="1" min="1"><span class="unit">mm/s</span></span></label>
+          </div>
+          <button type="submit" class="primary">Save</button>
+        </form>
+        <p class="hint" id="mcfgCeil"></p>
+      </section>
+      <section id="tab-m-paper" role="tabpanel" hidden>
+        <form id="paperForm" title="S is the paper's top-left corner. Moving it means parking the carriage at the new corner">
+          <div class="field-row">
+            <label class="field"><span>Left edge X</span><span class="with-unit"><input name="x0" type="number" step="0.5" min="0"><span class="unit">mm</span></span></label>
+            <label class="field"><span>Top edge Y</span><span class="with-unit"><input name="y0" type="number" step="0.5" min="0"><span class="unit">mm</span></span></label>
+          </div>
+          <div class="field-row">
+            <label class="field"><span>Width</span><span class="with-unit"><input name="width" type="number" step="1" min="20"><span class="unit">mm</span></span></label>
+            <label class="field"><span>Height</span><span class="with-unit"><input name="height" type="number" step="1" min="20"><span class="unit">mm</span></span></label>
+            <label class="field" title="No drawing this close to the paper's edge"><span>Margin</span><span class="with-unit"><input name="margin_mm" type="number" step="1" min="0"><span class="unit">mm</span></span></label>
+          </div>
+          <div class="row"><button type="submit" class="primary">Save</button>
+            <button type="button" class="link" data-reveal="#paperTL" title="Jog the pen onto two corners: Control, Measure the paper">Measure with the pen</button></div>
+        </form>
+      </section>
+      <section id="tab-m-pen" role="tabpanel" hidden>
+        <p class="hint" id="servoNote"></p>
+        <div id="potBox">
+          <h3 title="A knob (pot) on analog input A1 sets how deep the pen goes. Press the pen button and turn it: the pen follows. Jobs pick up a turn at their next stroke. A loose or broken knob is ignored and the saved pen-down is used">Depth knob</h3>
+          <p class="note" id="potLive"></p>
+          <form id="potForm">
+            <label class="check"><input type="checkbox" name="enabled"> Use the knob</label>
+            <div class="field-row">
+              <label class="field" title="The reading at the shallow end: the pen just stays off the paper"><span>Shallow end</span><input name="adc_shallow" type="number" min="0" max="1023" step="1"></label>
+              <label class="field" title="The reading at the deep end"><span>Deep end</span><input name="adc_deep" type="number" min="0" max="1023" step="1"></label>
+              <label class="field" title="Servo units below pen-up at the deep end"><span>Deepest</span><input name="depth_max" type="number" min="50" step="10"></label>
+            </div>
+            <div class="row"><button type="button" id="potShallow" title="Take the knob's reading now as the shallow end">Shallow end here</button>
+              <button type="button" id="potDeep" title="Take the knob's reading now as the deep end">Deep end here</button></div>
+            <div class="row"><button type="submit" class="primary">Save</button>
+              <button type="button" id="potKeep" title="Store the knob's depth as the saved pen-down, so the knob can be switched off or removed">Keep as pen-down</button></div>
+          </form>
+        </div>
+      </section>
+      <section id="tab-m-pens" role="tabpanel" hidden>
+        <p class="hint">Each pen's colour and width (as drawn in Ink view), and the speed and pressure a layer takes when you choose it.</p>
+        <ul id="penList" class="pens"></ul>
+        <div class="row"><button type="button" id="penNew">New pen</button>
+          <a class="btn" href="/api/pens/export">Export</a>
+          <button type="button" id="penImport">Import...</button>
+          <input type="file" id="penFile" accept=".json,application/json" hidden></div>
+        <div id="penEdit"></div>
+      </section>
+      <section id="tab-m-backup" role="tabpanel" hidden>
+        <p class="hint">Every setting in one file: machine, pens, colour-to-pen memory and projects. A restore keeps each replaced file under results/web/backups/.</p>
+        <div class="row"><a class="btn" id="bkDownload" href="/api/backup">Download backup</a>
+          <button type="button" id="bkRestore">Restore...</button></div>
+        <input type="file" id="bkFile" accept=".json,application/json" hidden>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="projDlg" aria-labelledby="projTitle">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="projTitle" title="A project is the whole bed: drawings, placement, pens and speeds">Projects</h2><span class="spacer"></span>
+      <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
+    <form id="projForm" class="proj-form">
+      <input id="projName" maxlength="80" placeholder="Name this bed" aria-label="Project name" required>
+      <button type="submit" class="primary">Save</button>
+    </form>
+    <label class="check" title="Opens as a fresh copy, the template stays as it is"><input type="checkbox" id="projTemplate"> Save as a template</label>
+    <label class="field"><span>Notes, shown when it opens</span><textarea id="projNotes" rows="2" maxlength="2000" placeholder="e.g. 0.3 fineliner, A4 160 g"></textarea></label>
+    <ul id="projList" class="files projs list-box" aria-label="Saved projects"></ul>
+    <div class="actions"><button id="bedClear" type="button" title="Every drawing off the bed. They stay in the Library; Undo brings them back">Clear the bed</button></div>
+  </div>
+</dialog>
+
+<dialog id="testsDlg" aria-labelledby="testsTitle">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="testsTitle" title="Test sheets and their results belong to one pen type: a ballpoint result says nothing about a marker">Pen tests</h2><span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
+    <div id="toolList" class="accordion"></div>
+  </div>
+</dialog>
 
 <dialog id="padDlg" aria-labelledby="padTitle">
   <div class="dlg pad-dlg">
@@ -828,35 +891,45 @@
   </div>
 </dialog>
 
-<dialog id="prefsDlg" aria-labelledby="prefsTitle">
+<dialog id="prefsDlg" class="tabbed" aria-labelledby="prefsTitle">
   <form method="dialog" id="prefsForm" class="dlg">
-    <h2 id="prefsTitle">Preferences</h2>
-    <p class="hint">Kept in this browser. The View menu above the bed shows the same view settings.</p>
-    <div class="field-row">
-      <label class="field"><span>Lengths in</span><select name="units"><option value="mm">mm</option><option value="in">inches</option></select></label>
-      <label class="field"><span>Open on</span><select name="startWs"><option value="">the page used last</option>
-        <option value="plot">Plot</option><option value="prepare">Prepare</option></select></label>
+    <div class="dlg-head"><h2 id="prefsTitle" title="Kept in this browser">Preferences</h2><span class="spacer"></span>
+      <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
+    <nav class="tabs" role="tablist" data-tabs="prefs" aria-label="Preferences">
+      <button role="tab" id="tabBtn-p-general" aria-controls="tab-p-general">General</button>
+      <button role="tab" id="tabBtn-p-keys" aria-controls="tab-p-keys">Keyboard</button>
+    </nav>
+    <div class="dlg-body">
+      <section id="tab-p-general" role="tabpanel">
+        <div class="field-row">
+          <label class="field"><span>Units</span><select name="units"><option value="mm">mm</option><option value="in">inches</option></select></label>
+          <label class="field"><span>Open on</span><select name="startWs"><option value="">Last used</option>
+            <option value="plot">Plot</option><option value="prepare">Prepare</option></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>Grid</span><select name="grid"><option value="0">Off</option><option value="1">1 mm</option>
+            <option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
+          <label class="field" title="Arrow keys move this far"><span>Nudge</span><select name="nudge"><option value="0.1">0.1 mm</option><option value="0.5">0.5 mm</option>
+            <option value="1">1 mm</option><option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option></select></label>
+          <label class="field"><span>Snap distance</span><select name="snapPx"><option value="0">Off</option><option value="4">4 px</option>
+            <option value="7">7 px</option><option value="12">12 px</option></select></label>
+        </div>
+        <label class="check" title="Off: moves snap to 0.5 mm"><input type="checkbox" name="snapGrid"> Snap to grid</label>
+        <label class="check" title="Arrows and start points, after a preview"><input type="checkbox" name="dir"> Path direction</label>
+        <label class="check"><input type="checkbox" name="lockGuides"> Lock guides</label>
+        <h3>Notifications</h3>
+        <label class="check" title="A browser notification at pen changes, paper changes and the end of a job. Applies at once"><input type="checkbox" id="notifyOn"> Notify me</label>
+        <label class="check" title="A short tone with each notification. Applies at once"><input type="checkbox" id="soundOn"> Sound</label>
+      </section>
+      <section id="tab-p-keys" role="tabpanel" hidden>
+        <p class="hint">Click a key, then press the new one. The old key then does nothing.</p>
+        <div class="keys-table"><table><tbody id="prefsKeys"></tbody></table></div>
+        <button type="button" id="prefsKeysReset" class="link">All keys back to the defaults</button>
+      </section>
     </div>
-    <div class="field-row">
-      <label class="field"><span>Grid</span><select name="grid"><option value="0">Off</option><option value="1">1 mm</option>
-        <option value="2">2 mm</option><option value="5">5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select></label>
-      <label class="field"><span>Nudge (mm)</span><select name="nudge"><option value="0.1">0.1</option><option value="0.5">0.5</option>
-        <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select></label>
-      <label class="field"><span>Snap distance</span><select name="snapPx"><option value="0">Off</option><option value="4">4 px</option>
-        <option value="7">7 px</option><option value="12">12 px</option></select></label>
-    </div>
-    <label class="check"><input type="checkbox" name="snapGrid"> Moves snap to the grid (else to 0.5 mm)</label>
-    <label class="check"><input type="checkbox" name="dir"> Show path direction and start points after a preview</label>
-    <label class="check"><input type="checkbox" name="lockGuides"> Lock the guides</label>
-    <label class="check" title="Hides the planning fine-tuning, line tools, macros, the EBB command line and backups; nothing is switched off"><input type="checkbox" name="simple"> Simple mode: hide the advanced options</label>
-    <h3>Keyboard</h3>
-    <p class="hint">Click a key and press the new one. The old key then does nothing.</p>
-    <div class="keys-table"><table><tbody id="prefsKeys"></tbody></table></div>
-    <div class="row">
-      <button type="submit" class="primary">Save</button>
+    <div class="actions">
       <button type="button" id="prefsCancel">Cancel</button>
-      <span class="spacer"></span>
-      <button type="button" id="prefsKeysReset" class="link">All keys back to the defaults</button>
+      <button type="submit" class="primary">Save</button>
     </div>
   </form>
 </dialog>
@@ -880,31 +953,40 @@
 
 <dialog id="helpDlg" aria-labelledby="helpTitle">
   <div class="dlg">
-    <h2 id="helpTitle">How plotting works here</h2>
-    <p class="hint" id="aboutLine">Loading versions...</p>
-    <p><a href="/api/diagnostics">Download a diagnostic bundle</a> (versions, machine and pen settings, the last jobs and
-      log) to attach to a bug report.</p>
-    <ol>
-      <li><b>Prepare</b> (optional): drop an image, 3D model or SVG, or start from text. Build a recipe (adjust,
-        method, clean up), check the result in ink, choose pens, and send it to Plot. A finished SVG can skip this.</li>
-      <li>In <b>Plot</b>, add drawings from the Library. Several can share the bed.</li>
-      <li>Arrange them: drag to move, drag a handle to resize (sides stretch, corners keep proportions), drag the round
-        handle to turn. Or type the numbers under Arrange. Everything must stay inside the dashed canvas.</li>
-      <li>Set pens and speeds per layer in Layers.</li>
-      <li><b>Preview</b> checks the plan with the plotter's own rules. <b>Simulate</b> runs it on a virtual machine.</li>
-      <li>Switch the plotter on with the motors off, slide the carriage by hand to <b>S</b> (the paper's top-left), pen up.</li>
-      <li><b>Start plot</b> and watch. Between layers it pauses for a pen change.</li>
-    </ol>
-    <h3>Shortcuts</h3>
-    <dl class="kv" id="keyList"></dl>
-    <h3>Stopping</h3>
-    <p>This firmware (EBB 2.0.1) has no emergency stop and no position readback. Stop finishes the move already
-      sent (normally within 3 s), lifts the pen and releases the motors; the carriage stays where it stopped.
-      Return to start finishes the current stroke and travels back to S. For an instant stop, switch the plotter off.</p>
-    <p class="hint">The carriage position shown is the commanded one, counted from S. If the carriage was bumped or
-      the motors were off, it is wrong until you park it again.</p>
-    <div class="actions"><button type="button" class="danger dlg-stop" hidden>Stop the job</button>
-      <button id="helpClose" class="primary">Close</button></div>
+    <div class="dlg-head"><h2 id="helpTitle">Help</h2><span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
+      <button id="helpClose" type="button" class="icon" aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
+    <nav class="tabs" role="tablist" data-tabs="help" aria-label="Help">
+      <button role="tab" id="tabBtn-h-start" aria-controls="tab-h-start">Quick start</button>
+      <button role="tab" id="tabBtn-h-keys" aria-controls="tab-h-keys">Shortcuts</button>
+      <button role="tab" id="tabBtn-h-about" aria-controls="tab-h-about">About</button>
+    </nav>
+    <div class="dlg-body">
+      <section id="tab-h-start" role="tabpanel">
+        <ol class="steps">
+          <li><b>Prepare</b> an image, PDF, 3D model or text: build a recipe, check the result in ink, Send to Plot. A finished SVG skips this: Import it in Plot.</li>
+          <li>In <b>Plot</b>, add drawings from the Library and arrange them on the bed. Everything stays inside the dashed drawable area.</li>
+          <li>Pick a pen per layer under <b>Layers</b>; speeds and path order under <b>Job</b>.</li>
+          <li><b>Preview</b> checks the plan. <b>Simulate</b> runs it with nothing moving.</li>
+          <li>Motors off, slide the carriage by hand to <b>S</b> (the paper's top-left), pen up.</li>
+          <li><b>Plot</b>. Between layers it pauses for a pen change.</li>
+        </ol>
+        <h3>Stopping</h3>
+        <p><b>Stop</b> lifts the pen and switches the motors off. On firmware 3.x the move in flight is cut short; older
+          firmware finishes it first (up to 3 s). <b>Return</b> finishes the stroke and travels back to S. For an
+          instant stop, switch the plotter off.</p>
+        <p class="hint">The position shown is the commanded one, counted from S. If the carriage was bumped or the motors
+          were off, it is wrong until you park it again.</p>
+      </section>
+      <section id="tab-h-keys" role="tabpanel" hidden>
+        <dl class="kv" id="keyList"></dl>
+      </section>
+      <section id="tab-h-about" role="tabpanel" hidden>
+        <p id="aboutLine">Loading versions...</p>
+        <p><a href="/api/diagnostics">Download a diagnostic bundle</a>: versions, machine and pen settings, the last jobs
+          and the log, for a bug report.</p>
+      </section>
+    </div>
   </div>
 </dialog>
 

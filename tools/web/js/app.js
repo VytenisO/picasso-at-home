@@ -18,6 +18,7 @@ import { initPrepare, prepFit, prepZoom, prepKey } from './prepare.js';
 import { initMachine, reloadConfig } from './machine.js';
 import { initMenuBar, maybeWizard } from './menubar.js';
 import { initTasks, loadTasks, onTaskEvent } from './tasks.js';
+import { initChrome, showTab } from './chrome.js';
 
 let stream = null;
 
@@ -52,6 +53,7 @@ let inited = false;
 function initOnce() {
   if (inited) return;
   inited = true;
+  initChrome();
   initBed();
   initDoc();
   initWorkspace();
@@ -167,40 +169,28 @@ function showLogin() {
 }
 $('logoutBtn') && ($('logoutBtn').onclick = async () => { await post('/api/logout', {}); showLogin(); });
 
-// ------------------------------------------------------------- tabs, view
+// ------------------------------------------------------------- phone views
+// On a narrow screen one thing shows at a time: the bed, a side panel (with one of its tabs) or the console.
 function initTabs() {
-  const tabs = ['library', 'layers', 'tools', 'machine'];
-  const show = (name) => {
-    for (const t of tabs) {
-      $('tab-' + t).hidden = t !== name;
-      $('tabBtn-' + t).setAttribute('aria-selected', String(t === name));
-    }
-    prefs('tab', name);
-  };
-  for (const t of tabs) $('tabBtn-' + t).onclick = () => show(t);
-  $('leftPanel').querySelector('.tabs').addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    const i = tabs.findIndex((t) => !$('tab-' + t).hidden);
-    const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
-    show(n); $('tabBtn-' + n).focus();
-  });
-  show(prefs('tab') || 'library');
-  document.querySelectorAll('.mobile-tabs button').forEach((b) => {
+  const btns = [...document.querySelectorAll('.mobile-tabs button')];
+  for (const b of btns) {
     b.onclick = () => {
-      const v = b.dataset.view;
-      document.body.dataset.view = v;
-      document.querySelectorAll('.mobile-tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-      if (tabs.includes(v)) show(v);
-      if (v === 'bed') requestAnimationFrame(fit);
+      document.body.dataset.view = b.dataset.view;
+      if (b.dataset.tab) showTab(b.dataset.tab);
+      for (const x of btns) x.setAttribute('aria-selected', String(x === b));
+      if (b.dataset.view === 'bed') requestAnimationFrame(fit);
     };
-  });
+  }
+  // A job starting brings its status into view.
+  let was = false;
+  on('job', () => { const now = jobActive(); if (now && !was) showTab('status'); was = now; });
 }
 
 function initTheme() {
   const order = ['system', 'light', 'dark'];
   const apply = (t) => {
     if (t === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-    $('themeBtn').textContent = 'Theme: ' + t;
+    $('themeBtn').title = `Theme: ${t}. Click for ${order[(order.indexOf(t) + 1) % 3]}`;
     themeChanged();
   };
   let cur = prefs('theme') || 'system';

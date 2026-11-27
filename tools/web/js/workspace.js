@@ -37,7 +37,8 @@ export function initWorkspace() {
   for (const b of $('xfBox').querySelectorAll('[data-act]')) b.onclick = () => act(b.dataset.act);
   $('undoBtn').onclick = D.undo;
   initHistory();
-  $('lineTools').onchange = (e) => { const t = e.target.value; e.target.value = ''; if (t) lineTool(t); };
+  $('lineTools').onchange = (e) => { const t = e.target.value; e.target.value = ''; e.target.blur(); if (t) lineTool(t); };
+  initStrip();
   $('redoBtn').onclick = D.redo;
   $('projForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -123,13 +124,32 @@ function initHistory() {
   menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { show(false); btn.focus(); } });
 }
 
+// ------------------------------------------------------------------ tool strip
+// Select ends whatever the bed is waiting for (a text or shape click, a trim, node editing). It shows as pressed
+// whenever no other tool is.
+function initStrip() {
+  const sel = $('selTool'), text = $('textTool'), shape = $('shapeTool');
+  const sync = () => sel.setAttribute('aria-pressed', String(![text, shape].some((b) => b.getAttribute('aria-pressed') === 'true')));
+  new MutationObserver(sync).observe($('toolStrip'), { attributes: true, subtree: true, attributeFilter: ['aria-pressed'] });
+  sel.onclick = () => {
+    for (const b of [text, shape]) if (b.getAttribute('aria-pressed') === 'true') b.click();
+    armPlace(null);
+    $('bed').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    $('bed').focus();
+  };
+  $('nodeTool').onclick = () => lineTool('nodes');
+  $('trimTool').onclick = () => lineTool('trim');
+  $('tbImport').onclick = () => $('fileInput').click();
+  on('job', () => { for (const b of [$('nodeTool'), $('trimTool'), $('tbImport')]) b.disabled = jobActive(); });
+}
+
 // ------------------------------------------------------------------ arrange
 function setAnchor(a) {
   anchor = a;
   prefs('anchor', a);
   const i = ANCHORS.findIndex((x) => x[0] === a[0] && x[1] === a[1]);
   [...$('anchorGrid').children].forEach((b, k) => b.setAttribute('aria-checked', String(k === i)));
-  $('toAnchor').textContent = `To canvas ${ANCHOR_NAMES[i]}`;
+  $('toAnchor').textContent = `To the area's ${ANCHOR_NAMES[i]}`;
   renderArrange();
 }
 
@@ -151,8 +171,9 @@ function renderArrange() {
   val('h', G.r2(own && one.rot % 180 === 0 ? one.h : own ? one.w : b.h));
   val('rot', one ? G.r2(one.rot) : '');
   xf.rot.disabled = locked || !one;
-  xf.rot.placeholder = one ? '' : 'one only';
-  $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to canvas';
+  xf.rot.placeholder = one ? '' : '-';
+  xf.rot.title = one ? '' : 'Select one object to type its rotation';
+  $('alignTo').textContent = sel.length > 1 ? 'Align to each other' : 'Align to the drawable area';
   $('shapeRow').hidden = !(state.me && state.me.features && state.me.features.shapes);
   renderInk(sel, locked);
   const allLocked = sel.every((o) => o.locked);
@@ -716,8 +737,8 @@ function fillJobForm() {
   if (!me || !state.doc) return;
   const st = state.doc.settings;
   const L = me.limits;
-  $('speedLbl').textContent = `Drawing (mm/s, max ${L.speed.max})`;
-  $('travelLbl').textContent = `Pen up (mm/s, max ${L.travel_speed.max})`;
+  $('speedLbl').parentElement.title = `Drawing speed, at most ${L.speed.max} mm/s`;
+  $('travelLbl').parentElement.title = `Pen-up speed, at most ${L.travel_speed.max} mm/s`;
   f.speed.min = L.speed.min; f.speed.max = L.speed.max;
   f.travel_speed.min = L.travel_speed.min; f.travel_speed.max = L.travel_speed.max;
   const [px0, py0, pw, ph] = me.machine.paper;
@@ -897,6 +918,7 @@ function recolorLayer(fl, to) {
   toast('Layer recoloured. Preview again to see the pens; Reset colours (under the layers) undoes every recolour.');
 }
 
+let openLayer = null;          // the one layer whose settings are shown
 function renderLayers() {
   const list = $('layerList');
   const pv = state.preview;
@@ -926,9 +948,9 @@ function renderLayers() {
   });
   list.replaceChildren(...rows.map(({ fl, s }, n) => {
     // choosing a pen clears the layer's own speed, pressure and dwell: it follows the pen profile (empty fields show it)
-    const pen = el('select', { 'aria-label': `Pen for layer ${n + 1}`, disabled: locked, onchange: (e) => {
+    const pen = el('select', { class: 'layer-pen', 'aria-label': `Pen for layer ${n + 1}`, disabled: locked, title: 'The pen for this layer: its speed and pressure come with it', onchange: (e) => {
       upd(fl.key, { pen: e.target.value || null, speed: null, pressure: null, dwell_ms: null });
-    } }, el('option', { value: '', text: 'Pen: not set' }),
+    } }, el('option', { value: '', text: 'No pen set' }),
       Object.entries(pens).map(([nm, p]) => el('option', { value: nm, text: p.colour ? `${nm} (${p.colour})` : nm })));
     pen.value = s.pen || '';
     const prof = s.pen ? pens[s.pen] || {} : {};
@@ -949,7 +971,7 @@ function renderLayers() {
     const passes = el('select', { 'aria-label': `Passes for layer ${n + 1}`, disabled: locked,
       title: 'Draw every stroke this many times (darker lines). An open stroke is drawn back over itself.',
       onchange: (e) => upd(fl.key, { passes: Number(e.target.value) }) },
-    [1, 2, 3, 4, 5].map((k) => el('option', { value: k, text: k === 1 ? '1 pass' : `${k} passes` })));
+    [1, 2, 3, 4, 5].map((k) => el('option', { value: k, text: String(k) })));
     passes.value = String(s.passes || 1);
     const on_ = el('input', { type: 'checkbox', disabled: locked, 'aria-label': `Plot layer ${n + 1}` });
     on_.checked = s.enabled !== false;
@@ -965,30 +987,36 @@ function renderLayers() {
     const arrow = (dir, txt, title) => el('button', { class: 'icon', type: 'button', text: txt, title, disabled: locked || n + dir < 0 || n + dir >= rows.length,
       onclick: () => move(n, dir) });
     const hidden = hiddenLayers().has(fl.key);
-    const eye = el('button', { type: 'button', class: 'icon eye', text: hidden ? 'Show' : 'Hide', 'aria-pressed': String(hidden),
-      title: 'Hide or show this layer on the bed only: it still plots', 'aria-label': `${hidden ? 'Show' : 'Hide'} layer ${n + 1} in the view`,
+    const eye = el('button', { type: 'button', class: 'icon eye', text: hidden ? '\u25CB' : '\u25C9', 'aria-pressed': String(hidden),
+      title: hidden ? 'Hidden on the bed; it still plots. Click to show' : 'Hide on the bed only: it still plots', 'aria-label': `${hidden ? 'Show' : 'Hide'} layer ${n + 1} in the view`,
       onclick: () => { toggleLayerHidden(fl.key); set({ naturals: state.naturals }); renderLayers(); } });
-    return el('div', { class: 'layer' + (s.enabled === false ? ' off' : '') + (hidden ? ' hidden-view' : '') },
-      el('div', { class: 'layer-head' }, on_, swatch, el('b', { text: `${n + 1}.` }), name, eye,
-        arrow(-1, '▲', 'Plot this pen earlier'), arrow(1, '▼', 'Plot this pen later')),
-      el('div', { class: 'layer-grid' }, el('label', { class: 'field' }, el('span', { text: 'Pen' }), pen),
+    const isOpen = openLayer === fl.key;
+    const more = el('button', { type: 'button', class: 'icon', text: isOpen ? '\u25B4' : '\u25BE', 'aria-expanded': String(isOpen),
+      title: 'Speed, pressure, passes, order, dashes', 'aria-label': `Settings of layer ${n + 1}`,
+      onclick: () => { openLayer = isOpen ? null : fl.key; renderLayers(); } });
+    return el('div', { class: 'layer' + (s.enabled === false ? ' off' : '') + (hidden ? ' hidden-view' : '') + (isOpen ? ' open' : '') },
+      el('div', { class: 'layer-head' }, on_, swatch, name, pen, eye, more),
+      isOpen && el('div', { class: 'layer-grid' },
         num('speed', L.speed, String(state.doc.settings.speed ?? L.speed.default), 'Speed (mm/s)'),
-        num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure')),
-      el('div', { class: 'layer-foot' }, passes, el('small', { class: 'muted', text: `${fl.strokes} strokes` }),
+        num('pressure', { min: 0, max: L.pressure.max }, 'from file', 'Pressure'),
+        el('label', { class: 'field' }, el('span', { text: 'Passes' }), passes)),
+      isOpen && el('div', { class: 'layer-foot' }, el('small', { class: 'muted', text: `${n + 1}. in plot order, ${fl.strokes} strokes` }),
+        arrow(-1, '\u25B2', 'Plot this pen earlier'), arrow(1, '\u25BC', 'Plot this pen later')),
+      isOpen && el('div', { class: 'layer-foot' },
         el('button', { type: 'button', class: 'link', text: 'Select', title: 'Select the objects that draw in this layer',
           onclick: () => selectLayer(fl) }),
         el('button', { type: 'button', class: 'link', text: 'Copy', title: 'Copy pen, speed, pressure and passes', disabled: locked,
           onclick: () => { prefs('layerClip', { pen: s.pen || null, speed: s.speed ?? null, pressure: s.pressure ?? null, passes: s.passes || 1 }); toast('Layer settings copied.'); renderLayers(); } }),
         el('button', { type: 'button', class: 'link', text: 'Paste', title: 'Paste the copied pen, speed, pressure and passes', disabled: locked || !prefs('layerClip'),
           onclick: () => { const c = prefs('layerClip'); if (c) upd(fl.key, { pen: c.pen && pens[c.pen] ? c.pen : null, speed: c.speed, pressure: c.pressure, passes: c.passes }); } })),
-      layerMore(fl, s, locked, upd));
+      isOpen && layerMore(fl, s, locked, upd));
   }));
   if (state.doc.settings.recolor) {
     list.append(el('button', { type: 'button', class: 'link', text: 'Reset colours', disabled: locked,
       title: 'Every layer back to the colours in its drawings', onclick: () => D.edit((d) => { d.settings.recolor = null; }) }));
   }
-  list.append(el('button', { type: 'button', id: 'legendBtn', text: 'Add a pen legend', disabled: locked,
-    title: 'Single-line text listing each layer and its pen, placed at the bottom-left of the canvas', onclick: () => addLegend(rows) }));
+  list.append(el('button', { type: 'button', id: 'legendBtn', class: 'link', text: 'Add a pen legend', disabled: locked,
+    title: 'Single-line text listing each layer and its pen, placed at the bottom-left of the drawable area', onclick: () => addLegend(rows) }));
 }
 
 // The less common pen behaviours of a layer, folded away: dashes, dwell, overdraw past the seam, pressure per pass.
@@ -1019,7 +1047,7 @@ function layerMore(fl, s, locked, upd) {
   };
   dashOn.onchange = dashOff.onchange = setDash;
   return el('details', { class: 'layer-more', open },
-    el('summary', { text: 'More: dashes, dwell, overdraw, pressure per pass' }),
+    el('summary', { text: 'Dashes, dwell, overdraw' }),
     el('div', { class: 'field-row' },
       el('label', { class: 'field', title: 'Draw this long, then skip this long (pen taps)' }, el('span', { text: 'Dash drawn' }), dashOn),
       el('label', { class: 'field' }, el('span', { text: 'Dash gap (mm)' }), dashOff)),

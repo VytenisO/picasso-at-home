@@ -28,7 +28,8 @@ export function initConsole() {
     $('conToggle').setAttribute('aria-expanded', String(!pane.classList.contains('collapsed')));
     prefs('conCollapsed', pane.classList.contains('collapsed'));
   };
-  if (prefs('conCollapsed')) { $('consolePane').classList.add('collapsed'); $('conToggle').setAttribute('aria-expanded', 'false'); }
+  if (prefs('conCollapsed') !== false) {             // collapsed until opened once
+    $('consolePane').classList.add('collapsed'); $('conToggle').setAttribute('aria-expanded', 'false'); }
   body.addEventListener('scroll', () => {
     const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 30;
     if (!atBottom && $('conAuto').checked && !body.dataset.programmatic) $('conAuto').checked = false;

@@ -128,7 +128,7 @@ function renderFiles() {
     : sort === 'old' ? (a, b) => String(a.uploaded).localeCompare(String(b.uploaded))
       : (a, b) => String(b.uploaded).localeCompare(String(a.uploaded)));
   $('fileEmpty').hidden = files.length > 0;
-  $('fileEmpty').textContent = state.files.length ? 'No drawing matches the search.' : 'Nothing here yet. Add a drawing above, or paste an SVG or image (Ctrl+V).';
+  $('fileEmpty').textContent = state.files.length ? 'No drawing matches the search.' : 'No drawings yet. Import an SVG, or paste one (Ctrl+V).';
   const locked = jobActive();
   list.replaceChildren(...files.map((f) => {
     const sel = !!(state.doc && state.doc.objects.some((o) => o.file === f.id));
@@ -138,15 +138,15 @@ function renderFiles() {
       title: sel ? 'Put another copy on the bed' : 'Put it on the bed', onclick: () => addFile(f.id) });
     const tags = [f.kind && el('span', { class: 'tag', text: KIND[f.kind] || f.kind }),
       f.pen && el('span', { class: 'tag', text: `pen ${f.pen}` })];
-    const prep = el('button', { class: 'icon', text: 'Prepare', title: f.recipe ? 'Reopen its recipe in Prepare' : 'Open it in Prepare',
+    const prep = el('button', { type: 'button', text: f.recipe ? 'Edit the recipe' : 'Open in Prepare',
       onclick: () => { showWs('prepare'); prepareFromLibrary(f.id); } });
-    const ren = el('button', { class: 'icon', text: 'Rename', 'aria-label': `Rename ${f.name}`, onclick: async () => {
+    const ren = el('button', { type: 'button', text: 'Rename...', onclick: async () => {
       const stem = f.name.replace(/\.[^.]+$/, '');
       const name = await askText('Rename drawing', 'Letters, digits, dot, dash and underscore; other characters become _.', stem, 'Rename');
       if (name === null || name.trim() === stem) return;
       try { await post('/api/files/rename', { id: f.id, name }); await refreshFiles(); } catch (e) { toast(e.message, true); }
     } });
-    const del = el('button', { class: 'icon', text: 'Delete', 'aria-label': `Delete ${f.name}`, disabled: locked, onclick: async () => {
+    const del = el('button', { type: 'button', class: 'danger-text', text: 'Move to trash', disabled: locked, onclick: async () => {
       const on = state.doc ? state.doc.objects.filter((o) => o.file === f.id).length : 0;
       if (!(await ask('Delete drawing', `Move ${f.name} to the trash?` + (on === 1 ? ' Its object leaves the bed.' : on ? ` Its ${on} objects leave the bed.` : '') +
         ' It can be restored from the Trash for 30 days.', 'Move to trash'))) return;
@@ -154,12 +154,11 @@ function renderFiles() {
       if (on) D.edit((d) => { d.objects = d.objects.filter((o) => o.file !== f.id); });
       try { await post('/api/files/delete', { id: f.id }); await refreshFiles(); toast(`${f.name} moved to the trash.`); } catch (e) { toast(e.message, true); }
     } });
-    const rep = ['svg', 'shape', 'text'].includes(f.kind) ? el('button', { class: 'icon', text: 'Replace', disabled: locked,
-      title: 'Load a new SVG into this drawing: objects on the bed keep their place', 'aria-label': `Replace ${f.name}`,
+    const rep = ['svg', 'shape', 'text'].includes(f.kind) ? el('button', { type: 'button', text: 'Replace...', disabled: locked,
+      title: 'Load a new SVG into this drawing: objects on the bed keep their place',
       onclick: () => { $('replaceInput').dataset.id = f.id; $('replaceInput').click(); } }) : null;
-    const dl = el('a', { class: 'btn icon', href: `/api/files/orig?id=${encodeURIComponent(f.id)}`, text: 'Save',
-      title: 'Download the original file' });
-    const tagBtn = el('button', { class: 'icon', text: 'Tags', title: 'Tags for sorting the library (comma separated)', onclick: async () => {
+    const dl = el('a', { class: 'menu-link', href: `/api/files/orig?id=${encodeURIComponent(f.id)}`, text: 'Download the original' });
+    const tagBtn = el('button', { type: 'button', text: 'Tags...', title: 'Tags for sorting the library', onclick: async () => {
       const t = await askText('Tags', 'Tags, separated by commas:', (f.tags || []).join(', '), 'Save');
       if (t === null) return;
       try { await post('/api/files/tags', { id: f.id, tags: t.split(',') }); await refreshFiles(); } catch (e) { toast(e.message, true); }
@@ -169,7 +168,9 @@ function renderFiles() {
       el('img', { src: `/api/files/svg?id=${encodeURIComponent(f.id)}`, alt: '', loading: 'lazy' }),
       el('div', {}, el('div', { class: 'name' }, open), el('div', { class: 'meta' }, ...tags,
         ...(f.tags || []).map((t) => el('span', { class: 'tag', text: t })), ' ', f.uploaded ? f.uploaded.replace('T', ' ') : '')),
-      el('div', { class: 'row' }, add, prep, dl, ren, tagBtn, rep, del));
+      el('div', { class: 'file-acts' }, add, el('div', { class: 'mbtn' },
+        el('button', { type: 'button', class: 'mbtn-top icon', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-label': `More for ${f.name}`, text: '\u22ef' }),
+        el('div', { class: 'mbtn-list', role: 'menu', hidden: true }, prep, ren, tagBtn, rep, dl, el('hr'), del))));
     return li;
   }));
 }

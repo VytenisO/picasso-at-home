@@ -5,63 +5,71 @@ import { state, prefs } from './store.js';
 import { $, el, toast } from './ui.js';
 import { SHORTCUTS } from './shortcuts.js';
 import { showWs } from './ws.js';
+import { reveal, tipText } from './chrome.js';
 
 const press = (sel, ws = 'plot') => () => {
   if (ws && state.ws !== ws) showWs(ws);
   const n = document.querySelector(sel);
   if (!n) return;
-  if (n.disabled) { toast('Not available right now (a job may be running, or nothing is selected).', true); return; }
-  n.closest('details')?.setAttribute('open', '');
+  if (n.disabled) { toast('Not available now: a job may be running, or nothing is selected.', true); return; }
+  if (n.closest('dialog')) reveal(n, { focus: false });
   if (n.tagName === 'INPUT' && n.type !== 'checkbox') n.focus(); else n.click();
 };
-const tab = (name, then) => () => { showWs('plot'); $('tabBtn-' + name).click(); if (then) then(); };
-const focus = (sel, t) => tab(t, () => { const n = document.querySelector(sel); n?.closest('details')?.setAttribute('open', ''); n?.scrollIntoView({ block: 'center' }); n?.focus(); });
+const go = (sel) => () => reveal(sel);
+const dlg = (id) => () => { const d = $(id); if (!d.open) d.showModal(); };
 
 const MENUS = [
   ['File', [
-    ['Upload a drawing...', press('#fileInput')],
+    ['Import SVG...', press('#fileInput')],
     ['Prepare an image or model', () => showWs('prepare')],
     null,
-    ['Save the bed as a project', focus('#projName', 'library')],
-    ['Projects...', focus('#projList', 'library')],
-    ['Export the plan as PNG', press('#exportPng')],
-    ['Export the bed', press('#exportBtn')],
+    ['Projects...', dlg('projDlg')],
+    ['Save the bed as a project...', go('#projName')],
     null,
-    ['Back up settings', press('#bkDownload')],
-    ['Restore settings...', press('#bkRestore')],
+    ['Export plot SVG', press('#exportBtn')],
+    ['Export plan PNG', press('#exportPng')],
+    null,
+    ['Back up settings', press('#bkDownload', null)],
+    ['Restore settings...', press('#bkRestore', null)],
   ]],
   ['Edit', [
     ['Undo', press('#undoBtn'), 'Ctrl+Z'], ['Redo', press('#redoBtn'), 'Ctrl+Shift+Z'], null,
-    ['Duplicate', press('#xfBox [data-act=dup]'), 'Ctrl+D'], ['Remove from the bed', press('#xfBox [data-act=del]'), 'Del'], null,
+    ['Duplicate', press('#xfBox [data-act=dup]'), 'Ctrl+D'], ['Remove from the bed', press('#xfBox [data-act=del]'), 'Del'],
+    ['Clear the bed...', press('#bedClear')], null,
     ['Preferences...', () => openPrefs()],
-    ['Reset the panel layout', () => import('./ws.js').then((m) => m.resetPanels())],
+  ]],
+  ['View', [
+    ['Theme: system, light, dark', press('#themeBtn', null)],
+    ['Side panels', press('#vPanels'), '\\'],
+    ['Reset the layout', () => import('./ws.js').then((m) => m.resetPanels())],
+    ['Console', press('#conToggle')],
   ]],
   ['Arrange', [
     ['Group', press('#xfBox [data-act=group]'), 'Ctrl+G'], ['Ungroup', press('#xfBox [data-act=ungroup]'), 'Ctrl+Shift+G'],
     ['Lock or unlock', press('#xfBox [data-act=lock]')], null,
     ['Turn right', press('#xfBox [data-act=rot90]'), 'R'], ['Turn left', press('#xfBox [data-act=rot-90]'), 'Shift+R'],
     ['Mirror left to right', press('#xfBox [data-act=mirx]'), 'H'], ['Mirror top to bottom', press('#xfBox [data-act=miry]'), 'V'], null,
-    ['Align left', press('#xfBox [data-act=left]')], ['Centre horizontally', press('#xfBox [data-act=hcenter]')],
-    ['Align right', press('#xfBox [data-act=right]')], ['Align top', press('#xfBox [data-act=top]')],
-    ['Centre vertically', press('#xfBox [data-act=vcenter]')], ['Align bottom', press('#xfBox [data-act=bottom]')], null,
-    ['Fit in the canvas', press('#xfBox [data-act=fit]')], ['Array...', press('#xfBox [data-act=array]')],
+    ['Align left edges', press('#xfBox [data-act=left]')], ['Align centres across', press('#xfBox [data-act=hcenter]')],
+    ['Align right edges', press('#xfBox [data-act=right]')], ['Align top edges', press('#xfBox [data-act=top]')],
+    ['Align centres down', press('#xfBox [data-act=vcenter]')], ['Align bottom edges', press('#xfBox [data-act=bottom]')], null,
+    ['Fit the drawable area', press('#xfBox [data-act=fit]')], ['Grid array...', press('#xfBox [data-act=array]')],
   ]],
   ['Tools', [
-    ['Text...', press('#textTool')], ['Shape...', press('#shapeTool')], null,
-    ['Test sheets and calibration', tab('tools')], ['Live writing', focus('#liveSection', 'tools')], null,
-    ['Preview', press('#previewBtn'), 'P'], ['Simulate', press('#simBtn')], ['Trace the frame', press('#traceBtn')],
+    ['Text', press('#textTool')], ['Shape...', press('#shapeTool')],
+    ['Edit nodes', press('#nodeTool')], ['Trim', press('#trimTool')], null,
+    ['Pen tests...', dlg('testsDlg')], ['Live writing', go('#liveStart')], null,
+    ['Preview', press('#previewBtn'), 'P'], ['Simulate', press('#simBtn')], ['Frame', press('#traceBtn')],
   ]],
   ['Machine', [
-    ['Machine control', tab('machine')], ['Check the plotter', press('#hwCheck', null)],
-    ['Doctor (what is wrong?)', press('#hwDoctor', null)], null,
-    ['Pens', focus('#penList', 'machine')], ['Calibration (steps/mm)', focus('#calLen', 'machine')],
-    ['Paper corner and size', focus('#paperForm', 'machine')], ['Saved positions', focus('#posList', 'machine')],
-    ['Macros', focus('#macroList', 'machine')],
+    ['Settings...', dlg('machineDlg')], ['Manual control', go('#mcTake')], null,
+    ['Check the plotter', press('#hwCheck', null)], ['Diagnose the connection', press('#hwDoctor', null)], null,
+    ['Pens...', go('#penList')], ['Paper...', go('#paperForm [name=x0]')], ['Pen depth...', go('#potForm [name=enabled]')],
+    ['Calibrate steps/mm', go('#calLen')], ['Saved positions', go('#posList')], ['Macros', go('#macroList')],
   ]],
   ['Help', [
-    ['How plotting works, shortcuts', () => $('helpDlg').showModal(), '?'],
+    ['Help and shortcuts', () => $('helpDlg').showModal(), '?'],
     ["What's this? (then click a control)", () => whatsThis(), 'Shift+F1'],
-    ['Setup guide (first run)', () => openWizard()],
+    ['Setup guide', () => openWizard()],
     ['Download the log', () => { location.href = '/api/log/download'; }],
     ['Diagnostic bundle', () => { location.href = '/api/diagnostics'; }],
   ]],
@@ -88,18 +96,6 @@ function buildMenuBar() {
     if ((e.key === 'ArrowDown') && open) { e.preventDefault(); const items = [...open.list.querySelectorAll('button:not([disabled])')]; const i = items.indexOf(document.activeElement); (items[i + 1] || items[0]).focus(); }
     if ((e.key === 'ArrowUp') && open) { e.preventDefault(); const items = [...open.list.querySelectorAll('button:not([disabled])')]; const i = items.indexOf(document.activeElement); (items[i - 1] || items[items.length - 1]).focus(); }
   });
-}
-
-// ---- simple mode: these controls are for people who know they want them
-const ADVANCED = ['#placeForm [name=dedupe]', '#placeForm [name=by_object]', '#placeForm [name=simplify]',
-  '#placeForm [name=corner_starts]', '#placeForm [name=inner_first]', '#placeForm [name=overlaps]',
-  '#placeForm [name=approach]', '#placeForm [name=sweep]', '#placeForm [name=trace_repeat]', '#placeForm [name=keep_motors]',
-  '.mc-more', '#rawForm', '#lineTools', '#bkDownload', '#hwDoctor'];
-function applySimple(on) {
-  document.body.classList.toggle('simple', on);
-  for (const s of ADVANCED) {
-    for (const n of document.querySelectorAll(s)) (n.closest('label, .field-row, details') || n).classList.add('adv');
-  }
 }
 
 // ---- rebinding: a custom key stands in for a built-in one, which then does nothing
@@ -139,9 +135,9 @@ function whatsThis() {
       const r = x.getBoundingClientRect();
       return r.width && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
     });
-    const n = (off || e.target).closest('[title], label, button, summary, select, input, h2, h3');
+    const n = (off || e.target).closest('[title], [data-tip], label, button, summary, select, input, h2, h3');
     const lab = n && (n.closest('label') || n);
-    const text = (n && n.getAttribute('title')) || (lab && lab.getAttribute('title')) ||
+    const text = tipText(n) || tipText(lab) || tipText(n && n.closest('[title], [data-tip]')) ||
       (lab && lab.parentElement && lab.parentElement.querySelector('.hint')?.textContent);
     const name = (lab && (lab.querySelector('span')?.textContent || lab.textContent) || '').trim().slice(0, 80);
     import('./ui.js').then(({ ask }) => ask(name || 'This control', text || 'No help text for this one yet; see Help for the overview.', 'OK'));
@@ -155,7 +151,7 @@ function openPrefs() {
   const f = $('prefsForm');
   f.grid.value = String(v.grid); f.snapGrid.checked = v.snapGrid; f.dir.checked = v.dir; f.nudge.value = String(v.nudge);
   f.snapPx.value = String(v.snapPx); f.lockGuides.checked = v.lockGuides; f.units.value = v.units || 'mm';
-  f.simple.checked = !!prefs('simple'); f.startWs.value = prefs('startWs') || '';
+  f.startWs.value = prefs('startWs') || '';
   renderKeys();
   d.showModal();
 }
@@ -194,11 +190,9 @@ function initPrefs() {
     e.preventDefault();
     prefs('view', { ...(prefs('view') || {}), grid: Number(f.grid.value), snapGrid: f.snapGrid.checked, dir: f.dir.checked, nudge: Number(f.nudge.value),
       snapPx: Number(f.snapPx.value), lockGuides: f.lockGuides.checked, units: f.units.value });
-    prefs('simple', f.simple.checked);
     prefs('startWs', f.startWs.value || null);
-    applySimple(f.simple.checked);
     $('prefsDlg').close();
-    toast('Preferences saved. Grid and snapping apply now; the View menu shows the same settings.');
+    toast('Preferences saved.');
     window.dispatchEvent(new Event('plotter-prefs'));
   };
   $('prefsCancel').onclick = () => $('prefsDlg').close();
@@ -215,17 +209,14 @@ const WIZ = [
         return r.ok ? `Found${r.port ? ' on ' + r.port : ''}: ${r.firmware || r.message || 'the board answers'}.` : `Not found: ${r.message || 'no answer'}. Check the cable and power.`;
       } catch (e) { return e.message; }
     }],
-  ['Park at S', "The plotter has no switches, so it knows where it is only from where you leave it. Switch the motors off (Machine, Release), push the carriage by hand to the paper's top-left corner, pen up. That point is S; every run starts and ends there.",
-    'Open Machine control', () => { closeWiz(); tab('machine')(); }],
-  ['Calibrate the distances', 'Steps per mm decide whether 100 mm on screen is 100 mm on paper. Under Machine, Calibration: draw a test line, measure it with a ruler, type the length; repeat for Y. Do it once per machine, and again if a belt is changed.',
-    'Open Calibration', () => { closeWiz(); focus('#calLen', 'machine')(); }],
-  ['Pen height', "Pen up must clear the paper and pen down must touch it lightly. Tools, Pen height test moves only the pen; a too-low pen-down can gouge the paper, so set it by hand with a pen mounted.",
-    'Open the pen height test', () => { closeWiz(); tab('tools')(); setTimeout(() => {
-      const d = [...document.querySelectorAll('#toolList details')].find((x) => /pen height/i.test(x.textContent));
-      if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); }
-    }, 100); }],
-  ['Paper and a first plot', 'Under Machine, Paper, set the sheet (or measure it with the pen). Then Library, upload a drawing, Preview, Simulate to watch it on the screen, and Plot.',
-    'Open Paper', () => { closeWiz(); focus('#paperForm', 'machine')(); }],
+  ['Park at S', "The plotter knows where it is only from where you leave it. Motors off, push the carriage by hand to the paper's top-left corner, pen up. That point is S: every run starts and ends there.",
+    'Open Control', () => { closeWiz(); reveal('#mcTake'); }],
+  ['Calibrate the distances', 'Steps per mm decide whether 100 mm on screen is 100 mm on paper. Control, Calibrate: draw two ticks, measure them with a ruler, save; then Y. Once per machine, and again after a belt change.',
+    'Open Calibration', () => { closeWiz(); reveal('#calLen'); }],
+  ['Pen height', "Pen up clears the paper; pen down touches it lightly. The pen height test moves only the pen. Set it with a pen mounted: too low a pen-down can gouge the paper.",
+    'Open the pen height test', () => { closeWiz(); import('./tools.js').then((m) => m.showTool('pen_test')); }],
+  ['Paper and a first plot', 'Machine, Paper: set the sheet, or measure it with the pen. Then Import a drawing, Preview, Simulate, and Plot.',
+    'Open Paper', () => { closeWiz(); reveal('#paperForm [name=x0]'); }],
 ];
 let wizAt = 0;
 function closeWiz() { $('wizDlg').close(); prefs('wizardSeen', true); }
@@ -258,6 +249,5 @@ export function initMenuBar() {
   buildMenuBar();
   initPrefs();
   initRebind();
-  applySimple(!!prefs('simple'));
 }
 export { openPrefs, whatsThis };
