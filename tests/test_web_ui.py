@@ -67,14 +67,14 @@ class WebIds(unittest.TestCase):
         self.assertEqual(missing, [])
 
     def test_tab_panels(self):
-        """Every tab names a panel that exists and points back at it; every phone view tab names a tab."""
-        tabs = re.findall(r'<button role="tab" id="tabBtn-([\w-]+)" aria-controls="([\w-]+)"', self.html)
+        """Every tab names a panel that exists and points back at it; no tab button can submit a form."""
+        tabs = re.findall(r'<button type="button" role="tab" id="tabBtn-([\w-]+)" aria-controls="([\w-]+)"', self.html)
         self.assertGreater(len(tabs), 10)
         for name, panel in tabs:
             self.assertEqual(panel, f"tab-{name}")
             self.assertIn(f'id="{panel}" role="tabpanel"', self.html)
-        for name in re.findall(r'<button data-view="\w+" data-tab="([\w-]+)"', self.html):
-            self.assertIn(f"tabBtn-{name}", self.ids)
+        # a tab inside a form must not submit it
+        self.assertEqual(re.findall(r'<button role="tab"', self.html), [])
 
     def test_no_inline_styles(self):
         """The server sends style-src 'self': inline style attributes are blocked."""

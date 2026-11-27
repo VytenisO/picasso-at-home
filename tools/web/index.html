@@ -25,10 +25,10 @@
 <div id="appView" hidden>
 <header class="topbar">
   <span class="brand">Pen plotter</span>
-  <nav class="menu-bar hide-narrow" id="menuBar" aria-label="Menu"></nav>
+  <nav class="menu-bar" id="menuBar" aria-label="Menu"></nav>
   <nav class="ws-switch" role="tablist" aria-label="Workspace">
-    <button role="tab" id="wsBtn-prepare" data-ws="prepare" aria-selected="false" title="Turn an image, model or text into a drawing (1)">Prepare</button>
-    <button role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place drawings on the bed and plot them (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
+    <button type="button" role="tab" id="wsBtn-prepare" data-ws="prepare" aria-selected="false" title="Turn an image, model or text into a drawing (1)">Prepare</button>
+    <button type="button" role="tab" id="wsBtn-plot" data-ws="plot" aria-selected="true" title="Place drawings on the bed and plot them (2)">Plot<span class="ws-dot" id="wsJobDot" hidden></span></button>
   </nav>
   <span class="spacer"></span>
   <span class="task-anchor">
@@ -61,7 +61,7 @@
         <button type="button" id="presetApply" title="Use this preset's steps and settings on the current source">Apply</button>
         <div class="mbtn">
           <button type="button" class="mbtn-top icon" aria-haspopup="true" aria-expanded="false" aria-label="Preset actions">&#8943;</button>
-          <div class="mbtn-list flip-up" role="menu" hidden>
+          <div class="mbtn-list" role="menu" hidden>
             <button type="button" id="presetSave" title="Steps, settings and fill under a name">Save the recipe as a preset...</button>
             <button type="button" class="danger-text" id="presetDel">Delete this preset</button>
           </div>
@@ -147,7 +147,7 @@
         <button id="prepSend" class="primary big grow" disabled title="Save to the library and open it in Plot (Ctrl+Enter)">Send to Plot</button>
         <div class="mbtn">
           <button type="button" class="mbtn-top big" aria-haspopup="true" aria-expanded="false" title="Save as new, download, batch, start over">More&#9662;</button>
-          <div class="mbtn-list flip-up" role="menu" hidden>
+          <div class="mbtn-list" role="menu" hidden>
             <button id="prepSaveNew" type="button" disabled title="Keep the drawing it replaces">Save as new</button>
             <a id="prepDownload" class="menu-link" aria-disabled="true">Download SVG</a>
             <a id="prepDownloadImg" class="menu-link" hidden title="The picture after the adjustments, before it was turned into lines">Download the adjusted image</a>
@@ -216,9 +216,9 @@
   <!-- left: library, manual control, live writing -->
   <aside class="panel left" id="leftPanel">
     <nav class="tabs" role="tablist" data-tabs="left" aria-label="Left panel">
-      <button role="tab" id="tabBtn-library" aria-controls="tab-library">Library</button>
-      <button role="tab" id="tabBtn-control" aria-controls="tab-control">Control</button>
-      <button role="tab" id="tabBtn-write" aria-controls="tab-write">Write</button>
+      <button type="button" role="tab" id="tabBtn-library" aria-controls="tab-library">Library</button>
+      <button type="button" role="tab" id="tabBtn-control" aria-controls="tab-control">Control</button>
+      <button type="button" role="tab" id="tabBtn-write" aria-controls="tab-write">Write</button>
     </nav>
 
     <section id="tab-library" role="tabpanel" aria-labelledby="tabBtn-library">
@@ -575,10 +575,10 @@
   <!-- right: status, layers, objects, job settings -->
   <aside class="panel right" id="rightPanel">
     <nav class="tabs" role="tablist" data-tabs="right" aria-label="Right panel">
-      <button role="tab" id="tabBtn-status" aria-controls="tab-status">Status</button>
-      <button role="tab" id="tabBtn-layers" aria-controls="tab-layers">Layers</button>
-      <button role="tab" id="tabBtn-objects" aria-controls="tab-objects">Objects</button>
-      <button role="tab" id="tabBtn-job" aria-controls="tab-job">Job</button>
+      <button type="button" role="tab" id="tabBtn-status" aria-controls="tab-status">Status</button>
+      <button type="button" role="tab" id="tabBtn-layers" aria-controls="tab-layers">Layers</button>
+      <button type="button" role="tab" id="tabBtn-objects" aria-controls="tab-objects">Objects</button>
+      <button type="button" role="tab" id="tabBtn-job" aria-controls="tab-job">Job</button>
     </nav>
 
     <section id="tab-status" role="tabpanel" aria-labelledby="tabBtn-status">
@@ -743,11 +743,8 @@
 
 <nav class="mobile-tabs" aria-label="Views">
   <button data-view="bed" aria-selected="true">Bed</button>
-  <button data-view="left" data-tab="library">Library</button>
-  <button data-view="left" data-tab="control">Control</button>
-  <button data-view="right" data-tab="status">Status</button>
-  <button data-view="right" data-tab="layers">Layers</button>
-  <button data-view="right" data-tab="job">Job</button>
+  <button data-view="left" title="Library, Control, Write">Library</button>
+  <button data-view="right" title="Status, Layers, Objects, Job">Job</button>
   <button data-view="console">Console</button>
 </nav>
 </div>
@@ -758,12 +755,12 @@
       <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
     <nav class="tabs" role="tablist" data-tabs="machine" aria-label="Machine settings">
-      <button role="tab" id="tabBtn-m-conn" aria-controls="tab-m-conn">Connection</button>
-      <button role="tab" id="tabBtn-m-motion" aria-controls="tab-m-motion">Motion</button>
-      <button role="tab" id="tabBtn-m-paper" aria-controls="tab-m-paper">Paper</button>
-      <button role="tab" id="tabBtn-m-pen" aria-controls="tab-m-pen">Pen depth</button>
-      <button role="tab" id="tabBtn-m-pens" aria-controls="tab-m-pens">Pens</button>
-      <button role="tab" id="tabBtn-m-backup" aria-controls="tab-m-backup">Backup</button>
+      <button type="button" role="tab" id="tabBtn-m-conn" aria-controls="tab-m-conn">Connection</button>
+      <button type="button" role="tab" id="tabBtn-m-motion" aria-controls="tab-m-motion">Motion</button>
+      <button type="button" role="tab" id="tabBtn-m-paper" aria-controls="tab-m-paper">Paper</button>
+      <button type="button" role="tab" id="tabBtn-m-pen" aria-controls="tab-m-pen">Pen depth</button>
+      <button type="button" role="tab" id="tabBtn-m-pens" aria-controls="tab-m-pens">Pens</button>
+      <button type="button" role="tab" id="tabBtn-m-backup" aria-controls="tab-m-backup">Backup</button>
     </nav>
     <div class="dlg-body">
       <section id="tab-m-conn" role="tabpanel">
@@ -854,6 +851,7 @@
 <dialog id="projDlg" aria-labelledby="projTitle">
   <div class="dlg">
     <div class="dlg-head"><h2 id="projTitle" title="A project is the whole bed: drawings, placement, pens and speeds">Projects</h2><span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
     <form id="projForm" class="proj-form">
       <input id="projName" maxlength="80" placeholder="Name this bed" aria-label="Project name" required>
@@ -897,10 +895,11 @@
 <dialog id="prefsDlg" class="tabbed" aria-labelledby="prefsTitle">
   <form method="dialog" id="prefsForm" class="dlg">
     <div class="dlg-head"><h2 id="prefsTitle" title="Kept in this browser">Preferences</h2><span class="spacer"></span>
+      <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button type="button" class="icon" data-close aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
     <nav class="tabs" role="tablist" data-tabs="prefs" aria-label="Preferences">
-      <button role="tab" id="tabBtn-p-general" aria-controls="tab-p-general">General</button>
-      <button role="tab" id="tabBtn-p-keys" aria-controls="tab-p-keys">Keyboard</button>
+      <button type="button" role="tab" id="tabBtn-p-general" aria-controls="tab-p-general">General</button>
+      <button type="button" role="tab" id="tabBtn-p-keys" aria-controls="tab-p-keys">Keyboard</button>
     </nav>
     <div class="dlg-body">
       <section id="tab-p-general" role="tabpanel">
@@ -960,9 +959,9 @@
       <button type="button" class="danger dlg-stop" hidden>Stop the job</button>
       <button id="helpClose" type="button" class="icon" aria-label="Close" tabindex="-1" title="Close (Esc)">&times;</button></div>
     <nav class="tabs" role="tablist" data-tabs="help" aria-label="Help">
-      <button role="tab" id="tabBtn-h-start" aria-controls="tab-h-start">Quick start</button>
-      <button role="tab" id="tabBtn-h-keys" aria-controls="tab-h-keys">Shortcuts</button>
-      <button role="tab" id="tabBtn-h-about" aria-controls="tab-h-about">About</button>
+      <button type="button" role="tab" id="tabBtn-h-start" aria-controls="tab-h-start">Quick start</button>
+      <button type="button" role="tab" id="tabBtn-h-keys" aria-controls="tab-h-keys">Shortcuts</button>
+      <button type="button" role="tab" id="tabBtn-h-about" aria-controls="tab-h-about">About</button>
     </nav>
     <div class="dlg-body">
       <section id="tab-h-start" role="tabpanel">

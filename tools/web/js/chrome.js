@@ -18,9 +18,13 @@ function adopt(n) {
 }
 export const tipText = (n) => n && (n.getAttribute('title') || n.dataset.tip || '');
 
-function place(n) {
+let described = null;           // the focused control the tip describes
+function place(n, focused = null) {
   const text = adopt(n);
   if (!text || !n.isConnected) return;
+  const host = n.closest('dialog[open]') || document.body;
+  if (tip.parentElement !== host) host.append(tip);
+  if (focused) { described = focused; focused.setAttribute('aria-describedby', tip.id); }
   const m = text.match(KEY);
   tip.replaceChildren(document.createTextNode(m ? text.slice(0, m.index) : text));
   if (m) { const k = document.createElement('kbd'); k.textContent = m[1]; tip.append(k); }
@@ -30,25 +34,30 @@ function place(n) {
   tip.style.left = `${Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2))}px`;
   tip.style.top = `${below ? r.bottom + 6 : Math.max(6, r.top - h - 6)}px`;
 }
-function hide() { clearTimeout(timer); cur = null; if (tip) tip.hidden = true; }
-function arm(n, delay) {
+function hide() {
+  clearTimeout(timer); cur = null;
+  if (tip) tip.hidden = true;
+  if (described) { described.removeAttribute('aria-describedby'); described = null; }
+}
+function arm(n, delay, focused = null) {
   if (n === cur) return;
   hide();
   if (!n || !adopt(n)) return;
   cur = n;
-  timer = setTimeout(() => place(n), delay);
+  timer = setTimeout(() => place(n, focused), delay);
 }
 
 function initTips() {
   tip = document.createElement('div');
   tip.className = 'tip';
+  tip.id = 'tipBox';
   tip.setAttribute('role', 'tooltip');
   tip.hidden = true;
   document.body.append(tip);
   const target = (e) => e.target && e.target.closest && e.target.closest('[title], [data-tip]');
   document.addEventListener('pointerover', (e) => { if (e.pointerType !== 'touch') arm(target(e), 450); });
   document.addEventListener('pointerout', (e) => { if (cur && !cur.contains(e.relatedTarget)) hide(); });
-  document.addEventListener('focusin', (e) => { const n = target(e); if (n && n.matches(':focus-visible')) arm(n, 250); });
+  document.addEventListener('focusin', (e) => { const n = target(e); if (n && e.target.matches(':focus-visible')) arm(n, 250, e.target); });
   document.addEventListener('focusout', hide);
   for (const ev of ['pointerdown', 'keydown', 'wheel', 'scroll']) document.addEventListener(ev, hide, true);
   // Touch has no hover: a long press shows the tip.
@@ -81,8 +90,10 @@ function initMenus() {
         list.hidden = false;
         top.setAttribute('aria-expanded', 'true');
         openList = list;
-        list.classList.remove('flip');
-        if (list.getBoundingClientRect().right > innerWidth - 4) list.classList.add('flip');
+        const r = top.getBoundingClientRect(), w = list.offsetWidth, h = list.offsetHeight;
+        list.style.position = 'fixed';
+        list.style.left = `${Math.max(4, r.left + w > innerWidth - 4 ? r.right - w : r.left)}px`;
+        list.style.top = `${r.bottom + 4 + h > innerHeight - 4 && r.top - h - 4 > 4 ? r.top - h - 4 : r.bottom + 4}px`;
         list.querySelector('button:not(:disabled), select, input')?.focus({ preventScroll: true });
       }
       return;
@@ -94,6 +105,10 @@ function initMenus() {
   document.addEventListener('pointerdown', (e) => {
     if (openList && !openList.parentElement.contains(e.target)) closeMenus();
   });
+  // a fixed list would float away from its button: close it when anything scrolls or resizes
+  document.addEventListener('scroll', (e) => { if (openList && !openList.contains(e.target)) closeMenus(); }, true);
+  window.addEventListener('resize', closeMenus);
+  document.addEventListener('change', (e) => { if (openList && openList.contains(e.target) && e.target.tagName === 'SELECT') setTimeout(closeMenus, 0); });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !openList) return;
     const top = openList.parentElement.querySelector('.mbtn-top');
@@ -151,6 +166,7 @@ export async function reveal(target, { focus = true } = {}) {
     if (p.tagName === 'DIALOG' && !p.open) p.showModal();
   }
   const side = n.closest('.workspace > .panel');
+  if (side && side.parentElement.classList.contains('no-panels')) (await import('./bed.js')).togglePanels();
   if (side && matchMedia('(max-width: 900px)').matches) document.body.dataset.view = side.classList.contains('left') ? 'left' : 'right';
   if (focus) {
     n.scrollIntoView({ block: 'nearest' });

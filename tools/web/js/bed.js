@@ -153,7 +153,8 @@ export function fit() {
   const m = state.me && state.me.machine;
   if (!m || !W) return;
   const pad = 24;
-  view.s = Math.min((W - RULER - 2 * pad) / m.bed[0], (H - RULER - 2 * pad) / m.bed[1]);
+  // a bed squeezed to nothing (hidden, or mid-layout) still gets a positive scale: a negative one breaks drawing
+  view.s = Math.max(0.05, Math.min((W - RULER - 2 * pad) / m.bed[0], (H - RULER - 2 * pad) / m.bed[1]));
   view.ox = RULER + (W - RULER - m.bed[0] * view.s) / 2;
   view.oy = RULER + (H - RULER - m.bed[1] * view.s) / 2;
   view.fitted = true;

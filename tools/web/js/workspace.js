@@ -129,8 +129,12 @@ function initHistory() {
 // whenever no other tool is.
 function initStrip() {
   const sel = $('selTool'), text = $('textTool'), shape = $('shapeTool');
-  const sync = () => sel.setAttribute('aria-pressed', String(![text, shape].some((b) => b.getAttribute('aria-pressed') === 'true')));
-  new MutationObserver(sync).observe($('toolStrip'), { attributes: true, subtree: true, attributeFilter: ['aria-pressed'] });
+  const sync = () => {
+    const v = String(![text, shape].some((b) => b.getAttribute('aria-pressed') === 'true'));
+    if (sel.getAttribute('aria-pressed') !== v) sel.setAttribute('aria-pressed', v);
+  };
+  const obs = new MutationObserver(sync);
+  for (const b of [text, shape]) obs.observe(b, { attributes: true, attributeFilter: ['aria-pressed'] });
   sel.onclick = () => {
     for (const b of [text, shape]) if (b.getAttribute('aria-pressed') === 'true') b.click();
     armPlace(null);

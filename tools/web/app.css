@@ -201,7 +201,6 @@ kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px;
   .optbar { flex-wrap: wrap; }
   body[data-view="console"] .console { display: flex; height: calc(100vh - 48px - 60px); }
   body[data-view="console"] .console.collapsed .console-body { display: block; }
-  .workspace > .panel > .tabs { display: none; }
   .mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: var(--panel);
     border-top: 1px solid var(--line); z-index: 30; }
   body[data-ws="prepare"] .prep { display: flex; flex-direction: column; height: auto; }
@@ -545,7 +544,6 @@ label.field.inline .unit { padding: 0; }
 .mbtn-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.22); }
 .mbtn-list[hidden] { display: none; }
-.mbtn-list.flip { left: auto; right: 0; }
 .mbtn-list button { display: flex; justify-content: space-between; gap: 16px; border: none; background: none; text-align: left;
   min-height: 28px; padding: 4px 10px; border-radius: 5px; white-space: nowrap; }
 .mbtn-list button:hover:not(:disabled), .mbtn-list button:focus-visible { background: var(--info-bg); }
@@ -633,7 +631,6 @@ label.field.prop > span:first-child { margin: 0; font-size: 13px; color: var(--t
 label.field.slider > span:first-child { font-size: 13px; color: var(--text); }
 .slider-row .with-unit { min-width: 0; }
 .grow { flex: 1; }
-.mbtn-list.flip-up { top: auto; bottom: calc(100% + 4px); right: 0; left: auto; }
 .mbtn-top.big { min-height: 44px; }
 a.menu-link[aria-disabled="true"] { opacity: .45; pointer-events: none; }
 .step.method > select { margin-bottom: 8px; }
@@ -641,4 +638,13 @@ a.menu-link[aria-disabled="true"] { opacity: .45; pointer-events: none; }
   .strip { display: none; }
   .mobile-tabs button { font-size: 12px; padding: 0 2px; min-width: 0; }
   .workspace .toolbar { display: flex; }
+}
+/* the toolbar's Stop sits under it on the Plot page; the top-bar Stop stays for Prepare and phones */
+@media (min-width: 901px) { body[data-ws="plot"] #stopTop { display: none; } }
+.jog-side input, .go-row input { width: 72px; }
+#tab-write .field-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  /* job controls first, so Pause and Continue never sit off the side of the scrolled toolbar */
+  #idleButtons, #jobButtons, #pentestButtons, #speedLive { order: -1; }
+  .menu-bar { margin-left: 0; order: 10; width: 100%; overflow-x: auto; }
 }
