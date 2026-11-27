@@ -153,7 +153,9 @@ def validate(raw, bed, pens, layer_keys):
 
 
 def validate_fills(raw):
-    """Per fill-ink settings: [{key, mode: hatch|contour|off, spacing, angle, cross, zigzag}], sorted by key."""
+    """Per fill-ink settings, sorted by key: [{key, mode: hatch|contour|auto|off, spacing, angle, cross, zigzag, passes,
+    angle_step, inset, bridge, group, own_layer, outline (draw the shapes' outlines, default on), pressure_pct (the fill's
+    touch relative to the outline's, -90..+90 %; never deeper than the saved pen-down)}]."""
     if raw in (None, ""):
         return []
     if not isinstance(raw, list) or len(raw) > 64:
@@ -165,9 +167,11 @@ def validate_fills(raw):
         mode = f.get("mode")
         if mode in (None, "", "default"):
             continue
-        if mode not in ("hatch", "contour", "off"):
-            raise SettingsError(f"fill {i + 1}: mode must be hatch, contour or off")
+        if mode not in ("hatch", "contour", "auto", "off"):
+            raise SettingsError(f"fill {i + 1}: mode must be hatch, contour, auto or off")
         e = {"key": f["key"], "mode": mode}
+        if f.get("outline") is False:
+            e["outline"] = False
         if mode != "off":
             e["spacing"] = _num(f, "spacing", 0.2, 50, 1.0, False, f"Fill {i + 1} spacing")
             e["angle"] = _num(f, "angle", 0, 180, 45.0, False, f"Fill {i + 1} angle")
@@ -178,6 +182,9 @@ def validate_fills(raw):
             e["angle_step"] = _num(f, "angle_step", 0, 180, 0, False, f"Fill {i + 1} angle step")
             e["inset"] = _num(f, "inset", 0, 5, 0, False, f"Fill {i + 1} inset")
             e["bridge"] = _num(f, "bridge", 0, 5, 0, False, f"Fill {i + 1} bridge")
+            pct = _num(f, "pressure_pct", -90, 90, 0, False, f"Fill {i + 1} pressure")
+            if pct:
+                e["pressure_pct"] = round(pct)
             grp = f.get("group") or "all"
             if grp not in ("all", "object", "shape"):
                 raise SettingsError(f"fill {i + 1}: group must be all, object or shape")

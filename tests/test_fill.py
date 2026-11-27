@@ -165,3 +165,43 @@ def test_plot_svg_fills_per_ink_passes_and_rank():
         s = pv["strokes"]
         k = next(n for n in range(len(order)) if s[order[n]]["l"] != red)
         assert s[order[k + 1]]["pts"] == s[order[k]]["pts"]
+
+
+def test_fill_outline_off_auto_and_relative_pressure():
+    with tempfile.TemporaryDirectory() as d:
+        svg = pathlib.Path(d) / "f.svg"
+        svg.write_text(SVG)
+        hatch = {"mode": "hatch", "spacing": 1.0, "angle": 0, "zigzag": False}
+        r, on = run_plot(svg, "--fills", str(write_json(d, "a.json", {"#cc3333|": hatch})))
+        r, off = run_plot(svg, "--fills", str(write_json(d, "b.json", {"#cc3333|": dict(hatch, outline=False)})))
+        assert r.returncode == 0, r.stdout + r.stderr
+        # the red shape's two rings (outer and hole) are gone; its hatch and the black shape stay
+        assert len(off["strokes"]) == len(on["strokes"]) - 2
+        assert "outline stroke(s)" in r.stdout + r.stderr
+        # auto: like the job-wide --fill, spacing from the colour's darkness
+        r, auto = run_plot(svg, "--fills", str(write_json(d, "c.json", {"#cc3333|": {"mode": "auto", "spacing": 1.0}})))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert len(auto["strokes"]) > len(off["strokes"]) - 40
+        # pressure: -50 % halves the touch of the fill only; +50 % from full pen-down cannot go deeper
+        def pressures(pct):
+            r, pv = run_plot(svg, "--fills", str(write_json(d, "p.json", {"#cc3333|": dict(hatch, pressure_pct=pct)})))
+            assert r.returncode == 0, r.stdout + r.stderr
+            return {s["p"] for s in pv["strokes"]}
+        assert pressures(-50) == {None, 0.5}
+        assert pressures(50) <= {None, 0.0}
+        bad = write_json(d, "bad.json", {"#cc3333|": dict(hatch, pressure_pct=120)})
+        assert run_plot(svg, "--fills", str(bad))[0].returncode != 0
+
+
+def test_fill_settings_validate():
+    from plotweb import plotjob
+    v = plotjob.validate_fills([{"key": "#ff0000|", "mode": "auto", "spacing": 0.8, "pressure_pct": -30, "outline": False},
+                                {"key": "#000000|", "mode": "off", "outline": False}])
+    assert v[0] == {"key": "#000000|", "mode": "off", "outline": False}
+    assert v[1]["mode"] == "auto" and v[1]["pressure_pct"] == -30 and v[1]["outline"] is False
+    for bad in ({"mode": "spiral"}, {"mode": "hatch", "pressure_pct": 95}):
+        try:
+            plotjob.validate_fills([dict(bad, key="#ff0000|")])
+            raise AssertionError(bad)
+        except plotjob.SettingsError:
+            pass

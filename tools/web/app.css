@@ -648,3 +648,7 @@ a.menu-link[aria-disabled="true"] { opacity: .45; pointer-events: none; }
   #idleButtons, #jobButtons, #pentestButtons, #speedLive { order: -1; }
   .menu-bar { margin-left: 0; order: 10; width: 100%; overflow-x: auto; }
 }
+/* filled shapes: one row per colour, the open one with a swatch */
+.fill-ink .fill-method { flex: 1; min-width: 0; min-height: 26px; padding: 2px 4px; font-size: 13px; }
+.fill-ink.open { border-color: var(--accent); }
+.fill-swatch { display: block; margin: 8px auto 6px; border: 1px solid var(--line); border-radius: 4px; max-width: 100%; }

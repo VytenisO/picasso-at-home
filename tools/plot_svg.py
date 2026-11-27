@@ -711,6 +711,8 @@ def load_svg(path, ignore_unsupported):
             cur["rule"] = "nonzero" if fr.lower() == "nonzero" else "evenodd"
         cur["fop"] = cur.get("fop", 1.0) * _frac(style_prop(el, "fill-opacity")) * _frac(style_prop(el, "opacity"))
         el_rings = []
+        if cur.get("fill") and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
+            meta["outline_of"] = len(fills)        # this shape's fill entry, if it gets one (outline on/off)
 
         def add(poly):
             if len(poly) >= 2:
@@ -818,7 +820,7 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
     merged, mmeta = [], []
     # strokes join only within one ink, pen pressure, object, speed and filled shape
     key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj"), m.get("speed"),  # noqa: E731
-                     m.get("shape"), m.get("asis"))
+                     m.get("shape"), m.get("asis"), m.get("outline_of"))
     for p, m in zip(sp, metas):
         same_ink = merged and key(m) == key(mmeta[-1]) and not m.get("asis")
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
@@ -1339,10 +1341,19 @@ def main():
         if not isinstance(fills_cfg, dict):
             sys.exit("--fills must be a JSON object")
         for k, fc in fills_cfg.items():
-            if not isinstance(fc, dict) or fc.get("mode") not in ("hatch", "contour", "off"):
-                sys.exit(f"--fills {k}: mode must be hatch, contour or off")
+            if not isinstance(fc, dict) or fc.get("mode") not in ("hatch", "contour", "auto", "off"):
+                sys.exit(f"--fills {k}: mode must be hatch, contour, auto or off")
+            if not -90 <= float(fc.get("pressure_pct") or 0) <= 90:
+                sys.exit(f"--fills {k}: pressure_pct must be -90..90")
             if fc["mode"] != "off" and not 0.2 <= float(fc.get("spacing") or 0) <= 50:
                 sys.exit(f"--fills {k}: spacing must be 0.2..50 mm")
+    # Outline off: the outlines of a fill ink's shapes are left out (the fill alone draws them).
+    no_outline = {fi for fi, f in enumerate(fills) if not f.get("asis")
+                  and (fills_cfg.get(layer_key((f["color"], f["layer"]))) or {}).get("outline") is False}
+    if no_outline:
+        keep = [k for k, m in enumerate(metas) if m.get("outline_of") not in no_outline]
+        log(f"Outlines       : {len(metas) - len(keep)} outline stroke(s) of {len(no_outline)} filled shape(s) left out")
+        strokes, metas = [strokes[k] for k in keep], [metas[k] for k in keep]
     fill_inks = {}
     for f in fills:
         k = layer_key((f["color"], f["layer"]))
@@ -1360,6 +1371,9 @@ def main():
                     sp, ang = float(fc.get("spacing") or 0), float(fc.get("angle", 45.0))
                     if fc["mode"] == "off":
                         lines = []
+                    elif fc["mode"] == "auto":       # like --fill: lighter colours wider apart, very dark crossed
+                        dark = fillmod.darkness(fillmod.color_luminance(f["color"]), f["opacity"])
+                        lines = fillmod.fill_shape(rings, sp, dark, ang, f["rule"], cross=fc.get("cross", True) is not False)
                     elif fc["mode"] == "contour":
                         lines = fillmod.contour_rings(rings, sp, f["rule"])
                     else:
@@ -1469,6 +1483,14 @@ def main():
             for i in groups[gi][1]:
                 if lset[gi]["pressure"] is not None and metas[i].get("pressure") is None:
                     metas[i]["pressure"] = lset[gi]["pressure"]   # layer default; per-stroke data-pressure wins
+    # A fill's touch relative to the outline's: touch = 1 - pressure fraction (1 = the saved pen-down). +x % presses
+    # harder, but never past the saved pen-down; -x % is lighter, at most MAX_PRESSURE.
+    for m in metas:
+        pct = m.get("fill") and not m.get("asis") and \
+            (fills_cfg.get(layer_key((m.get("color"), m.get("flayer", m.get("layer"))))) or {}).get("pressure_pct")
+        if pct:
+            touch = (1.0 - (m.get("pressure") or 0.0)) * (1.0 + float(pct) / 100.0)
+            m["pressure"] = round(min(MAX_PRESSURE, max(0.0, 1.0 - touch)), 4)
     if not any(ls.get("enabled", True) for ls in lset):
         sys.exit("every layer is switched off: nothing to plot")
     stroke_group = {}

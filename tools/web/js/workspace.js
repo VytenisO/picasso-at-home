@@ -7,6 +7,7 @@ import { $, el, toast, ask, askText } from './ui.js';
 import * as G from './geom.js';
 import * as D from './doc.js';
 import { hiddenLayers, toggleLayerHidden } from './ink.js';
+import { METHODS, methodOf, drawSwatch } from './fillswatch.js';
 
 export const runPreview = D.runPreview;
 
@@ -761,7 +762,6 @@ function fillJobForm() {
     `${me.machine.margin} mm margin. The corner stays where it is; only the size can change here.`;
   const set_ = (name, v) => { if (document.activeElement !== f[name]) f[name].value = v ?? ''; };
   set_('speed', st.speed); set_('travel_speed', st.travel_speed);
-  set_('fill', st.fill || 0); set_('fill_angle', st.fill_angle ?? 45);
   set_('copies', st.copies || 1);
   if (document.activeElement !== f.finish) f.finish.value = st.finish || 'start';
   if (document.activeElement !== f.origin) {
@@ -797,7 +797,7 @@ function fromJobForm(e) {
   const f = $('placeForm');
   const st = state.doc.settings;
   const num = (n) => (f[n].value === '' ? null : Number(f[n].value));
-  const patch = { speed: num('speed'), travel_speed: num('travel_speed'), fill: num('fill') || 0, fill_angle: num('fill_angle') ?? 45,
+  const patch = { speed: num('speed'), travel_speed: num('travel_speed'),
     optimize: f.optimize.checked, dedupe: f.dedupe.checked, finish: f.finish.value === 'start' ? null : f.finish.value,
     sweep: f.sweep.value === 'none' ? null : f.sweep.value, by_object: f.by_object.checked || null,
     keep_motors: f.keep_motors.checked || null };
@@ -824,11 +824,6 @@ function fromJobForm(e) {
     return;
   }
   patch.copies = cp > 1 ? cp : null;
-  if (patch.fill && (patch.fill < 0.2 || patch.fill > 50)) {
-    toast('Fill spacing must be 0 (off) or between 0.2 and 50 mm.', true);
-    f.fill.value = st.fill || 0;
-    return;
-  }
   const L = state.me.limits;
   for (const [k, lim] of [['speed', L.speed], ['travel_speed', L.travel_speed]]) {
     if (patch[k] === null || patch[k] < lim.min || patch[k] > lim.max) {
@@ -1099,6 +1094,10 @@ function selectLayer(fl) {
   D.select(ids);
 }
 
+// Filled shapes, one row per fill colour: the method, the outline on or off, and the open one's settings with a
+// swatch of how it will look. A colour with no setting of its own follows the old job-wide fill (Auto) if a bed
+// still carries one, else it is not filled.
+let openFill = null;
 function renderFills() {
   const box = $('fillList');
   const pv = state.preview;
@@ -1107,63 +1106,89 @@ function renderFills() {
   if (!inks.length) { box.replaceChildren(); return; }
   const locked = jobActive();
   const st = state.doc.settings;
-  const cur = (key) => (st.fills || []).find((f) => f.key === key) || { key, mode: 'default' };
+  const inherited = (key) => (st.fill ? { key, mode: 'auto', spacing: st.fill, angle: st.fill_angle ?? 45, inherited: true } : { key, mode: 'off' });
+  const cur = (key) => (st.fills || []).find((f) => f.key === key) || inherited(key);
   const upd = (key, patch) => D.edit((d) => {
     const all = (d.settings.fills || []).filter((f) => f.key !== key);
-    const f = { ...cur(key), ...patch };
-    if (f.mode !== 'default') all.push(f);
+    const { inherited: _, ...f } = { ...cur(key), ...patch };
+    all.push(f);
     d.settings.fills = all;
   });
-  const deflt = st.fill ? `job default: hatch ${st.fill} mm` : 'job default: not filled';
+  // the pen that draws an ink's fill: its own layer's, else the layer of the same colour
+  const penFor = (ink, f) => {
+    const lk = f.own_layer ? `${ink.color}|${(ink.label || '')} fill` : ink.key;
+    const ly = (st.layers || []).find((l) => l.key === lk) || (st.layers || []).find((l) => l.key === ink.key) || {};
+    return { pen: ly.pen && (state.me.pens || {})[ly.pen], pressure: ly.pressure ?? null };
+  };
   box.replaceChildren(...inks.map((ink) => {
     const f = cur(ink.key);
-    const sw = el('span', { class: 'swatch' });
+    const meth = methodOf(f);
+    const isOpen = openFill === ink.key;
+    const sw = el('span', { class: 'swatch', title: `${ink.label || ink.color}: ${ink.shapes} filled shape${ink.shapes === 1 ? '' : 's'}` });
     sw.style.background = ink.color;
-    const mode = el('select', { 'aria-label': `Fill for ${ink.color}`, disabled: locked, onchange: (e) => {
-      const m = e.target.value;
-      upd(ink.key, m === 'hatch' || m === 'contour' ? { mode: m, spacing: f.spacing || 1, angle: f.angle ?? 45 } : { mode: m });
-    } }, el('option', { value: 'default', text: deflt }), el('option', { value: 'hatch', text: 'Hatch' }),
-      el('option', { value: 'contour', text: 'Contour rings' }), el('option', { value: 'off', text: 'Outline only' }));
-    mode.value = f.mode || 'default';
-    const parts = [el('div', { class: 'layer-head' }, sw, el('b', { text: ink.color }), el('span', { class: 'spacer' }),
-      el('small', { class: 'muted', text: `${ink.shapes} shape${ink.shapes === 1 ? '' : 's'}` })), mode];
-    if (f.mode === 'hatch' || f.mode === 'contour') {
-      const n = (k, label, min, max, step, dv) => {
-        const i = el('input', { type: 'number', min, max, step, disabled: locked, 'aria-label': label });
-        i.value = f[k] ?? dv;
-        i.onchange = () => {
-          const v = Number(i.value);
-          if (!(v >= min && v <= max)) { toast(`${label}: ${min} to ${max}.`, true); i.value = f[k] ?? dv; return; }
-          upd(ink.key, { [k]: v });
-        };
-        return el('label', { class: 'field' }, el('span', { text: label }), i);
+    const method = el('select', { class: 'fill-method', 'aria-label': `Fill method for ${ink.color}`, disabled: locked,
+      title: f.inherited ? `Auto from the old job-wide fill (${f.spacing} mm). Pick a method to set this colour on its own` : 'How the shapes of this colour are filled',
+      onchange: (e) => {
+        const m = METHODS.find((x) => x[0] === e.target.value);
+        const keep = { spacing: f.spacing || 1, angle: f.angle ?? 45 };
+        upd(ink.key, { ...keep, ...m[2] });
+      } }, METHODS.map(([v, label]) => el('option', { value: v, text: label })));
+    method.value = meth;
+    const outline = el('input', { type: 'checkbox', disabled: locked, 'aria-label': `Outline of ${ink.color} shapes` });
+    outline.checked = f.outline !== false;
+    outline.onchange = () => upd(ink.key, { outline: outline.checked });
+    const more = el('button', { type: 'button', class: 'icon', text: isOpen ? '▴' : '▾', 'aria-expanded': String(isOpen),
+      title: 'Spacing, angle, pressure and more, with a preview', 'aria-label': `Fill settings for ${ink.color}`,
+      disabled: meth === 'none', onclick: () => { openFill = isOpen ? null : ink.key; renderFills(); } });
+    const head = el('div', { class: 'layer-head' }, sw, method, el('label', { class: 'check inline', title: 'Draw the shapes\' outlines too. Off: the fill alone' }, outline, ' Outline'), more);
+    const card = el('div', { class: 'layer fill-ink' + (isOpen ? ' open' : '') }, head);
+    if (!isOpen || meth === 'none') return card;
+    const n = (k, label, unit, min, max, step, dv, title) => {
+      const i = el('input', { type: 'number', min, max, step, disabled: locked, 'aria-label': label });
+      i.value = f[k] ?? dv;
+      i.onchange = () => {
+        const v = Number(i.value);
+        if (!(v >= min && v <= max)) { toast(`${label}: ${min} to ${max}.`, true); i.value = f[k] ?? dv; return; }
+        upd(ink.key, { [k]: v });
       };
-      const row = [n('spacing', 'Spacing (mm)', 0.2, 50, 0.1, 1)];
-      if (f.mode === 'hatch') row.push(n('angle', 'Angle (deg)', 0, 180, 5, 45));
-      parts.push(el('div', { class: 'field-row' }, ...row));
-      const row2 = [n('inset', 'Inset (mm)', 0, 5, 0.1, 0), n('bridge', 'Bridge (mm)', 0, 5, 0.1, 0)];
-      if (f.mode === 'hatch') row2.unshift(n('passes', 'Passes', 1, 5, 1, 1), n('angle_step', 'Turn per pass', 0, 180, 5, 0));
-      parts.push(el('div', { class: 'field-row', title: 'Inset: fill lines stop short of the edge (blobs at their ends stay inside). Bridge: fill lines whose ends are this close are drawn as one, pen down across. Passes: the hatch again, turned each time.' }, ...row2));
-      const chk = (k, label, title, dv) => {
-        const c = el('input', { type: 'checkbox', disabled: locked });
-        c.checked = f[k] === undefined ? dv : !!f[k];
-        c.onchange = () => upd(ink.key, { [k]: c.checked });
-        return el('label', { class: 'check inline', title }, c, ' ', label);
-      };
-      if (f.mode === 'hatch') {
-        parts.push(el('div', { class: 'row' }, chk('cross', 'Cross-hatch', 'A second pass at right angles', false),
-          chk('zigzag', 'Back and forth', 'Join the lines into zigzags (fewer pen lifts). Off: every line the same way.', true)));
-      }
-      const grp = el('select', { disabled: locked, 'aria-label': 'Fill order' },
-        ...[['all', 'All fills of this ink together'], ['object', 'Finish each object before the next'], ['shape', 'Finish each shape before the next']]
-          .map(([v, t]) => el('option', { value: v, text: t })));
-      grp.value = f.group || 'all';
-      grp.onchange = () => upd(ink.key, { group: grp.value === 'all' ? null : grp.value });
-      parts.push(el('label', { class: 'field', title: 'The order of fill lines: one shape at a time keeps wet ink from being crossed again soon' },
-        el('span', { text: 'Fill order' }), grp));
-      parts.push(el('div', { class: 'row' }, chk('own_layer', 'Own layer', 'The fill plots as a layer of its own, so it can take its own pen (a marker for the fill, a fineliner for the outline)', false)));
+      return el('label', { class: 'field', title }, el('span', { text: label }),
+        unit ? el('span', { class: 'with-unit' }, i, el('span', { class: 'unit', text: unit })) : i);
+    };
+    const cv = el('canvas', { class: 'fill-swatch', 'aria-label': 'How this fill will look' });
+    const { pen, pressure } = penFor(ink, f);
+    drawSwatch(cv, f, ink.color, pen, pressure);
+    card.append(cv);
+    const main = [n('spacing', meth === 'auto' ? 'Darkest spacing' : 'Spacing', 'mm', 0.2, 50, 0.1, 1,
+      meth === 'auto' ? 'Line spacing at full ink; lighter colours get wider spacing' : 'Distance between fill lines')];
+    if (meth !== 'rings') main.push(n('angle', 'Angle', 'deg', 0, 180, 5, 45));
+    main.push(n('pressure_pct', 'Pressure', '%', -90, 90, 5, 0,
+      'The fill\'s touch against the outline\'s: +20 presses harder (never past the saved pen-down), -30 is lighter. 0 = the same'));
+    card.append(el('div', { class: 'field-row' }, ...main));
+    const chk = (k, label, title, dv) => {
+      const c = el('input', { type: 'checkbox', disabled: locked });
+      c.checked = f[k] === undefined ? dv : !!f[k];
+      c.onchange = () => upd(ink.key, { [k]: c.checked });
+      return el('label', { class: 'check', title }, c, ' ', label);
+    };
+    const extra = [];
+    if (meth === 'lines' || meth === 'zigzag' || meth === 'cross') {
+      extra.push(el('div', { class: 'field-row' }, n('passes', 'Passes', '', 1, 5, 1, 1, 'The hatch again on top, turned each time'),
+        n('angle_step', 'Turn per pass', 'deg', 0, 180, 5, 0)));
     }
-    return el('div', { class: 'layer fill-ink' }, ...parts);
+    extra.push(el('div', { class: 'field-row' },
+      n('inset', 'Inset', 'mm', 0, 5, 0.1, 0, 'Fill lines stop this short of the edge: blobs at their ends stay inside'),
+      n('bridge', 'Bridge', 'mm', 0, 5, 0.1, 0, 'Fill lines whose ends are this close are drawn as one, pen down across')));
+    if (meth === 'cross') extra.push(chk('zigzag', 'Back and forth', 'Join each direction\'s lines into zigzags: fewer pen lifts', false));
+    if (meth === 'auto') extra.push(chk('cross', 'Cross the darkest', 'Very dark colours get a second pass at right angles', true));
+    const grp = el('select', { disabled: locked, 'aria-label': 'Fill order' },
+      ...[['all', 'All of this colour together'], ['object', 'Each object in turn'], ['shape', 'Each shape in turn']]
+        .map(([v, tx]) => el('option', { value: v, text: tx })));
+    grp.value = f.group || 'all';
+    grp.onchange = () => upd(ink.key, { group: grp.value === 'all' ? null : grp.value });
+    extra.push(el('label', { class: 'field', title: 'One shape at a time keeps wet ink from being crossed again soon' }, el('span', { text: 'Order' }), grp));
+    extra.push(chk('own_layer', 'Own layer and pen', 'The fill plots as a layer of its own, so it can take its own pen (a marker for the fill, a fineliner for the outline)', false));
+    card.append(el('details', { class: 'layer-more' }, el('summary', { text: 'More' }), ...extra));
+    return card;
   }));
 }
 

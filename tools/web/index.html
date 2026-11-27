@@ -618,7 +618,7 @@
         <p id="layerEmpty" class="hint">No layers: the bed is empty.</p>
       </div>
       <div class="section" id="fillSection" hidden>
-        <h2 title="A pen cannot fill: a fill colour becomes hatching (parallel lines, optionally crossed) or contour rings, on a layer of its own">Filled shapes</h2>
+        <h2 title="A pen cannot fill: shapes with a fill colour are filled with lines, a zigzag, cross-hatching or rings, set per colour here. None: outlines only">Filled shapes</h2>
         <div id="fillList"></div>
       </div>
     </section>
@@ -686,13 +686,6 @@
                 <option value="20">20x</option><option value="100">100x</option><option value="400">400x</option></select></label>
             </div>
             <label class="check adv" title="Frame again and again until Return: for lining up the paper"><input type="checkbox" name="trace_repeat"> Repeat the frame</label>
-          </details>
-          <details name="job">
-            <summary title="Shapes with a fill colour are hatched for solid ink. Lighter colours get wider spacing, very dark ones a second pass. Layers, Filled shapes sets each colour on its own">Fill</summary>
-            <div class="field-row">
-              <label class="field" title="0 = off: filled shapes stay outlines"><span>Hatch spacing</span><span class="with-unit"><input name="fill" type="number" step="0.1" min="0" max="50"><span class="unit">mm</span></span></label>
-              <label class="field"><span>Angle</span><span class="with-unit"><input name="fill_angle" type="number" step="5" min="0" max="180"><span class="unit">deg</span></span></label>
-            </div>
           </details>
           <details name="job">
             <summary>Paper</summary>
