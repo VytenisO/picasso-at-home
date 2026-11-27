@@ -70,15 +70,28 @@ export const mm = (v, d = 1) => (v === null || v === undefined || !isFinite(v)) 
 const tipOf = (p) => [p.help, p.type === 'number' && p.min !== undefined && p.max !== undefined ? `${p.min} to ${p.max}${p.unit ? ' ' + p.unit : ''}` : '']
   .filter(Boolean).join('. ') || undefined;
 const withUnit = (input, unit) => unit ? el('span', { class: 'with-unit' }, input, el('span', { class: 'unit', text: unit })) : input;
+// A param with `section` starts a folding section (one open at a time per form, rule 7 of docs/ui-design.md);
+// the fields before the first section stay in view. Which section is open survives the form being rebuilt.
+const openSection = new Map();          // form id -> open section title
 export function schemaForm(form, params, pens, values = {}) {
   form.replaceChildren();
+  let box = form;
   for (const p of params) {
     const id = `${form.id}-${p.key}`;
     const tip = tipOf(p);
     let input;
-    if (p.section) form.append(el('h3', { class: 'form-section', text: p.section }));
+    if (p.section) {
+      const sec = el('details', { class: 'form-section', name: `${form.id}-sections` }, el('summary', { text: p.section }));
+      sec.open = openSection.get(form.id) === p.section;
+      sec.addEventListener('toggle', () => {
+        if (sec.open) openSection.set(form.id, p.section);
+        else if (openSection.get(form.id) === p.section) openSection.delete(form.id);
+      });
+      form.append(sec);
+      box = sec;
+    }
     if (p.type === 'hidden') {          // carried with the form, edited elsewhere (e.g. by clicking the preview)
-      form.append(el('input', { id, name: p.key, type: 'hidden', value: values[p.key] ?? p.default ?? '' }));
+      box.append(el('input', { id, name: p.key, type: 'hidden', value: values[p.key] ?? p.default ?? '' }));
       continue;
     }
     if (p.type === 'select') {
@@ -92,7 +105,7 @@ export function schemaForm(form, params, pens, values = {}) {
     } else if (p.type === 'bool') {
       input = el('input', { id, name: p.key, type: 'checkbox' });
       input.checked = !!(values[p.key] ?? p.default);
-      form.append(el('label', { class: 'check', title: tip }, input, ' ', p.label));
+      box.append(el('label', { class: 'check', title: tip }, input, ' ', p.label));
       continue;
     } else if (p.type === 'number') {
       input = el('input', { id, name: p.key, type: 'number', min: p.min, max: p.max, step: p.step || 'any',
@@ -109,14 +122,14 @@ export function schemaForm(form, params, pens, values = {}) {
         range.onchange = () => num.dispatchEvent(new Event('change', { bubbles: true }));
         num.addEventListener('input', () => { range.value = num.value; });
         num.classList.add('slider-num');
-        form.append(el('label', { class: 'field slider', for: id, title: tip }, el('span', { text: p.label }),
+        box.append(el('label', { class: 'field slider', for: id, title: tip }, el('span', { text: p.label }),
           el('div', { class: 'slider-row' }, range, withUnit(num, p.unit))));
         continue;
       }
     } else if (p.type === 'textarea') {
       input = el('textarea', { id, name: p.key, rows: 5, maxlength: p.maxlength || 4000, placeholder: p.placeholder });
       input.value = values[p.key] ?? p.default ?? '';
-      form.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }), input));
+      box.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }), input));
       continue;
     } else {
       input = el('input', { id, name: p.key, maxlength: p.maxlength || 80, placeholder: p.placeholder,
@@ -124,12 +137,12 @@ export function schemaForm(form, params, pens, values = {}) {
       input.value = values[p.key] ?? p.default ?? '';
       if (p.list === 'fonts') {           // a font field gets the font browser next to it
         const inp = input;
-        form.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }),
+        box.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }),
           el('div', { class: 'row nowrap' }, inp, el('button', { type: 'button', class: 'icon', text: 'Browse', onclick: () => openFontBrowser(inp) }))));
         continue;
       }
     }
-    form.append(el('label', { class: 'field prop', for: id, title: tip }, el('span', { text: p.label }), withUnit(input, p.unit)));
+    box.append(el('label', { class: 'field prop', for: id, title: tip }, el('span', { text: p.label }), withUnit(input, p.unit)));
   }
 }
 

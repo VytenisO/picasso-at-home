@@ -565,11 +565,12 @@ def trace(ink, spur, trim, eps, bend, soft, pens=1, splits=None, progress=None):
 
 def trace_grey(g, out, width_mm, threshold=170, min_len=12, pens=3, splits=None, eps=1.0, bend=25.0,
                soft=20.0, spur=0.0, trim=0.0, fills=True, max_pen_mm=1.0, shading=None, overrides=(),
-               analysis=None, progress=None):
+               analysis=None, erase=None, text=None, progress=None):
     """Grey image (uint8 array) -> SVG at out. shading: find_fills thresholds (cover, aspect,
     tone_min, min_area, line_frac); overrides: [(kind, x, y)] hand decisions at image points;
     analysis: a find_fills.Analysis of this image at this threshold and pen width, to skip that
-    pass. progress(stage, fraction). -> stats dict."""
+    pass. erase: bool mask of ink to leave out (lettering written back as text); text: (polylines,
+    filled rings) in image px (x, y) for the text layer. progress(stage, fraction). -> stats dict."""
     import find_fills as ff
     sh = dict(ff.DEFAULTS, **(shading or {}))
     mm_per_px = width_mm / g.shape[1]
@@ -577,7 +578,16 @@ def trace_grey(g, out, width_mm, threshold=170, min_len=12, pens=3, splits=None,
     if fills:
         an = analysis or ff.analyze(g, threshold, max_w, min_len, progress=stage(progress, 0.0, 0.4))
         decisions = ff.decide(an, sh, overrides)
+        if erase is not None:
+            # a wide ink area that is mostly erased lettering is no fill: the text layer draws it
+            for c in an.cands:
+                y0, x0, y1, x1 = c["bbox"]
+                m = an.lab[y0:y1, x0:x1] == c["id"]
+                if m.any() and erase[y0:y1, x0:x1][m].mean() > 0.5:
+                    decisions[c["id"]] = "line"
         ink, areas = ff.apply(an, decisions, sh["tone_min"], sh["line_frac"])
+        if erase is not None:
+            ink &= ~erase
         width = an.width
         if areas:
             ink = despeckle(ink, min_len)
@@ -597,6 +607,8 @@ def trace_grey(g, out, width_mm, threshold=170, min_len=12, pens=3, splits=None,
         t0, t1 = 0.45, 0.97
     else:
         ink = despeckle(g < threshold, min_len)
+        if erase is not None:
+            ink &= ~erase
         dist = ndi.distance_transform_edt(ink)
         sk0 = thin(ink, progress=stage(progress, 0.0, 0.3), max_dist=float(dist.max()) if ink.any() else 0)
         width = float(np.median(dist[sk0]) * 2) if sk0.any() else 3.0
@@ -612,12 +624,12 @@ def trace_grey(g, out, width_mm, threshold=170, min_len=12, pens=3, splits=None,
     widths_mm = [c * mm_per_px for c in centres]
     if progress:
         progress("Writing the SVG", t1)
-    write_svg(out, layers, ink.shape, width_mm, widths_mm, fills=fill_rings)
+    write_svg(out, layers, ink.shape, width_mm, widths_mm, fills=fill_rings, text=text)
     return {"width_px": round(width, 2), "spur_px": round(spur, 1), "trim_px": round(trim, 1),
             "candidates": n_cand, "fills": len(areas), "kept_as_lines": n_cand - len(areas),
             "pens": [{"width_px": round(c, 2), "width_mm": round(w, 3), "strokes": len(st),
                       "points": int(sum(len(x) for x in st))} for c, w, st in zip(centres, widths_mm, layers)],
-            "layers": layers, "widths_mm": widths_mm}
+            "layers": layers, "widths_mm": widths_mm, "fill_rings": fill_rings, "shape": list(ink.shape)}
 
 
 PEN_COLOURS = ["#111111", "#2463a6", "#c0392b", "#7a4a1e", "#2e7d32", "#6a1b9a"]
@@ -629,10 +641,14 @@ def fill_tone(level):
     return 0x22 if level < 64 else 0x60 if level < 128 else 0xa0
 
 
-def write_svg(path, layers, shape, width_mm, widths_mm, first_pen=1, fills=()):
+TEXT_COLOUR = "#111111"
+
+
+def write_svg(path, layers, shape, width_mm, widths_mm, first_pen=1, fills=(), text=None):
     """Filled areas first (closed paths with a grey fill, for the plotter's hatch fill), then
-    one <g> per weight class, thinnest first, stroke width set to the drawn width.
-    fills: [(rings in (y, x) px, grey level)]."""
+    one <g> per weight class, thinnest first, stroke width set to the drawn width, then the
+    rewritten text as its own layer. fills: [(rings in (y, x) px, grey level)];
+    text: (polylines, filled letter rings), both in (x, y) px."""
     H, W = shape
     k = width_mm / W
     h_mm = H * k
@@ -650,6 +666,11 @@ def write_svg(path, layers, shape, width_mm, widths_mm, first_pen=1, fills=()):
                              for r in rings)
                 f.write(f'<path fill="#{v:02x}{v:02x}{v:02x}" d="{d}"/>\n')
             f.write("</g>\n")
+        lines, rings = text or ([], [])
+        if rings:
+            d = " ".join("M" + " L".join(f"{x * k:.3f},{y * k:.3f}" for x, y in r[:-1]) + " Z" for r in rings)
+            f.write('<g id="textfill" inkscape:groupmode="layer" inkscape:label="text fill" stroke="none" '
+                    f'fill-rule="nonzero"><path fill="{TEXT_COLOUR}" d="{d}"/></g>\n')
         for i, (strokes, wmm) in enumerate(zip(layers, widths_mm)):
             n = first_pen + i
             col = PEN_COLOURS[(n - 1) % len(PEN_COLOURS)]
@@ -658,6 +679,13 @@ def write_svg(path, layers, shape, width_mm, widths_mm, first_pen=1, fills=()):
             for s in strokes:
                 d = "M" + " L".join(f"{x * k:.3f},{y * k:.3f}" for y, x in s)
                 f.write(f'<path d="{d}"/>\n')
+            f.write("</g>\n")
+        if lines:
+            w = min(widths_mm) if widths_mm else 0.3
+            f.write(f'<g id="text" inkscape:groupmode="layer" inkscape:label="text" fill="none" '
+                    f'stroke="{TEXT_COLOUR}" stroke-width="{w:.2f}" stroke-linecap="round" stroke-linejoin="round">\n')
+            for s in lines:
+                f.write('<path d="M' + " L".join(f"{x * k:.3f},{y * k:.3f}" for x, y in s) + '"/>\n')
             f.write("</g>\n")
         f.write("</svg>\n")
 

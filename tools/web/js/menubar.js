@@ -42,7 +42,8 @@ const MENUS = [
     ['Theme: system, light, dark', press('#themeBtn', null)],
     ['Side panels', press('#vPanels'), '\\'],
     ['Reset the layout', () => import('./ws.js').then((m) => m.resetPanels())],
-    ['Console', press('#conToggle')],
+    ['Console', press('#conToggle')], null,
+    ['Text in a drawing (Prepare)', press('#prepModes [data-mode=text]', 'prepare')],
   ]],
   ['Arrange', [
     ['Group', press('#xfBox [data-act=group]'), 'Ctrl+G'], ['Ungroup', press('#xfBox [data-act=ungroup]'), 'Ctrl+Shift+G'],

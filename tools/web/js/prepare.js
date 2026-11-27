@@ -29,6 +29,7 @@ const P = {
   needsTrace: null,     // {estimate, megapixels} when the settings have not been traced yet
   task: null,           // the running trace task
   shading: null, shadeSig: '', shadeTask: null, shadeErr: null,
+  text: null, textSig: '', textTask: null, textErr: null,      // the text reader's boxes (Text view)
 };
 let uid = 1, gen = 0, timer = null;
 let cv, ctx, W = 0, H = 0, dpr = 1, raf = 0;
@@ -64,9 +65,21 @@ export async function initPrepare() {
   $('prepSaveNew').onclick = () => send(false, true);
   $('prepReset').onclick = reset;
   $('prepTrace').onclick = trace;
+  const auto = $('prepAutoTrace');
+  auto.checked = !!prefs('autoTrace');
+  auto.onchange = () => { prefs('autoTrace', auto.checked); if (auto.checked && P.needsTrace && !P.task) run(true, true); };
   $('prepTaskCancel').onclick = () => { if (P.task) cancelTask(P.task.id); };
   $('prepShadeView').onclick = () => setMode('shading');
   $('prepShadeReset').onclick = () => setOverrides([]);
+  $('prepTextReset').onclick = () => { textSel = null; setTextEdits([]); };
+  $('prepTextAuto').onclick = () => { const b = selBox(); if (b) setTextEdit(b, null); };
+  for (const k of $('prepTextKind').querySelectorAll('button')) k.onclick = () => { const b = selBox(); if (b) setTextEdit(b, { k: k.dataset.kind }); };
+  const str = $('prepTextStr');
+  str.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyStr(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); textSel = null; renderText(); redraw(); cv.focus(); }
+  };
+  str.onchange = applyStr;
   initDrop();
   // The sheet and ink colours come from the theme: redraw when it changes.
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -441,27 +454,33 @@ function schedule(ms = 350) {
   P.stale = true;
   redraw();
   if (!methodOf()) return;
-  if (isSlow()) { renderShade(); renderTrace(); }
+  if (isSlow()) { renderShade(); renderText(); renderTrace(); }
   timer = setTimeout(() => run(), ms);
 }
 
-async function run(go = false) {
+async function run(go = false, auto = false) {
   clearTimeout(timer);
   const my = ++gen;
-  if (isSlow()) refreshShading();
+  if (isSlow()) { refreshShading(); refreshText(); }
   setBusy(go ? 'Starting the trace...' : 'Working...');
   try {
     const r = await post('/api/prepare/run', { recipe: recipe(), settings: { fill: P.settings.fill, fill_angle: P.settings.fill_angle }, go });
     if (my !== gen) return;
     if (r.needs_trace) {            // a slow method: the last result (if any) stays, faded, until Trace
       P.needsTrace = { estimate: r.estimate, megapixels: r.megapixels };
+      if ($('prepAutoTrace').checked) {
+        // Trace on change: start it now; a trace this started for older settings is stopped first (follow()
+        // then asks again and lands here). A trace started by hand runs to the end.
+        if (!P.task) { run(true, true); return; }
+        if (P.taskAuto) cancelTask(P.task.id);
+      }
       P.error = null; P.stale = !!P.result;
       // a trace of earlier settings may still run: keep following it, Trace is free again when it ends
       if (!P.task) setBusy(P.result ? 'Changed: not traced' : 'Not traced yet', true);
       renderResult(); redraw();
       return;
     }
-    if (r.pending) { follow(r.task, my); return; }
+    if (r.pending) { if (!P.task || P.task.id !== r.task.id) P.taskAuto = auto; follow(r.task, my); return; }
     P.result = r; P.error = null; P.stale = false; P.needsTrace = null; P.task = null;
     if (!view.user) fitSoon();
     setBusy(r.ms < 60 ? 'from cache' : `${(r.ms / 1000).toFixed(1)} s`, true);
@@ -521,8 +540,8 @@ function renderTrace() {
   }
   const est = P.needsTrace && P.needsTrace.estimate;
   btn.textContent = P.result && !P.stale && !P.needsTrace ? 'Traced' : est ? `Trace (about ${fmtDur(est)})` : 'Trace';
-  line.textContent = P.needsTrace ? (P.needsTrace.megapixels ? `${P.needsTrace.megapixels} megapixels. ` : '') +
-    'Runs in the background: you can keep adjusting, or leave the page.' : P.result && P.result.stats && P.result.stats.technical
+  line.textContent = P.needsTrace ? (P.needsTrace.megapixels ? `${P.needsTrace.megapixels} megapixels` : '')
+    : P.result && P.result.stats && P.result.stats.technical
     ? `${P.result.stats.technical.fills} fills, ${P.result.stats.technical.kept_as_lines} wide areas kept as lines.` : '';
 }
 
@@ -656,6 +675,7 @@ function renderShade() {
   const box = $('prepShade');
   box.hidden = !isTech();
   if (box.hidden) return;
+  $('prepShadeKey').hidden = mode !== 'shading';          // the colour key only where the colours are
   const line = $('prepShadeLine');
   if (methodParams().fills === false) { line.textContent = 'Shading is off: every ink area is traced as lines.'; $('prepShadeReset').hidden = true; return; }
   if (P.shadeTask) { line.textContent = `Measuring the shading: ${taskLine(P.shadeTask)}`; return; }
@@ -663,10 +683,9 @@ function renderShade() {
   if (!P.shading) { line.textContent = 'The shading is measured once the image is in.'; return; }
   const ds = [...decisions().values()];
   const fills = ds.filter((d) => d.kind === 'fill').length, hand = ds.filter((d) => d.hand).length;
-  line.textContent = `${ds.length} wide ink areas: ${fills} become fills, ${ds.length - fills} stay lines` +
-    (hand ? `, ${hand} by hand` : '') + '. In the Shading view, click an area to change it; hover for why.';
+  line.textContent = `${ds.length} wide ink areas: ${fills} fills, ${ds.length - fills} lines` + (hand ? `, ${hand} by hand` : '');
   $('prepShadeReset').hidden = !overrides().length;
-  $('prepShadeView').hidden = mode === 'shading';
+  $('prepShadeView').hidden = mode === 'shading' || mode === 'text';
 }
 
 // where the image sits on the sheet: the result's placement, or the natural size at the canvas top-left
@@ -724,6 +743,204 @@ function toImage(x, y) {
   const mx = (x - view.ox) / view.s, my = (y - view.oy) / view.s;
   const k = sh.size[0] / pl.size[0];
   return [(mx - pl.origin[0]) * k, (my - pl.origin[1]) * k];
+}
+
+// ------------------------------------------------------------------ text view (technical drawings)
+// The text reader's boxes over the image: green is erased and written again in pen strokes, orange stays traced
+// as drawn, grey is erased and left out. A click selects one for the editor in the Result panel; edits are kept in
+// the method's hidden text_edits param as [{x, y, k, s}] at the box centre. The rule is find_text.decide's.
+const hasOcr = () => !!(state.me && state.me.features && state.me.features.ocr);
+const isText = () => isTech() && hasOcr() && methodParams().text !== false;
+let textSel = null, hoverBox = null;
+
+async function refreshText() {
+  if (!isText()) { P.text = null; P.textSig = ''; textSel = null; renderText(); return; }
+  const sig = shadeSig();
+  if (sig === P.textSig && (P.text || P.textTask)) { renderText(); redraw(); return; }
+  P.textSig = sig; P.textErr = null; textSel = null;
+  try {
+    let r = await post('/api/prepare/text', { recipe: recipe() });
+    if (r.pending) {
+      P.textTask = r.task; renderText();
+      const t = await waitTask(r.task.id, (u) => { P.textTask = u; renderText(); });
+      P.textTask = null;
+      if (sig !== P.textSig) return;
+      if (t.state !== 'done') { P.textErr = t.state === 'error' ? t.error : 'Reading the text was cancelled.'; P.textSig = ''; renderText(); return; }
+      r = await post('/api/prepare/text', { recipe: recipe() });
+    }
+    if (sig !== P.textSig) return;
+    P.text = r.text;
+  } catch (e) { P.textErr = e.message; P.textSig = ''; }
+  renderText(); redraw();
+}
+
+function textEdits() {
+  try { const v = JSON.parse(methodParams().text_edits || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+function setTextEdits(list) {
+  const m = methodOf();
+  if (!m) return;
+  m.params = { ...m.params, text_edits: list.length ? JSON.stringify(list) : '' };
+  const inp = document.querySelector(`#prep-${m.uid} input[name="text_edits"]`);
+  if (inp) inp.value = m.params.text_edits;
+  save(); schedule(0);
+  renderText(); redraw();
+}
+
+const inBox = (b, x, y) => pointInRings([b.quad], x, y);
+const boxAt = (x, y) => (P.text ? P.text.boxes.find((b) => inBox(b, x, y)) || null : null);
+const selBox = () => (P.text && textSel ? P.text.boxes.find((b) => b.id === textSel) || null : null);
+
+function autoKind(b, conf) {
+  return b.conf * 100 >= conf && b.plausible && b.cap > 0 && /[\p{L}\p{N}]/u.test(b.text) ? 'rewrite' : 'trace';
+}
+
+// -> Map box id -> {kind: rewrite|trace|drop, text, hand}
+function textDecisions() {
+  const out = new Map(), t = P.text;
+  if (!t) return out;
+  const conf = methodParams().text_conf ?? 60, edits = textEdits();
+  for (const b of t.boxes) {
+    let d = { kind: autoKind(b, conf), text: b.text, hand: false };
+    const e = edits.find((q) => inBox(b, q.x, q.y));
+    if (e) d = { kind: e.k, text: typeof e.s === 'string' ? e.s : b.text, hand: true };
+    if (d.kind === 'rewrite' && (!b.cap || !d.text.trim())) d.kind = 'trace';
+    out.set(b.id, d);
+  }
+  return out;
+}
+
+// patch: {k} and/or {s}; null: back to automatic
+function setTextEdit(b, patch) {
+  const list = textEdits().filter((q) => !inBox(b, q.x, q.y));
+  if (patch) {
+    const old = textEdits().find((q) => inBox(b, q.x, q.y)), cur = textDecisions().get(b.id);
+    const cx = b.quad.reduce((a, q) => a + q[0], 0) / 4, cy = b.quad.reduce((a, q) => a + q[1], 0) / 4;
+    const s = patch.s !== undefined ? patch.s : old ? old.s : null;
+    list.push({ x: Math.round(cx), y: Math.round(cy), k: patch.k || cur.kind, s: s === b.text ? null : s });
+  }
+  setTextEdits(list);
+}
+
+function applyStr() {
+  const b = selBox();
+  if (!b) return;
+  const v = $('prepTextStr').value, d = textDecisions().get(b.id);
+  if (v === d.text) return;
+  setTextEdit(b, { k: 'rewrite', s: v });
+}
+
+const KIND_WORD = { rewrite: 'rewritten', trace: 'traced', drop: 'left out' };
+function boxLine(b, d) {
+  const mm = P.text.mm_per_px, cap = (b.line_cap || b.cap) * mm;
+  return `"${d.text}": ${Math.round(b.conf * 100)} % sure, ${cap ? `${cap.toFixed(1)} mm, ` : ''}${KIND_WORD[d.kind]}${d.hand ? ' (edited)' : ''}`;
+}
+
+function renderText() {
+  const box = $('prepText');
+  box.hidden = !isText();
+  if (box.hidden) return;
+  const line = $('prepTextLine'), ed = $('prepTextEdit');
+  $('prepTextKey').hidden = mode !== 'text';
+  $('prepTextReset').hidden = !textEdits().length;
+  const b = P.text && mode === 'text' ? selBox() : null;      // the editor belongs to the Text view
+  ed.hidden = !b;
+  if (P.textTask) { line.textContent = `Reading: ${taskLine(P.textTask)}`; return; }
+  if (P.textErr) { line.textContent = P.textErr; return; }
+  if (!P.text) { line.textContent = 'Not read yet'; return; }
+  const ds = textDecisions(), n = { rewrite: 0, trace: 0, drop: 0 };
+  let hand = 0;
+  for (const d of ds.values()) { n[d.kind] += 1; hand += d.hand ? 1 : 0; }
+  line.textContent = `${ds.size} texts: ${n.rewrite} rewritten, ${n.trace} traced` + (n.drop ? `, ${n.drop} left out` : '') + (hand ? `, ${hand} edited` : '');
+  if (!b) return;
+  const d = ds.get(b.id), str = $('prepTextStr');
+  if (document.activeElement !== str || str.dataset.box !== String(b.id)) str.value = d.text;
+  str.dataset.box = String(b.id);
+  for (const k of $('prepTextKind').querySelectorAll('button')) k.setAttribute('aria-pressed', String(k.dataset.kind === d.kind));
+  $('prepTextAuto').hidden = !d.hand;
+  $('prepTextInfo').textContent = boxLine(b, d).replace(/^"[^"]*": /, '');
+}
+
+function textPlacement() {
+  const r = P.result, t = P.text;
+  if (r && r.placement && !P.error) return r.placement;
+  if (!t || !state.me) return null;
+  const c = state.me.machine.canvas, p = methodParams();
+  const w = Math.min(p.width_mm, c[2] - c[0]);
+  return { origin: [c[0], c[1]], size: [w, (w * t.size[1]) / t.size[0]] };
+}
+
+function toTextImage(x, y) {
+  const t = P.text, pl = textPlacement();
+  if (!t || !pl) return null;
+  const mx = (x - view.ox) / view.s, my = (y - view.oy) / view.s, k = t.size[0] / pl.size[0];
+  return [(mx - pl.origin[0]) * k, (my - pl.origin[1]) * k];
+}
+
+// find_text.geom: bottom-left origin, direction along the text, length and height
+function boxGeom(q) {
+  const e = [0, 1, 2, 3].map((i) => [q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1]]);
+  const len = (v) => Math.hypot(v[0], v[1]);
+  const i = len(e[0]) + len(e[2]) >= len(e[1]) + len(e[3]) ? 0 : 1;
+  let u = [e[i][0] - e[i + 2][0], e[i][1] - e[i + 2][1]];
+  const n = len(u) || 1;
+  u = [u[0] / n, u[1] / n];
+  if (u[0] < -0.2 || (Math.abs(u[0]) <= 0.2 && u[1] > 0)) u = [-u[0], -u[1]];
+  const up = [u[1], -u[0]];
+  const c = [q.reduce((a, p) => a + p[0], 0) / 4, q.reduce((a, p) => a + p[1], 0) / 4];
+  const pu = q.map((p) => (p[0] - c[0]) * u[0] + (p[1] - c[1]) * u[1]);
+  const pv = q.map((p) => (p[0] - c[0]) * up[0] + (p[1] - c[1]) * up[1]);
+  const L = Math.max(...pu) - Math.min(...pu), h = Math.max(...pv) - Math.min(...pv);
+  const o = [c[0] + u[0] * Math.min(...pu) - up[0] * (h / 2), c[1] + u[1] * Math.min(...pu) - up[1] * (h / 2)];
+  return { o, u, L, h };
+}
+
+function drawTextView(px) {
+  const t = P.text, pl = textPlacement();
+  if (!t || !pl) return;
+  const k = pl.size[0] / t.size[0], X = (x) => pl.origin[0] + x * k, Y = (y) => pl.origin[1] + y * k;
+  const im = image(`/api/prepare/file?kind=png&key=${t.image}`);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(pl.origin[0], pl.origin[1], pl.size[0], pl.size[1]);
+  if (im) {
+    ctx.globalAlpha = Number($('prepFade').value) / 100;
+    ctx.drawImage(im, pl.origin[0], pl.origin[1], pl.size[0], pl.size[1]);
+    ctx.globalAlpha = 1;
+  }
+  const ds = textDecisions(), minPx = (methodParams().text_min_mm || 0) / t.mm_per_px;
+  for (const b of t.boxes) {
+    const d = ds.get(b.id), sel = b.id === textSel || b === hoverBox;
+    const col = d.hand ? '#c0329e' : d.kind === 'rewrite' ? '#2e9d4f' : d.kind === 'trace' ? '#d9822b' : '#8a8a8a';
+    ctx.beginPath();
+    b.quad.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.closePath();
+    if (d.kind !== 'trace') { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fill(); }      // the lettering goes
+    ctx.lineWidth = (sel ? 3 : d.hand ? 2 : 1.25) * px;
+    ctx.setLineDash(d.kind === 'trace' ? [4 * px, 3 * px] : []);
+    ctx.strokeStyle = sel ? css('--focus') : col;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const g = boxGeom(b.quad);
+    if (d.kind === 'rewrite') {
+      // what will be written, in a plain sans at the measured cap height (the plot uses the single-line font)
+      const cap = Math.max(b.line_cap || b.cap, minPx) * k, size = cap / 0.72;
+      ctx.save();
+      ctx.translate(X(g.o[0]), Y(g.o[1]));
+      ctx.rotate(Math.atan2(g.u[1], g.u[0]));
+      ctx.font = `${size}px system-ui, sans-serif`;
+      const w = ctx.measureText(d.text).width || 1;
+      ctx.scale(Math.min(1.3, Math.max(0.6, (g.L * k) / w)), 1);
+      ctx.fillStyle = col;
+      ctx.fillText(d.text, 0, 0);
+      ctx.restore();
+    } else if (d.kind === 'drop') {
+      ctx.beginPath();
+      ctx.moveTo(X(g.o[0]), Y(g.o[1]));
+      ctx.lineTo(X(g.o[0] + g.u[0] * g.L + g.u[1] * g.h), Y(g.o[1] + g.u[1] * g.L - g.u[0] * g.h));   // to the top right
+      ctx.strokeStyle = col; ctx.lineWidth = 1.25 * px; ctx.stroke();
+    }
+  }
 }
 
 // ------------------------------------------------------------------ left: source and recipe
@@ -861,6 +1078,7 @@ function stepForm(s, def) {
 function renderResult() {
   renderTrace();
   renderShade();
+  renderText();
   const r = P.result, err = P.error;
   $('prepError').hidden = !err;
   $('prepError').textContent = err || '';
@@ -883,8 +1101,9 @@ function renderResult() {
   if (document.activeElement !== f.fill_angle) f.fill_angle.value = P.settings.fill_angle ?? 45;
   for (const b of $('prepModes').querySelectorAll('button')) {
     const m = b.dataset.mode;
-    b.disabled = m === 'shading' ? !isTech() : (m === 'mask' && !(r && r.mask)) || (m !== 'result' && !sideUrl(m === 'mask' ? 'mask' : 'source'));
-    b.hidden = m === 'shading' && !isTech();
+    b.disabled = m === 'shading' ? !isTech() : m === 'text' ? !isText()
+      : (m === 'mask' && !(r && r.mask)) || (m !== 'result' && !sideUrl(m === 'mask' ? 'mask' : 'source'));
+    b.hidden = (m === 'shading' && !isTech()) || (m === 'text' && !isText());
   }
   if (mode !== 'result' && $('prepModes').querySelector(`[data-mode="${mode}"]`).disabled) setMode('result');
   else setMode(mode);
@@ -990,9 +1209,9 @@ function setMode(m) {
   mode = m;
   $('prepStage').dataset.mode = m;
   for (const b of $('prepModes').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === m));
-  $('prepFadeBox').hidden = m !== 'overlay' && m !== 'shading';
-  hoverCand = null;
-  if (isTech()) renderShade();
+  $('prepFadeBox').hidden = m !== 'overlay' && m !== 'shading' && m !== 'text';
+  hoverCand = null; hoverBox = null;
+  if (isTech()) { renderShade(); renderText(); }
   const side = m === 'compare' || m === 'mask';
   if (side) {
     const url = sideUrl(m === 'mask' ? 'mask' : 'source');
@@ -1045,7 +1264,7 @@ function bounds() {
     const d = r.summary.bbox_machine_mm;
     b = [Math.min(b[0], d[0]), Math.min(b[1], d[1]), Math.max(b[2], d[2]), Math.max(b[3], d[3])];
   }
-  const pl = mode === 'shading' && shadePlacement();
+  const pl = (mode === 'shading' && shadePlacement()) || (mode === 'text' && textPlacement());
   if (pl) b = [Math.min(b[0], pl.origin[0]), Math.min(b[1], pl.origin[1]), Math.max(b[2], pl.origin[0] + pl.size[0]), Math.max(b[3], pl.origin[1] + pl.size[1])];
   return b;
 }
@@ -1104,6 +1323,15 @@ function render() {
     }
     return;
   }
+  if (mode === 'text') {
+    drawTextView(px);
+    if (!P.text) {
+      ctx.fillStyle = css('--muted');
+      ctx.font = `${12 * px}px system-ui, sans-serif`;
+      ctx.fillText(P.textTask ? `Reading the text: ${taskLine(P.textTask)}` : P.textErr || 'No text read yet.', c[0], c[1] + 14 * px);
+    }
+    return;
+  }
   if (r) {
     const pl = r.placement;
     if (mode === 'overlay') {
@@ -1142,6 +1370,11 @@ function panMove(e) {
     if (c !== hoverCand) { hoverCand = c; redraw(); }
     if (c) { $('prepCoords').textContent = explain(c, decisions().get(c.id)); return; }
   }
+  if (mode === 'text' && P.text && !pan) {
+    const ip = toTextImage(x, y), b = ip && boxAt(ip[0], ip[1]);
+    if (b !== hoverBox) { hoverBox = b; redraw(); }
+    if (b) { $('prepCoords').textContent = boxLine(b, textDecisions().get(b.id)); return; }
+  }
   if (state.me) {
     const [px0, py0] = state.me.machine.paper;
     $('prepCoords').textContent = `${((x - view.ox) / view.s - px0).toFixed(1)}, ${((y - view.oy) / view.s - py0).toFixed(1)} mm on the sheet`;
@@ -1157,6 +1390,12 @@ function panEnd(e) {
   if (click && mode === 'shading' && P.shading) {
     const [x, y] = local(e), ip = toImage(x, y);
     if (ip) toggleAt(ip[0], ip[1]);
+  }
+  if (click && mode === 'text' && P.text) {
+    const [x, y] = local(e), ip = toTextImage(x, y), b = ip && boxAt(ip[0], ip[1]);
+    textSel = b ? b.id : null;
+    renderText(); redraw();
+    if (b) { $('prepTextStr').focus(); $('prepTextStr').select(); }
   }
 }
 

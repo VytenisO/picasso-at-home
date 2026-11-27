@@ -488,8 +488,13 @@ input.swatch-pick { width: 22px; height: 22px; padding: 0; border: 1px solid var
 .shade-legend .k-fill { background: rgba(36, 120, 220, .45); border: 1px solid #2478dc; }
 .shade-legend .k-line { border: 2px solid #d9822b; }
 .shade-legend .k-hand { border: 2px dashed #c0329e; }
-.form-section { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 2px;
-  border-top: 1px solid var(--line); padding-top: 8px; }
+.shade-legend .k-rw { border: 2px solid #2e9d4f; }
+.shade-legend .k-drop { border: 2px solid #8a8a8a; background: repeating-linear-gradient(135deg, transparent 0 3px, #8a8a8a 3px 4px); }
+.optbar .text-str { flex: 1 1 220px; min-width: 160px; }
+.optbar .text-str input { flex: 1; min-width: 0; }
+.form-section { margin: 10px 0 0; border-top: 1px solid var(--line); padding-top: 6px; }
+.form-section > summary { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.form-section[open] > summary { margin-bottom: 4px; }
 
 /* ---- toolbar (Plot), tool strip, options bar */
 .toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line);

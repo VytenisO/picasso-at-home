@@ -64,11 +64,26 @@ How Prepare is built:
 - **Plugins** live in `tools/plotweb/prepare.py` (`STEPS`): id, title, stage, accepted source kinds, a params
   schema and a function. The UI builds every form from `/api/prepare/steps`, so a new step needs no frontend
   code. Schema types: `number` (optionally `slider`), `select`, `bool`, `text` (optionally `list: fonts`),
-  `textarea`.
+  `textarea`, `hidden` (carried with the form, edited by clicking the preview). A param with `section` starts a
+  folding section; one is open at a time per form, and which one survives a rebuild of the form.
 - **Preview** = the method output dry-run by `plot_svg.py` at natural size at the canvas top-left: the same
   strokes, summary and placement a Plot preview gets. Too big for the canvas is reported as the scale Plot
   will shrink it to, not as a problem. Views: Result, Compare (source after adjustments beside the result),
-  Overlay (source under the strokes, with a fade slider), Mask (what the trace counts as ink).
+  Overlay (source under the strokes, with a fade slider), Mask (what the trace counts as ink), and for the
+  Technical drawing method Shading (wide ink areas: fill or line, click to flip) and Text (below).
+- **Text in technical drawings** (shown only when the server has a text reader, `features.ocr` in `/api/me`):
+  the reader runs once per image stage as a background task (`/api/prepare/text`); whether each text is written
+  again, traced as drawn or left out is decided in the browser with the same rule as `find_text.decide`, so the
+  Confidence slider and hand edits are instant. A click on a text selects it; the options bar above the preview
+  then holds its string and Rewrite / Trace / Leave out. Edits are kept in the method's hidden `text_edits` param
+  at the box centre, so they travel with the recipe. The Result panel shows one live line per view and a colour
+  key only while its view is open.
+- **Line trace kept apart from the text.** The technical method caches its line trace per every setting except
+  the text ones plus the set of texts whose lettering is erased (`st_*_base.json`). A new string, font or
+  smallest height, or leaving out a rewritten text, only writes the text layer again and counts as made, so
+  it needs no Trace; switching a text between rewritten and traced changes the erased ink and needs one.
+  **Trace on change** (by the Trace button, kept per browser) starts the trace by itself after every change and
+  stops a trace it started for settings that have since changed; a trace started by hand always finishes.
 - **Cache.** Sources and every stage result are kept under `results/web/prepare/` for two days, keyed by a
   hash of the source and the steps up to that stage; dry runs are also keyed by `machine.json` and
   `plot_svg.py`. Changing a late step does not redo the early ones.
@@ -263,6 +278,9 @@ static files, `/api/me`, `/api/login`, `/api/logout` and `/api/job/stop` (stoppi
 | POST `/api/prepare/save` | `{recipe, settings: {fill, fill_angle, layers: [{key, pen}]}, name, replace?}` | `{file}`; refused for a drawing being plotted |
 | POST `/api/prepare/from_library` | `{file}` | `{source, recipe, name, replace, settings}` |
 | GET `/api/prepare/file?kind=png|mask|svg&key=`, `?kind=source&id=` | | stage images, the SVG (`download=1`), the source (sandboxed CSP) |
+| POST `/api/prepare/shading` | `{recipe}` | `{pending: false, shading}` from the cache, else `{pending: true, task}`: ask again when the task is done |
+| POST `/api/prepare/text` | `{recipe}` | `{pending: false, text: {boxes, size, mm_per_px, image}}`, else `{pending: true, task}`; 400 without a text reader |
+| GET `/api/tasks`, POST `/api/tasks/cancel` | `{id}` | background tasks (one at a time) with stage, fraction, elapsed and time left |
 | POST `/api/preview` | `{doc: {name, objects, settings}, client}` | `{ok, plan_id, problems, settings, summary, placement, order, strokes, file_layers, objects}`; saves the bed |
 | POST `/api/preview` | `{id, settings}` (one file, the old form; kept for tools and tests) | as above, without `objects`; saves the file's settings |
 | POST `/api/job/start` | `{doc, plan_id, mode: plot|trace|simulate, confirm: {parked}}` (or `{id, settings, ...}`) | `{job}`, or 400/409 with the reason |

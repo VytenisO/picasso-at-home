@@ -25,7 +25,8 @@ from .events import EventLog
 from .library import MAX_UPLOAD, Library
 from .runner import JobRunner
 
-import penpot  # noqa: E402  (tools/ is on sys.path through .config)
+import find_text  # noqa: E402  (tools/ is on sys.path through .config)
+import penpot  # noqa: E402
 
 TOOL_LOCK = threading.Lock()   # test-sheet and result tools rewrite shared files: one at a time
 
@@ -86,7 +87,8 @@ class App:
         apply_limits(cfg)
         return {"auth": authed, "auth_required": self.auth.enabled, "sim": self.s.sim, "machine": bed,
                 "limits": LIMITS, "pens": self.s.pens() if authed else {}, "epoch": self.ev.epoch,
-                "features": {"shapes": shapes.available(), "homing": bool(self.s.machine().get("homing"))},
+                "features": {"shapes": shapes.available(), "homing": bool(self.s.machine().get("homing")),
+                             "ocr": find_text.available()},
                 "plotter": hardware.LAST if authed else None,
                 "machine_cfg": {"travel": cfg.get("travel_mm"), "signs": {a: cfg["axis"][a].get("sign", 1) for a in ("x", "y")},
                                 "limits": cfg.get("limits") or {}, "ceilings": CEILINGS,
@@ -1204,6 +1206,34 @@ class App:
                              key=key, size=mp)
         return {"ok": True, "pending": True, "task": t}
 
+    def prepare_text(self, body):
+        """Text boxes of a technical-drawing recipe for the live Text view: from the cache, else read as a
+        background task ({pending: task}; ask again when it is done)."""
+        if not find_text.available():
+            raise ApiError(400, "Text reading is not set up on this server.")
+        recipe = body.get("recipe")
+        canvas = self.s.bed()["canvas"]
+        try:
+            pub = self.prep.text(recipe, canvas, cached_only=True)
+            if pub is not None:
+                return {"ok": True, "pending": False, "text": pub}
+            mp = self.prep.input_megapixels(recipe, canvas)
+            src = self.prep.check(recipe)[0]
+        except prepare.PrepareError as ex:
+            raise ApiError(400, str(ex))
+
+        def work(report):
+            self.prep.text(recipe, canvas, progress=report)
+            return True
+
+        key = "text:" + hashlib.sha256(json.dumps([recipe["source"], [s for s in recipe["steps"]
+                                                   if prepare.STEPS.get(s.get("step")) is not None
+                                                   and prepare.STEPS[s["step"]].stage != "clean"], canvas],
+                                                  sort_keys=True, default=str).encode()).hexdigest()
+        t = self.tasks.start("text", f"Reading the text in {src['name'] if src else 'the image'}", work,
+                             key=key, size=mp)
+        return {"ok": True, "pending": True, "task": t}
+
     def _prep_layers(self, raw, keys):
         """Pens chosen in Prepare -> layer settings, with the pen's own speed, pressure and dwell when it has them."""
         pens = self.s.pens()
@@ -1836,6 +1866,9 @@ class Handler(BaseHTTPRequestHandler):
     def r_prep_shading(self):
         self.send(200, self.app.prepare_shading(self.json_body()))
 
+    def r_prep_text(self):
+        self.send(200, self.app.prepare_text(self.json_body()))
+
     def r_tasks(self):
         self.send(200, {"tasks": self.app.tasks.list()})
 
@@ -2300,6 +2333,7 @@ ROUTES_POST = {
     "/api/prepare/from_library": (Handler.r_prep_from, True),
     "/api/prepare/run": (Handler.r_prep_run, True),
     "/api/prepare/shading": (Handler.r_prep_shading, True),
+    "/api/prepare/text": (Handler.r_prep_text, True),
     "/api/tasks/cancel": (Handler.r_task_cancel, True),
     "/api/prepare/save": (Handler.r_prep_save, True),
     "/api/prepare/presets/save": (Handler.r_preset_put, True),

@@ -151,3 +151,24 @@ Ideas to borrow for the next version of our tracer:
 
 Sources: subagent surveys 2026-11-24 (repo pages and READMEs fetched; arxiv.org was
 unreachable from this machine, so paper claims rest on project pages).
+
+## v5: text read and written again (2026-11-27)
+
+Every tracer (ours, Involution, Deep Vectorization, PolyVector) turns lettering into unreadable squiggles: at
+1200-2400 px a letter is 10-25 px tall with 1-3 px strokes, and thinning or fitting loses its shape. Plotted
+whole at 180 mm, HAER sheet lettering is about 1 mm tall, so the pen cannot draw it legibly in any case.
+
+OCR test on six sheets (missile silo, Point Reyes lighthouse, 1958 crane title block, buoy crane, B-1 dimensions,
+Shepperd's Dell bridge), CPU only:
+
+| | PaddleOCR (PP-OCR, line level) | docTR (db_resnet50 + crnn, word level) |
+|---|---|---|
+| Printed capitals | nearly all right; "I" for "1", a missed leading "1" in a bold title | many garbled words, sizes mixed within a line |
+| Time per sheet | 2-5 min (Windows, oneDNN off: a Paddle 3 bug there) | 3-13 s |
+| Decorative italic title | "S R RIG" for "SHEPPERD'S DELL BRIDGE" (caught by the length check) | |
+
+Kept rules (`tools/find_text.py`): a blob is lettering when 85 % of it lies in a padded box, so leader lines that
+pass by stay; a reading must be about as long as its box (0.3 to 1.7 cap heights a letter, 2.6 for one or two
+letters); cap height from the tall blobs only (no quotes or dots), shared along a line; stroke weight against
+the pen picks single-line Hershey, Hershey Sans Medium or a filled bold outline. Weak spots left: italic and
+serif styles come out upright sans; small marks the reader drops (feet and inch ticks) are erased anyway.

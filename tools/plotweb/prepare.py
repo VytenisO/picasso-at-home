@@ -194,7 +194,19 @@ def _raster(style, extra_keys):
 
 # ---- technical drawing: centre lines, pens by line weight, shading found as fills
 TECH_MAX_PX = 12000          # full resolution for scans of drawings: thin lines need every pixel
-TECH_LIVE = ("cover", "aspect", "tone_min", "fill_min_mm2", "overrides")    # decided in the browser, live
+TECH_LIVE = ("cover", "aspect", "tone_min", "fill_min_mm2", "overrides",    # decided in the browser, live
+             "text_conf", "text_min_mm", "text_font", "text_edits")
+TEXT_PARAMS = ("text", "text_conf", "text_min_mm", "text_font", "text_edits")
+# Settings that only change the written text, not the traced lines: the line trace is kept per everything else
+# plus the set of texts whose lettering is erased, so a corrected string or another font costs seconds.
+TEXT_ONLY = ("text", "text_conf", "text_min_mm", "text_font", "text_edits")
+
+
+def tech_erased(boxes, p):
+    """-> (decisions, sorted ids of the texts whose lettering is erased) for the technical method's params."""
+    import find_text
+    dec = find_text.decide(boxes, p, find_text.parse_edits(p.get("text_edits")))
+    return dec, sorted(i for i, d in dec.items() if d["kind"] in ("rewrite", "drop"))
 
 
 TECH_WORK_PX = 3000         # small images are enlarged to about this long side before tracing
@@ -229,6 +241,7 @@ def tech_shading(p, mm_per_px):
 
 def _technical(src, dst, p, ctx):
     import find_fills
+    import find_text
     import trace_centerline as tc
     progress = ctx.get("progress")
     g, k = tech_grey(src, p["enlarge"])
@@ -236,13 +249,39 @@ def _technical(src, dst, p, ctx):
     width_mm = min(p["width_mm"], c[2] - c[0])
     mm_per_px = width_mm / g.shape[1]
     an = None
-    if p["fills"] and ctx.get("analysis"):
-        an = ctx["analysis"](g, k, p["threshold"], p["max_pen"] / mm_per_px, tc.stage(progress, 0.0, 0.4))
-    st = tc.trace_grey(g, dst, width_mm, threshold=p["threshold"], pens=p["pens"], eps=p["smooth_px"],
-                       fills=p["fills"], max_pen_mm=p["max_pen"], shading=tech_shading(p, mm_per_px),
-                       overrides=find_fills.parse_overrides(p.get("overrides")), analysis=an, progress=progress)
-    return {"technical": {k: v for k, v in st.items() if k not in ("layers", "widths_mm")},
-            "image_px": [int(g.shape[1]), int(g.shape[0])], "enlarged": k}
+    boxes, gone, text, tstats = [], [], None, {}
+    if p.get("text") and ctx.get("text") and find_text.available():
+        boxes = ctx["text"](g, k, p["threshold"], tc.stage(progress, 0.0, 0.25))
+        dec, gone = tech_erased(boxes, p)
+        lines, rings, styles = find_text.rewrite(boxes, dec, mm_per_px, p, bold_path=find_text.bold_font())
+        text = (lines, rings)
+        kinds = [d["kind"] for d in dec.values()]
+        tstats = {"text": {"boxes": len(boxes), "rewritten": kinds.count("rewrite"), "traced": kinds.count("trace"),
+                           "dropped": kinds.count("drop"), "styles": styles}}
+        progress = tc.stage(progress, 0.25, 1.0)
+    memo = ctx.get("base")
+    bkey = memo and memo["key"](k, p, width_mm, gone)
+    base = memo and memo["get"](bkey)
+    if base is None:
+        # the line trace, without the text layer: kept, and reused while only the text changes
+        erase = find_text.erase_mask(g, boxes, dec, p["threshold"]) if gone else None
+        if p["fills"] and ctx.get("analysis"):
+            an = ctx["analysis"](g, k, p["threshold"], p["max_pen"] / mm_per_px, tc.stage(progress, 0.0, 0.4))
+        st = tc.trace_grey(g, dst, width_mm, threshold=p["threshold"], pens=p["pens"], eps=p["smooth_px"],
+                           fills=p["fills"], max_pen_mm=p["max_pen"], shading=tech_shading(p, mm_per_px),
+                           overrides=find_fills.parse_overrides(p.get("overrides")), analysis=an, erase=erase,
+                           progress=progress)
+        base = {"layers": [[[[float(a), float(b)] for a, b in s] for s in ly] for ly in st["layers"]],
+                "widths_mm": [float(w) for w in st["widths_mm"]], "shape": st["shape"],
+                "fill_rings": [[[[[float(a), float(b)] for a, b in r] for r in rings], float(level)]
+                               for rings, level in st["fill_rings"]],
+                "stats": {k_: v for k_, v in st.items() if k_ not in ("layers", "widths_mm", "fill_rings", "shape")}}
+        if memo:
+            memo["put"](bkey, base)
+    elif progress:
+        progress("Writing the text", 0.9)
+    tc.write_svg(dst, base["layers"], base["shape"], width_mm, base["widths_mm"], fills=base["fill_rings"], text=text)
+    return {"technical": base["stats"], "image_px": [int(g.shape[1]), int(g.shape[0])], "enlarged": k, **tstats}
 
 
 def _svg_as_is(src, dst, p, ctx):
@@ -492,6 +531,19 @@ STEPS = {s.id: s for s in [
         {"key": "fill_min_mm2", "label": "Smallest fill", "type": "number", "default": 4, "min": 0, "max": 400,
          "step": 0.5, "unit": "mm2", "slider": True, "help": "Smaller wide spots stay lines (a dot, an arrow head)."},
         {"key": "overrides", "label": "Hand changes", "type": "hidden", "default": "", "maxlength": 20000},
+        {"key": "text", "label": "Rewrite text", "type": "bool", "default": True, "section": "Text",
+         "help": "Lettering the text reader can read is erased and written again in pen strokes, fitted to where it "
+                 "was. What it cannot read stays traced as drawn. Edit single texts in the Text view."},
+        {"key": "text_conf", "label": "Confidence", "type": "number", "default": 60, "min": 0, "max": 100, "step": 1,
+         "integer": True, "unit": "%", "slider": True,
+         "help": "Readings less sure than this stay traced. Lower: more text rewritten, and more misreadings."},
+        {"key": "text_min_mm", "label": "Smallest text", "type": "number", "default": 1.5, "min": 0, "max": 10,
+         "step": 0.1, "unit": "mm", "help": "Rewritten text smaller than this on paper grows to it (0 to 10 mm)."},
+        {"key": "text_font", "label": "Font", "type": "select", "default": "Hershey Sans",
+         "options": [["Hershey Sans", "Sans"], ["Hershey Sans Medium", "Sans medium"], ["Hershey Serif", "Serif"]],
+         "help": "Single-line font for thin lettering. Medium lettering always gets Sans medium, heavy lettering a "
+                 "filled bold font."},
+        {"key": "text_edits", "label": "Text edits", "type": "hidden", "default": "", "maxlength": 50000},
     ], _technical,
          "For scans of technical drawings: each line becomes one stroke down its middle, sorted into pens by its "
          "width, at full resolution. Shaded and solid areas become fills. Slow on large scans: press Trace when "
@@ -607,7 +659,13 @@ DEFAULT_METHOD = {"image": "contour", "svg": "svg", "mesh": "mesh", "pdf": "pdfp
 
 
 def public_steps():
-    return [s.public() for s in STEPS.values()]
+    """The steps as the page builds its forms: without the text settings when this server cannot read text."""
+    import find_text
+    out = [s.public() for s in STEPS.values()]
+    if not find_text.available():
+        for st in out:
+            st["params"] = [q for q in st["params"] if q["key"] not in TEXT_PARAMS]
+    return out
 
 
 # ------------------------------------------------------------------ store and pipeline
@@ -761,10 +819,41 @@ class Workshop:
         return src, staged, h, cur, image, h.hexdigest()[:24]
 
     def method_cached(self, recipe, canvas):
-        """-> (method Step, whether its result is already made). Makes the image stages (fast)."""
-        _, staged, _, _, _, key = self._plan(recipe, canvas)
-        step = staged["method"][0][0]
-        return step, (self.dir / f"st_{key}.svg").is_file() and (self.dir / f"st_{key}.json").is_file()
+        """-> (method Step, whether its result is made or quick to make). Makes the image stages (fast).
+        A technical drawing whose line trace is kept counts as quick: only its text is written again."""
+        _, staged, _, _, image, key = self._plan(recipe, canvas)
+        step, p = staged["method"][0]
+        made = (self.dir / f"st_{key}.svg").is_file() and (self.dir / f"st_{key}.json").is_file()
+        if not made and step.id == "technical" and image:
+            made = self._tech_base_ready(image, p, canvas)
+        return step, made
+
+    # ---- the line trace of a technical drawing, kept apart from its text layer
+    def _base_key(self, image, k, p, width_mm, gone):
+        q = {key: v for key, v in p.items() if key not in TEXT_ONLY}
+        return hashlib.sha256(json.dumps([image.name, k, round(width_mm, 4), q, gone, "base1"], sort_keys=True,
+                                         default=str).encode()).hexdigest()[:24]
+
+    def _base_get(self, key):
+        f = self.dir / f"st_{key}_base.json"
+        return json.loads(f.read_text()) if f.is_file() else None
+
+    def _base_put(self, key, base):
+        self._atomic(self.dir / f"st_{key}_base.json", json.dumps(base, separators=(",", ":")).encode())
+
+    def _tech_base_ready(self, image, p, canvas):
+        import find_text
+        Image = _pil()[0]
+        with Image.open(image) as im:
+            k = tech_factor(im.size, p["enlarge"])
+        gone = []
+        if p.get("text") and find_text.available():
+            f = self.dir / f"st_{self._text_key(image, k, p['threshold'])}_text.json"
+            if not f.is_file():
+                return False
+            gone = tech_erased(json.loads(f.read_text())["boxes"], p)[1]
+        width_mm = min(p["width_mm"], canvas[2] - canvas[0])
+        return (self.dir / f"st_{self._base_key(image, k, p, width_mm, gone)}_base.json").is_file()
 
     def input_megapixels(self, recipe, canvas):
         image = self._plan(recipe, canvas)[4]
@@ -785,7 +874,10 @@ class Workshop:
             tmp = self.dir / f".m_{key}_{secrets.token_hex(4)}.svg"
             tmp_mask = self.dir / f".m_{key}_{secrets.token_hex(4)}_mask.png"
             ctx = {"canvas": canvas, "mask": str(tmp_mask), "progress": progress,
-                   "analysis": lambda g, k, thr, max_w, pr: self.analysis(image, g, k, thr, max_w, pr)[0]}
+                   "analysis": lambda g, k, thr, max_w, pr: self.analysis(image, g, k, thr, max_w, pr)[0],
+                   "text": lambda g, k, thr, pr: self.text_boxes(image, g, k, thr, pr),
+                   "base": {"key": lambda k, p_, w, gone: self._base_key(image, k, p_, w, gone),
+                            "get": self._base_get, "put": self._base_put}}
             try:
                 stats = step.fn(cur, tmp, p, ctx) or {}
             except PrepareError:
@@ -871,6 +963,56 @@ class Workshop:
         pub = dict(an.public(), key=key, mm_per_px=mm_per_px, image=image.name[3:-4])
         self._atomic(out, json.dumps(pub).encode())
         return pub
+
+    # ---- text boxes (technical drawings)
+    @staticmethod
+    def _text_key(image, k, threshold):
+        return hashlib.sha256(f"{image.name}|{k}|{int(threshold)}|text1".encode()).hexdigest()[:24]
+
+    def text_boxes(self, image, g, k, threshold, progress=None):
+        """OCR boxes of an image stage (enlarged k times), measured against the ink. Cached on disk.
+        -> [box dict] (find_text.analyze)."""
+        import find_text
+        out = self.dir / f"st_{self._text_key(image, k, threshold)}_text.json"
+        if out.is_file():
+            return json.loads(out.read_text())["boxes"]
+        Image = _pil()[0]
+        if progress:
+            progress("Reading the text", 0.05)
+        tmp = self.dir / f".ocr_{secrets.token_hex(4)}.png"
+        try:
+            Image.fromarray(g).save(tmp)
+            raw = find_text.run_ocr(tmp)
+        except RuntimeError as ex:
+            raise PrepareError(str(ex))
+        finally:
+            tmp.unlink(missing_ok=True)
+        if progress:
+            progress("Measuring the lettering", 0.8)
+        boxes = find_text.analyze(g, raw, threshold)
+        self._atomic(out, json.dumps({"boxes": boxes}).encode())
+        return boxes
+
+    def text(self, recipe, canvas, progress=None, cached_only=False):
+        """The text boxes of a technical-drawing recipe, for the live Text view. -> public dict, or None when
+        cached_only and not read yet."""
+        _, staged, _, _, image, _ = self._plan(recipe, canvas)
+        step, p = staged["method"][0]
+        if step.id != "technical" or not image:
+            raise PrepareError("Text is only read for the Technical drawing method on an image.")
+        Image = _pil()[0]
+        with Image.open(image) as im:
+            k = tech_factor(im.size, p["enlarge"])
+            size = [im.size[0] * k, im.size[1] * k]
+        out = self.dir / f"st_{self._text_key(image, k, p['threshold'])}_text.json"
+        if not out.is_file():
+            if cached_only:
+                return None
+            g, k = tech_grey(image, p["enlarge"])
+            self.text_boxes(image, g, k, p["threshold"], progress)
+        boxes = json.loads(out.read_text())["boxes"]
+        width_mm = min(p["width_mm"], canvas[2] - canvas[0])
+        return {"boxes": boxes, "size": size, "mm_per_px": width_mm / size[0], "image": image.name[3:-4]}
 
     def _image_stage(self, h, cur, step, p):
         # One at a time: two requests making the same large stage at once both pay for it, and on Windows

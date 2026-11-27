@@ -78,6 +78,7 @@
         <button data-mode="overlay" aria-pressed="false" title="The source under the result">Overlay</button>
         <button data-mode="mask" aria-pressed="false" title="What the trace counts as ink">Mask</button>
         <button data-mode="shading" aria-pressed="false" title="Wide ink areas: blue becomes a fill, orange stays a line. Click one to change it.">Shading</button>
+        <button data-mode="text" aria-pressed="false" hidden title="Text the reader found: green is written again in pen strokes, orange stays traced, grey is left out. Click a text to edit it.">Text</button>
       </div>
       <label class="fade" id="prepFadeBox" title="How strongly the source shows under the result">Source
         <input type="range" id="prepFade" min="0" max="100" value="45" aria-label="Source opacity"></label>
@@ -89,6 +90,20 @@
       <button class="icon" id="prepZoomOut" title="Zoom out (-)" aria-label="Zoom out">-</button>
       <button class="icon" id="prepZoomFit" title="Fit (0)">Fit</button>
       <button class="icon" id="prepZoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
+    <!-- options bar: the text selected in the Text view -->
+    <div class="optbar" id="prepTextEdit" hidden>
+      <div class="optbar-row">
+        <label class="field inline text-str"><span class="pre">Text</span><input id="prepTextStr" type="text" maxlength="200" autocomplete="off" spellcheck="false" title="The text to write. Enter applies, Esc closes"></label>
+        <div class="seg" role="group" aria-label="Text handling" id="prepTextKind">
+          <button type="button" data-kind="rewrite" aria-pressed="false" title="Erase the lettering and write this text in pen strokes">Rewrite</button>
+          <button type="button" data-kind="trace" aria-pressed="false" title="Keep the lettering and trace it as drawn">Trace</button>
+          <button type="button" data-kind="drop" aria-pressed="false" title="Erase the lettering and write nothing">Leave out</button>
+        </div>
+        <button id="prepTextAuto" class="link" type="button" title="Back to the reader's text and the automatic choice">Automatic</button>
+        <span class="spacer"></span>
+        <small class="muted" id="prepTextInfo" aria-live="polite"></small>
+      </div>
     </div>
     <div class="prep-stage" id="prepStage" data-mode="result">
       <figure class="prep-side" id="prepSide">
@@ -113,15 +128,21 @@
       <h2>Result</h2>
       <div class="prep-trace" id="prepTraceBox" hidden>
         <button id="prepTrace" class="primary big" type="button" title="Trace the drawing with these settings (runs in the background)">Trace</button>
+        <label class="check" title="Trace again after every change, in the background. A change to the text alone only writes the text again (seconds)"><input type="checkbox" id="prepAutoTrace"> Trace on change</label>
         <div class="task-bar" id="prepTaskBar" hidden><span></span></div>
         <div class="row"><small class="muted" id="prepTaskLine" aria-live="polite"></small><span class="spacer"></span>
           <button id="prepTaskCancel" class="link danger-text" type="button" hidden>Cancel</button></div>
       </div>
       <div id="prepShade" hidden>
-        <div class="shade-legend"><span><i class="k-fill"></i>fill</span><span><i class="k-line"></i>stays a line</span><span><i class="k-hand"></i>changed by hand</span></div>
+        <div class="shade-legend" id="prepShadeKey" hidden><span><i class="k-fill"></i>fill</span><span><i class="k-line"></i>stays a line</span><span><i class="k-hand"></i>changed by hand</span></div>
         <p class="hint" id="prepShadeLine"></p>
         <div class="row"><button id="prepShadeView" class="link" type="button">Show the shading</button>
           <button id="prepShadeReset" class="link" type="button" hidden>Undo the hand changes</button></div>
+      </div>
+      <div id="prepText" hidden>
+        <div class="shade-legend" id="prepTextKey" hidden><span><i class="k-rw"></i>rewritten</span><span><i class="k-line"></i>traced</span><span><i class="k-drop"></i>left out</span><span><i class="k-hand"></i>edited</span></div>
+        <div class="row"><small class="muted" id="prepTextLine" aria-live="polite"></small><span class="spacer"></span>
+          <button id="prepTextReset" class="link" type="button" hidden title="Remove every text edit: the reader's text and the automatic choice again">Clear edits</button></div>
       </div>
       <div class="result-head"><span class="result-size" id="prepSize">-</span><span class="muted" id="prepMethod"></span></div>
       <dl class="kv" id="prepKv"></dl>
