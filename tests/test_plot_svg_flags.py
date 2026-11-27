@@ -1,5 +1,6 @@
 """plot_svg.py web-UI flags, run in --sim only. Checks that the opt-in flags keep every existing limit."""
 import json
+import math
 import pathlib
 import subprocess
 import sys
@@ -75,6 +76,37 @@ class TestFlags(unittest.TestCase):
         self.assertEqual(s["strokes"], 2)                 # the first two touch end to end: one stroke
         s = summary("--overlaps")
         self.assertEqual((s["strokes"], round(s["drawing_mm"])), (1, 20))
+
+    def test_test_sheet_strokes_plot_as_drawn(self):
+        """data-asis (a test sheet on the bed) and --as-is: no join, simplify, dedupe, overlap cut, reorder, reverse,
+        passes or dashes; the plain strokes beside them are still optimised."""
+        sheet = ('<path d="M30 5 L20 5"/><path d="M0 5 L10 5"/><path d="M10 5 L20 5"/>'      # touching, out of order
+                 '<path d="M0 5 L10 5"/><path d="M5 5 L15 5"/>'                              # a repeat, an overlap
+                 '<path d="M0 8 L1 8.001 L2 8 L3 8.001 L4 8"/>')                             # simplify would flatten it
+        plain = '<path d="M30 9 L20 9"/><path d="M0 9 L10 9"/><path d="M0 9 L10 9"/>'
+        pv = self.tmp / "pv.json"
+
+        def plan(body, *extra):
+            svg = self.tmp / "s.svg"
+            svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="10mm" viewBox="0 0 40 10" '
+                           f'stroke="#000" fill="none">{body}</svg>')
+            rc, out = run(svg, "--mode", "dry", "--x0", "20", "--y0", "20", "--preview-json", pv, "--optimize",
+                          "--dedupe", "--overlaps", "--sweep", "right", "--corner-starts", "--inner-first",
+                          "--layers", self.layers([{"passes": 3, "dash": [1, 1], "overdraw": 2}]), *extra)
+            self.assertEqual(rc, 0, out)
+            d = json.loads(pv.read_text())
+            ss = [d["strokes"][i]["pts"] for i in d["order"]]
+            x0, y0 = min(x for s in ss for x, _ in s), min(y for s in ss for _, y in s) - 5     # the drawing's own mm
+            return [[(round(x - x0, 2), round(y - y0, 2)) for x, y in s] for s in ss]
+        want = [[(30, 5), (20, 5)], [(0, 5), (10, 5)], [(10, 5), (20, 5)], [(0, 5), (10, 5)], [(5, 5), (15, 5)],
+                [(0, 8), (1, 8.0), (2, 8), (3, 8.0), (4, 8)]]
+        self.assertEqual(plan(f'<g data-asis="1">{sheet}</g>')[:6], want)
+        self.assertEqual(plan(sheet, "--as-is"), want)
+        mixed = plan(f'<g data-asis="1">{sheet}</g>{plain}')
+        self.assertEqual(mixed[:6], want)
+        rest = mixed[6:]
+        self.assertGreater(len(rest), 3)                  # passes and dashes did apply to the plain strokes
+        self.assertTrue(all(math.dist(s[0], s[-1]) <= 1.01 for s in rest))     # cut into 1 mm dashes
 
     def test_stroke_speed_is_used_and_capped(self):
         def est(attr):

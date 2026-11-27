@@ -70,6 +70,11 @@ CSS_COLORS = {"black": "#000000", "white": "#ffffff", "red": "#ff0000", "green":
 MAX_SPEED = 200.0       # mm/s hard ceiling for drawing (pen down); corners and U-turns slow down below it (motion.py)
 SOFT_SPEED = 100.0      # mm/s soft cap: faster is allowed, the plan warns that steps may be lost
 MAX_PRESSURE = 0.9      # data-pressure ceiling: a fraction of the way from pen-down toward pen-up
+# AS_IS: strokes under data-asis="1" (a test sheet on the web UI's bed) or every stroke with --as-is are plotted
+# exactly as drawn: no joining or simplifying, no hatch fill, never dropped as duplicates or overlaps, kept in file
+# order and direction by --optimize, --sweep, --inner-first and --corner-starts, no extra passes, dashes or overdraw
+# from their layer, and no --approach move. Their own data-speed and data-pressure, the layer's pen, speed and
+# pressure (where the sheet sets none) and the pen's dwell still apply.
 MAX_TRAVEL_SPEED = 200.0  # mm/s ceiling for pen-up travel; 100 and 200 ran clean on pen-up traces
 CHUNK_STEPS = 3000      # longest single SM leg (per vector) in steps
 CHUNK_SECONDS = 3.0     # and in time: no single SM runs longer, so an in-flight move at abort is bounded
@@ -692,9 +697,11 @@ def load_svg(path, ignore_unsupported):
                 pass
         if el.get("data-page") is not None and el.get("data-page").isdigit():
             cur["page"] = int(el.get("data-page"))        # which sheet of a several-page project
+        if el.get("data-asis") == "1":
+            cur["asis"] = True                            # a test sheet: plotted exactly as drawn (see AS_IS)
         meta = {"color": cur.get("color") or "#000000", "layer": cur.get("layer"), "pressure": cur.get("pressure"),
                 "obj": cur.get("obj"), "speed": cur.get("speed"), "seam": cur.get("seam"), "page": cur.get("page"),
-                "clip": cur.get("clip")}
+                "clip": cur.get("clip"), "asis": cur.get("asis")}
         fv = style_prop(el, "fill")
         if fv is not None:
             cur["fill"] = None if fv.lower() in ("none", "transparent", "currentcolor") or fv.lower().startswith("url(") \
@@ -760,7 +767,8 @@ def load_svg(path, ignore_unsupported):
         if cur.get("fill") and el_rings and tag in ("path", "polygon", "polyline", "rect", "circle", "ellipse", "text"):
             fills.append({"rings": el_rings, "color": cur["fill"], "opacity": cur["fop"],
                           "rule": cur.get("rule", "nonzero"), "layer": cur.get("layer"), "pressure": cur.get("pressure"),
-                          "obj": cur.get("obj"), "page": cur.get("page"), "clip": cur.get("clip")})
+                          "obj": cur.get("obj"), "page": cur.get("page"), "clip": cur.get("clip"),
+                          "asis": cur.get("asis")})
         for child in el:
             walk(child, cur, xform)
 
@@ -810,9 +818,9 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
     merged, mmeta = [], []
     # strokes join only within one ink, pen pressure, object, speed and filled shape
     key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), m.get("obj"), m.get("speed"),  # noqa: E731
-                     m.get("shape"))
+                     m.get("shape"), m.get("asis"))
     for p, m in zip(sp, metas):
-        same_ink = merged and key(m) == key(mmeta[-1])
+        same_ink = merged and key(m) == key(mmeta[-1]) and not m.get("asis")
         if same_ink and math.dist(merged[-1][-1], p[0]) <= join_tol:
             merged[-1].extend(p[1:])
         else:
@@ -820,7 +828,7 @@ def prepare(polys, metas, eps, join_tol, scale, dx, dy):
             mmeta.append(dict(m))
     out, outm = [], []
     for p, m in zip(merged, mmeta):
-        q = rdp(p, eps)
+        q = p if m.get("asis") else rdp(p, eps)
         if len(q) >= 2:
             out.append(q)
             outm.append(m)
@@ -1215,6 +1223,8 @@ def main():
                     help="closed paths start at a corner (a turn of 30 degrees or more) when they have one")
     ap.add_argument("--inner-first", action="store_true",
                     help="within each pen, shapes inside other shapes are drawn before them")
+    ap.add_argument("--as-is", action="store_true",
+                    help="plot every stroke exactly as drawn (a test sheet): see AS_IS")
     ap.add_argument("--approach", type=float, default=0.0, metavar="MM",
                     help="arrive at every stroke start from up-left, this far out: the same last move each time "
                          "(takes up gear backlash)")
@@ -1311,6 +1321,9 @@ def main():
     if a.fill and not 0.2 <= a.fill <= 50:
         sys.exit("--fill spacing must be 0 (off) or 0.2..50 mm")
     polys, metas, (w_mm, h_mm), fills = load_svg(a.svg, a.ignore_unsupported)
+    if a.as_is:
+        for m in metas + fills:
+            m["asis"] = True
     base_scale = a.scale * (a.width / w_mm if a.width else 1.0)
     scale = base_scale
     if region:
@@ -1340,7 +1353,9 @@ def main():
             rings = [[(x * scale, y * scale) for x, y in r] for r in f["rings"]]
             fc = fills_cfg.get(layer_key((f["color"], f["layer"])))
             try:
-                if fc:
+                if f.get("asis"):
+                    lines = []
+                elif fc:
                     # this ink's own fill: exactly the spacing given, whatever the colour's darkness
                     sp, ang = float(fc.get("spacing") or 0), float(fc.get("angle", 45.0))
                     if fc["mode"] == "off":
@@ -1391,6 +1406,9 @@ def main():
         strokes, metas = cs, cm
     if not strokes:
         sys.exit("no drawable geometry found")
+    n_asis = sum(1 for m in metas if m.get("asis"))
+    if n_asis:
+        log(f"As drawn       : {n_asis} test-sheet stroke(s) keep their points, order and direction (AS_IS)")
     n_dup = 0
     if a.dedupe:
         strokes, metas, n_dup = pathplan.dedupe(strokes, metas)
@@ -1517,12 +1535,17 @@ def main():
         seams = {i: metas[i]["seam"] for i in order if metas[i].get("seam")} if a.absolute else {}
         blocks, cur = [], (-ox, -oy)
         for i in order:     # one block per pen and per fill/outline run: those boundaries stay where they are
-            k = (page_of(i), stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")), fill_group(i))
+            k = (page_of(i), stroke_group[i] if by_layer else 0, obj_of(i), bool(metas[i].get("fill")), fill_group(i),
+                 (metas[i].get("obj") or 0) if metas[i].get("asis") else None)
             if not blocks or blocks[-1][0] != k:
                 blocks.append((k, []))
             blocks[-1][1].append(i)
         order = []
-        for _, idxs in blocks:
+        for k_, idxs in blocks:
+            if k_[-1] is not None:          # as drawn: same order, same direction, the carriage ends at its last point
+                order += idxs
+                cur = strokes[idxs[-1]][-1]
+                continue
             if a.sweep == "none":
                 bands = [idxs]
             else:       # 20 mm bands by each stroke's top (down) or left edge (right), in sweep order
@@ -1542,7 +1565,7 @@ def main():
         expanded = []
         for i in order:
             expanded.append(i)
-            for k in range(1, lset[stroke_group[i]].get("passes") or 1):
+            for k in range(1, 1 if metas[i].get("asis") else lset[stroke_group[i]].get("passes") or 1):
                 s = strokes[i]
                 closed = len(s) > 2 and math.dist(s[0], s[-1]) < 0.1
                 strokes.append(list(s) if closed or k % 2 == 0 else s[::-1])
@@ -1558,7 +1581,7 @@ def main():
     if any(ls.get("overdraw") or ls.get("dash") for ls in lset):
         new_order = []
         for i in order:
-            ls = lset[stroke_group[i]]
+            ls = {} if metas[i].get("asis") else lset[stroke_group[i]]
             s = strokes[i]
             if ls.get("overdraw") and len(s) > 3 and math.dist(s[0], s[-1]) < 0.1:
                 strokes[i] = s = extend_closed(s, ls["overdraw"])
@@ -1761,7 +1784,7 @@ Servo          : up {cfg['servo']['pen_up']}  down {cfg['servo']['pen_down']}"""
                 s = strokes[i]
                 gi = stroke_group[i]
                 pts_s = [to_steps((x + ox, y + oy), spmm) for x, y in s]
-                if a.approach > 0:          # always the same last move into the start: backlash taken up
+                if a.approach > 0 and not metas[i].get("asis"):   # the same last move into the start: backlash taken up
                     p.move_to(*to_steps((s[0][0] + ox - a.approach, s[0][1] + oy - a.approach), spmm), a.travel_speed)
                 p.move_to(*pts_s[0], a.travel_speed)
                 p.set_pressure(metas[i].get("pressure"))

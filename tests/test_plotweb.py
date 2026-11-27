@@ -473,6 +473,31 @@ class TestDocument(SimServer):
         self.assertEqual(code, 200, d)
         return d
 
+    def test_00_test_sheet_plots_as_made(self):
+        """A test sheet on the bed is marked to plot as drawn, keeps its own size and orientation, and the shape
+        tools leave it alone; a drawing beside it is planned as usual."""
+        code, r = self.call("POST", "/api/tools/run", {"tool": "backlash_sheet", "params": {"pen": "bic"}})
+        self.assertEqual(code, 200, r)
+        sid = r["file"]["id"]
+        code, n = self.call("GET", f"/api/files/natural?id={sid}")
+        g = n["geom"]
+        code, me = self.call("GET", "/api/me")
+        cx0, cy0, cx1, cy1 = me["machine"]["canvas"]
+        sheet = self.obj(sid, cx0 + 2, cy0 + 2, g["raw_w"], g["raw_h"])
+        other = self.obj(self.upload("two_layers.svg"), cx1 - 32, cy1 - 22, 30, 20)
+        d = self.doc_preview([sheet, other], {"optimize": True, "approach": 2})
+        self.assertTrue(d["ok"], d["problems"])
+        svg = (self.app.plan_dir / d["plan_id"] / "drawing.svg").read_text()
+        self.assertEqual(svg.count('data-asis="1"'), 1)
+        for bad, word in ((dict(sheet, w=g["raw_w"] * 1.1), "resized"), (dict(sheet, rot=90), "turned"),
+                          (dict(sheet, fx=True), "mirrored")):
+            code, r = self.call("POST", "/api/preview", {"doc": {"objects": [bad, other], "settings": {}}})
+            self.assertEqual(code, 400, r)
+            self.assertIn(word, r["error"])
+        code, r = self.call("POST", "/api/shapes", {"op": "split", "objects": [sheet]})
+        self.assertEqual(code, 400, r)
+        self.assertIn("test sheet", r["error"])
+
     def test_01_natural_geometry(self):
         fid = self.upload("two_layers.svg")
         code, n = self.call("GET", f"/api/files/natural?id={fid}")

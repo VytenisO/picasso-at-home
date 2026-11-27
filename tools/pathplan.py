@@ -99,6 +99,10 @@ def dedupe(strokes, metas, tol=0.05, closed_tol=0.1):
     seen = set()
     out_s, out_m = [], []
     for s, m in zip(strokes, metas):
+        if m.get("asis"):           # a test sheet repeats strokes on purpose
+            out_s.append(s)
+            out_m.append(m)
+            continue
         key = (m.get("color"), m.get("layer"), m.get("pressure"), bool(m.get("fill")), m.get("page") or 0,
                _canon(s, tol, closed_tol))
         if key in seen:
@@ -122,11 +126,12 @@ def drop_overlaps(strokes, metas, tol=0.1):
     bufs = [ln.buffer(tol, cap_style="flat") if ln is not None else None for ln in lines]
     idx = [i for i, b in enumerate(bufs) if b is not None]
     tree = STRtree([bufs[i] for i in idx])
-    key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), bool(m.get("fill")), m.get("page") or 0)  # noqa: E731
+    key = lambda m: (m.get("color"), m.get("layer"), m.get("pressure"), bool(m.get("fill")), m.get("page") or 0,  # noqa: E731
+                     bool(m.get("asis")))
     out_s, out_m, removed = [], [], 0.0
     for i, (s, m) in enumerate(zip(strokes, metas)):
         ln = lines[i]
-        if ln is None or ln.length == 0:
+        if ln is None or ln.length == 0 or m.get("asis"):     # a test sheet's lines are never cut
             out_s.append(s)
             out_m.append(m)
             continue

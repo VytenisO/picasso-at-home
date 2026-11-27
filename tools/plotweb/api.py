@@ -180,6 +180,8 @@ class App:
         g, keys, layers = self.geometry(e, svg_path, fill, fill_angle)
         svg_bytes, machine_bytes = svg_path.read_bytes(), self.s.machine_path.read_bytes()
         bed = self.s.bed_from(machine_bytes)
+        if e.get("kind") == "sheet" and rs.get("w") not in (None, "", 0):
+            raise ApiError(400, f"{e['name']} is a test sheet: it plots at its own size, so a width cannot be set.")
         if e.get("pen"):
             # A test sheet belongs to one pen type: every layer uses it unless the operator chose otherwise.
             raw_settings = dict(raw_settings or {})
@@ -191,6 +193,8 @@ class App:
         except plotjob.SettingsError as ex:
             raise ApiError(400, str(ex))
         plotjob.resolve_placement(v, bed, g)
+        if e.get("kind") == "sheet":
+            v["as_is"] = True
         pid, d = self._stage(svg_bytes, machine_bytes, v)
         return v, g, pid, layers, d
 
@@ -335,6 +339,7 @@ class App:
             if o["file"] not in files:
                 e, p = self._entry(o["file"])
                 files[o["file"]] = (p, self.geometry(e, p)[0])
+        objs = [self._as_is(o, files[o["file"]][1]) for o in objs]
         machine_bytes = self.s.machine_path.read_bytes()
         bed = self.s.bed_from(machine_bytes)
         try:
@@ -360,6 +365,21 @@ class App:
         v["absolute"] = True
         pid, d = self._stage(svg_bytes, machine_bytes, v)
         return v, objs, pid, layers, d
+
+    def _as_is(self, o, geom):
+        """A test sheet plots exactly as it was made: at its own size, unturned, unmirrored, every stroke as drawn
+        (plot_svg AS_IS). -> the object, marked; raises ApiError for a sheet that was resized, turned or mirrored."""
+        e = self.lib.get(o["file"]) or {}
+        if e.get("kind") != "sheet":
+            return o
+        w, h = geom["raw_w"], geom["raw_h"]
+        off = abs(o["w"] - w) > max(0.2, w * 0.002) or abs(o["h"] - h) > max(0.2, h * 0.002)
+        turned = min(o["rot"] % 360, 360 - o["rot"] % 360) > 0.01
+        if off or turned or o["fx"] or o["fy"]:
+            what = ", ".join(x for x, bad in (("resized", off), ("turned", turned), ("mirrored", o["fx"] or o["fy"])) if bad)
+            raise ApiError(400, f"{e.get('name') or 'A test sheet'} is a test sheet and was {what}. It plots exactly as "
+                                f"made: {w:.1f} x {h:.1f} mm, unturned and unmirrored. Remove it and add it again from the Library.")
+        return dict(o, asis=True)
 
     def _pen_map(self):
         try:
@@ -680,6 +700,10 @@ class App:
             raise ApiError(400, str(ex))
         if not objs:
             raise ApiError(400, "Select the objects first.")
+        sheets = [e["name"] for e in (self.lib.get(o["file"]) for o in objs) if e and e.get("kind") == "sheet"]
+        if sheets:
+            raise ApiError(400, f"{sheets[0]} is a test sheet: it plots exactly as made, so the shape and line tools "
+                                "leave it alone. Leave it out of the selection.")
         op = body.get("op")
         if op in self.LINE_OPS:
             return self.line_op(op, objs, body)

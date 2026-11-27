@@ -239,7 +239,9 @@ function fromXfForm(e) {
   renderArrange();
 }
 
+const RESHAPE = ['join', 'split', 'reverse', 'union', 'subtract', 'intersect', 'offset'];
 function act(a) {
+  if (RESHAPE.includes(a) && sheetInSel()) return;
   if (a === 'rot90') D.rotateSel(90);
   else if (a === 'rot-90') D.rotateSel(-90);
   else if (a === 'mirx') D.mirrorSel('x');
@@ -308,9 +310,17 @@ async function joinLines() {
 // ------------------------------------------------------------------ line tools (Arrange, Line tools...)
 // Server-side edits of the selected objects' lines: the result is a new drawing that takes their place (Undo
 // brings them back). A few need clicks on the bed first.
+// Shape and line tools rebuild a drawing; a test sheet must plot exactly as made, so they leave it alone.
+function sheetInSel() {
+  const s = D.selected().find((o) => D.isSheet(o));
+  if (s) toast('A test sheet plots exactly as made: the shape and line tools leave it alone. Leave it out of the selection.', true);
+  return !!s;
+}
+
 async function lineOp(op, extra = {}, { add = false } = {}) {
   const sel = D.selected();
   if (!add && D.lockedSel()) return;
+  if (sheetInSel()) return;
   try {
     const r = await post('/api/shapes', { op, objects: sel, ...extra });
     await refreshFiles();
@@ -359,6 +369,7 @@ const selCentre = () => { const b = G.bounds(D.selected()); return [b.x0 + b.w /
 async function lineTool(t) {
   const sel = D.selected();
   if (!sel.length) { toast('Select the objects first.', true); return; }
+  if (sheetInSel()) return;
   const ask = async (title, text, def) => { const v = await askText(title, text, def, 'OK'); return v === null ? null : G.parseLength(v); };
   if (t === 'close') { const v = await ask('Close gaps', 'Close strokes whose ends are this close (mm):', '1'); if (v > 0) lineOp('close', { tolerance: v }); }
   else if (t === 'smooth') lineOp('smooth', { passes: 2 });

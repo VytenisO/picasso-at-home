@@ -169,6 +169,8 @@ def compose(objects, files, bed, remap=None):
             "transform": f"matrix({a:.9g} {b:.9g} {c:.9g} {d:.9g} {e:.9g} {f:.9g})"})
         if o.get("page"):
             outer.set("data-page", str(o["page"]))
+        if o.get("asis"):                   # a test sheet: plot_svg keeps its strokes exactly as drawn (AS_IS)
+            outer.set("data-asis", "1")
         if o.get("clip"):
             outer.set("data-clip", " ".join(f"{v:.3f}" for v in o["clip"]))
         if o.get("seam"):                   # in machine mm: the nearest vertex of each closed stroke starts there

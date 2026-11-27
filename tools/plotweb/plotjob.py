@@ -231,6 +231,8 @@ def build_argv(s, svg_path, v, mode, geom, *, preview_json=None, layers_json=Non
         argv += ["--x0", f"{v['x'] - c[0]:.3f}", "--y0", f"{v['y'] - c[1]:.3f}"]
     if v.get("w") and geom and geom.get("raw_w", 0) > 1e-6 and not v.get("absolute"):
         argv += ["--width", f"{v['w'] * geom['doc_w'] / geom['raw_w']:.4f}"]
+    if v.get("as_is"):
+        argv.append("--as-is")         # a test sheet on its own: every stroke exactly as drawn
     if v.get("optimize"):
         argv.append("--optimize")
     if v.get("dedupe"):

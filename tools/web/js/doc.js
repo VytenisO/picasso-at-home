@@ -32,6 +32,7 @@ export function edit(fn, { coalesce = null, sel = null } = {}) {
   const before = snap();
   const d = structuredClone(state.doc);
   if (fn(d) === false) return false;
+  keepSheets(d);
   if (JSON.stringify({ name: d.name, objects: d.objects, settings: d.settings }) === before) return false;
   // A resume point belongs to one plot order: any change to the bed or its planning drops it.
   if (state.startAt) set({ startAt: 0 });
@@ -44,6 +45,29 @@ export function edit(fn, { coalesce = null, sel = null } = {}) {
   redoStack.length = 0;
   apply(d, sel);
   return true;
+}
+
+// A test sheet plots exactly as it was made (the server refuses anything else): an edit that resized, turned or
+// mirrored one puts it back to its own size, unturned, where it was.
+export const isSheet = (o) => (state.files.find((f) => f.id === o.file) || {}).kind === 'sheet';
+let sheetToast = 0;
+function keepSheets(d) {
+  const was = new Map((state.doc.objects || []).map((o) => [o.id, o]));
+  let hit = false;
+  for (const o of d.objects) {
+    const n = state.naturals[o.file];
+    if (!n || !isSheet(o)) continue;
+    const g = n.geom;
+    if (Math.abs(o.w - g.raw_w) < 0.05 && Math.abs(o.h - g.raw_h) < 0.05 && !(o.rot % 360) && !o.fx && !o.fy) continue;
+    const p = was.get(o.id);
+    if (p) { o.x = p.x; o.y = p.y; }
+    Object.assign(o, { w: G.r2(g.raw_w), h: G.r2(g.raw_h), rot: 0, fx: false, fy: false });
+    hit = true;
+  }
+  if (hit && Date.now() - sheetToast > 4000) {
+    sheetToast = Date.now();
+    toast('Test sheets plot exactly as made: they move, but keep their size and stay unturned and unmirrored.', true);
+  }
 }
 
 function apply(d, sel = null) {
