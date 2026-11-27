@@ -1,4 +1,4 @@
-// The Plot side panels: the Arrange panel (objects on the bed, transform fields, align, mirror, turn), the job
+// The Plot side panels and options bar: objects on the bed, transform fields, align, mirror, turn, the job
 // settings (speeds, fill, paper), the layer list and saved projects. The document itself lives in doc.js.
 import { api, post } from './api.js';
 import { armPlace, armPoly, armFree, setTextEdit } from './bed.js';
@@ -486,7 +486,7 @@ function packCanvas() {
       p.o.x += x - p.b.x0; p.o.y += y - p.b.y0;
       x += p.b.w + gap; row = Math.max(row, p.b.h);
     }
-    if (y + row > c[3]) toast('They do not all fit on the canvas: the last row runs past the bottom.', true);
+    if (y + row > c[3]) toast('They do not all fit on the drawable area: the last row runs past the bottom.', true);
   });
 }
 
@@ -561,7 +561,7 @@ function openArray() {
     const cols = Number(f.cols.value), rows = Number(f.rows.value), gx = Number(f.gx.value), gy = Number(f.gy.value);
     const w = cols * b.w + (cols - 1) * gx, h = rows * b.h + (rows - 1) * gy;
     const fits = b.x0 + w <= c[2] + 0.5 && b.y0 + h <= c[3] + 0.5;
-    $('arrayNote').textContent = `${cols * rows} in all, ${G.r2(w)} x ${G.r2(h)} mm` + (fits ? '.' : ': runs past the canvas from here.');
+    $('arrayNote').textContent = `${cols * rows} in all, ${G.r2(w)} x ${G.r2(h)} mm` + (fits ? '.' : ': runs past the drawable area from here.');
     $('arrayNote').className = 'hint' + (fits ? '' : ' warn-text');
   };
   f.oninput = note;
@@ -1068,7 +1068,7 @@ async function addLegend(rows) {
     await refreshFiles();
     const c = G.canvasRect().canvas;
     await D.addFile(r.file.id, { at: [c[0] + 2, Math.max(c[1], c[3] - lines.length * xh * 3 - 2)] });
-    toast('Legend added at the bottom-left of the canvas. Move it where it fits.');
+    toast('Legend added at the bottom-left. Move it where it fits.');
   } catch (e) { toast(e.message, true); }
 }
 

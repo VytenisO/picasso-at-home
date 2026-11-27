@@ -81,10 +81,10 @@ REGISTRY = {c.id: c for c in [
     ], _svg, help="Vector drawings are plotted as they are: outlines. Set a hatch spacing under Fill to fill coloured shapes."),
     Converter("raster", "Photo or image", IMG, [
         {"key": "style", "label": "Style", "type": "select", "default": "contour",
-         "options": [["contour", "Contours (outlines of dark shapes)"], ["lineart", "Line art (centre lines)"],
+         "options": [["contour", "Contours (outlines of dark shapes)"], ["lineart", "Line art"],
                      ["halftone", "Halftone dots"], ["hatch", "Shading by hatching (fill)"],
                      ["one-line", "One continuous line"]]},
-        {"key": "inks", "label": "Pens (ink layers)", "type": "number", "default": 1, "min": 1, "max": 4,
+        {"key": "inks", "label": "Pens", "type": "number", "default": 1, "min": 1, "max": 4,
          "step": 1, "integer": True, "help": "More pens = darker tones in separate layers, one pen swap each."},
         {"key": "levels", "label": "Tone levels", "type": "number", "default": 0, "min": 0, "max": 6, "step": 1,
          "integer": True, "help": "0 = off. 2-6 posterise the image first."},

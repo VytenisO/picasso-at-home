@@ -12,7 +12,7 @@ export const SHORTCUTS = [
   { keys: [[['Ctrl', 'Enter'], '#prepSend']], what: 'Send to Plot (Prepare); in Turtletoy code: draw' },
   { keys: [[['Space'], '#pauseBtn'], [['Space'], '#continueBtn']], what: 'Pause / continue' },
   { keys: [[['Shift', 'S'], '#stopBtn']], what: 'Stop' },
-  { label: 'Arrows', what: 'Move the selection 1 mm (Shift: 10 mm, Alt: 0.1 mm), with the bed focused; under Machine control they jog' },
+  { label: 'Arrows', what: 'Move the selection 1 mm (Shift: 10 mm, Alt: 0.1 mm), with the bed focused; under Control they jog' },
   { keys: [[['Ctrl', 'Z'], '#undoBtn'], [['Ctrl', 'Shift', 'Z'], '#redoBtn']], what: 'Undo, redo' },
   { keys: [[['Ctrl', 'C'], null], [['Ctrl', 'X'], null], [['Ctrl', 'V'], null], [['Ctrl', 'D'], '#xfBox [data-act=dup]'], [['Ctrl', 'A'], null]],
     what: 'Copy, cut, paste (also an SVG or picture from another program), duplicate, select all' },
@@ -31,7 +31,7 @@ export const SHORTCUTS = [
   { keys: [[['Esc'], null]], what: 'Close a dialog or menu (never stops a job)' },
   { label: 'Shift-click, drag a box', what: 'Select several. A box dragged left to right takes what is fully inside; right to left, anything it touches' },
   { label: 'Shift while dragging', what: 'A corner: stretch freely. The turn handle: any angle (else 15 degree steps)' },
-  { label: 'Alt while dragging', what: 'No snapping (else edges and centres snap to the canvas, paper, guides and objects, or to the grid)' },
+  { label: 'Alt while dragging', what: 'No snapping (else edges and centres snap to the drawable area, paper, guides and objects, or to the grid)' },
   { label: 'Rulers', what: 'Drag a guide out of a ruler; drag it back onto the ruler to remove it. Right-click for more' },
 ];
 

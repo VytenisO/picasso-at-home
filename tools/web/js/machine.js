@@ -211,7 +211,7 @@ export function initMachine() {
   $('ctrSave').onclick = async () => {
     const name = await askText('Save the centre', `${ctrAt.x.toFixed(1)}, ${ctrAt.y.toFixed(1)} mm. A name:`, 'centre', 'Save');
     if (!name) return;
-    try { positions = (await post('/api/positions/save', { name, x: ctrAt.x, y: ctrAt.y })).positions; renderLists(); toast('Saved: Job, Start from can put a drawing\'s centre there.'); } catch (e) { toast(e.message, true); }
+    try { positions = (await post('/api/positions/save', { name, x: ctrAt.x, y: ctrAt.y })).positions; renderLists(); toast('Saved. Job, Start and finish can put a drawing there.'); } catch (e) { toast(e.message, true); }
   };
   $('paperBR').onclick = () => paperCorner('br');
   $('penNew').onclick = () => editPen(null);

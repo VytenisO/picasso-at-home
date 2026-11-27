@@ -11,9 +11,9 @@ import { SAMPLE, parseControls, applyValues, runTurtle, toSvg, titleOf } from '.
 import { waitTask, cancelTask, taskLine, fmtDur, live as liveTask } from './tasks.js';
 
 const STAGE = {
-  adjust: { title: 'Adjust the image', add: 'Add an adjustment', hint: 'Applied in order, before tracing.' },
+  adjust: { title: 'Adjust', add: 'Add an adjustment', hint: 'Applied in order, before tracing' },
   method: { title: 'Method', hint: '' },
-  clean: { title: 'Clean up', add: 'Add a clean-up step', hint: 'Work on the drawn lines, in order.' },
+  clean: { title: 'Clean up', add: 'Add a clean-up step', hint: 'Work on the drawn lines, in order' },
 };
 
 let steps = [], byId = {}, kinds = {}, maxBytes = 12 * 1024 * 1024;
@@ -232,7 +232,7 @@ function renderPresets(pick) {
   box.hidden = !has && !mine.length;
   const sel = $('presetSel'), was = pick || sel.value;
   sel.replaceChildren(...(mine.length ? mine.map((p) => el('option', { value: p.name, text: p.name }))
-    : [el('option', { value: '', text: 'No presets for this kind of source' })]));
+    : [el('option', { value: '', text: 'No presets' })]));
   if (mine.some((p) => p.name === was)) sel.value = was;
   sel.disabled = $('presetApply').disabled = $('presetDel').disabled = !mine.length;
   $('presetSave').disabled = !has;
@@ -784,13 +784,13 @@ function renderRecipe() {
       add = el('select', { class: 'add-step', 'aria-label': STAGE[stage].add, onchange: (e) => {
         const id = e.target.value;
         if (!id) return;
-        P.list = byStage([...P.list, { uid: uid++, step: id, on: true, params: {} }]);
+        for (const x of P.list) x.open = false;            // the new step is the one open
+        P.list = byStage([...P.list, { uid: uid++, step: id, on: true, open: true, params: {} }]);
         renderRecipe(); save(); schedule(0);
       } }, el('option', { value: '', text: `+ ${STAGE[stage].add}...` }), avail.map((s) => el('option', { value: s.id, text: s.title })));
     }
     parts.push(el('div', { class: 'stage' },
-      el('div', { class: 'stage-head' }, el('span', { class: 'stage-n', text: String(n) }), el('h2', { text: STAGE[stage].title })),
-      STAGE[stage].hint && (stage !== 'method') && !cards.length ? el('p', { class: 'hint', text: STAGE[stage].hint }) : null,
+      el('div', { class: 'stage-head' }, el('span', { class: 'stage-n', text: String(n) }), el('h2', { text: STAGE[stage].title, title: STAGE[stage].hint || undefined })),
       ...cards, add));
   }
   box.replaceChildren(...parts);
@@ -813,12 +813,9 @@ function methodCard(avail) {
     sel.append(...(g && Object.keys(groups).length > 1 ? [el('optgroup', { label: g }, opts)] : opts));
   }
   if (cur) sel.value = cur.step;
-  const card = el('div', { class: 'step method' }, el('label', { class: 'field' }, el('span', { text: 'Turn it into lines with' }), sel));
-  if (cur) {
-    const def = byId[cur.step];
-    if (def.help) card.append(el('p', { class: 'hint', text: def.help }));
-    card.append(stepForm(cur, def));
-  }
+  if (cur) sel.title = byId[cur.step].help || '';
+  const card = el('div', { class: 'step method' }, sel);
+  if (cur) card.append(stepForm(cur, byId[cur.step]));
   return card;
 }
 
@@ -835,20 +832,18 @@ function stepCard(s, i, count) {
     [P.list[a], P.list[b]] = [P.list[b], P.list[a]];
     renderRecipe(); save(); schedule(0);
   };
-  const open = s.open !== false;
+  const open = s.open === true;                       // one step open at a time
   const head = el('div', { class: 'step-head' }, toggle,
-    el('button', { type: 'button', class: 'step-title', text: def.title, 'aria-expanded': String(open), disabled: !def.params.length,
-      onclick: () => { s.open = !open; renderRecipe(); } }),
+    el('button', { type: 'button', class: 'step-title', text: (def.params.length ? (open ? '\u25BE ' : '\u25B8 ') : '') + def.title,
+      title: def.help || undefined, 'aria-expanded': String(open), disabled: !def.params.length,
+      onclick: () => { for (const x of P.list) x.open = false; s.open = !open; renderRecipe(); } }),
     el('span', { class: 'spacer' }),
     el('button', { type: 'button', class: 'icon mini', text: '\u2191', title: 'Move up', 'aria-label': `Move ${def.title} up`, disabled: i === 0, onclick: () => move(-1) }),
     el('button', { type: 'button', class: 'icon mini', text: '\u2193', title: 'Move down', 'aria-label': `Move ${def.title} down`, disabled: i === count - 1, onclick: () => move(1) }),
     el('button', { type: 'button', class: 'icon mini', text: '\u00d7', title: 'Remove', 'aria-label': `Remove ${def.title}`,
       onclick: () => { P.list.splice(P.list.indexOf(s), 1); renderRecipe(); save(); schedule(0); } }));
   const card = el('div', { class: 'step' + (s.on === false ? ' off' : '') }, head);
-  if (def.params.length && open) {
-    if (def.help) card.append(el('p', { class: 'hint', text: def.help }));
-    card.append(stepForm(s, def));
-  } else if (!def.params.length && def.help) card.append(el('p', { class: 'hint', text: def.help }));
+  if (def.params.length && open) card.append(stepForm(s, def));
   return card;
 }
 
@@ -926,7 +921,7 @@ function renderResult() {
   fit.className = 'note warn';
   if (r.fit < 0.999) {
     const c = state.me.machine.canvas;
-    fit.textContent = `Larger than the canvas (${(c[2] - c[0]).toFixed(0)} x ${(c[3] - c[1]).toFixed(0)} mm). ` +
+    fit.textContent = `Larger than the drawable area (${(c[2] - c[0]).toFixed(0)} x ${(c[3] - c[1]).toFixed(0)} mm). ` +
       `Plot shrinks it to ${Math.floor(r.fit * 100)} % to fit, or set a smaller width in the method.`;
   }
   const pr = $('prepProblems');
@@ -940,7 +935,6 @@ function renderLayers() {
   const r = P.result;
   if (!r || !state.me) { box.replaceChildren(el('p', { class: 'hint', text: 'Pens appear once there is a result.' })); return; }
   const pens = state.me.pens || {};
-  $('prepPenHint').hidden = r.layers.length < 2;
   box.replaceChildren(...r.layers.map((ly) => {
     const set = P.settings.layers.find((x) => x.key === ly.key) || {};
     const pen = pens[set.pen];

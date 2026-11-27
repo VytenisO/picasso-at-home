@@ -103,7 +103,7 @@ REGISTRY = {t.id: t for t in [
     ], lambda s, p: _script(s, "lost_steps_test.py") + ["--config", str(s.machine_path), "--out-dir",
                                                         str(s.cache / "sheets"), "--analyse", f"{p['dx']:g}", f"{p['dy']:g}"],
         help="Turns the measured drift of the last checkpoint into steps lost per metre."),
-    Tool("stroke_record", "Record stroke results", "record", [
+    Tool("stroke_record", "Stroke results", "record", [
         PEN,
         _num("single", "Shortest single line", "mm", 0.1, 20, 0.05),
         _num("double", "Shortest forward+back line", "mm", 0.1, 20, 0.05),
@@ -116,7 +116,7 @@ REGISTRY = {t.id: t for t in [
         "--record-circle-single", p.get("circle_single")), "--record-circle-overlap", p.get("circle_overlap")),
         "--record-circle-double", p.get("circle_double")),
         record_for="stroke_sheet", help="What came out clearly on the stroke sheet, for this pen only."),
-    Tool("fill_record", "Record fill and pressure results", "record", [
+    Tool("fill_record", "Fill and pressure results", "record", [
         PEN,
         _num("min_spacing", "Tightest clean spacing", "mm", 0.1, 5, 0.05),
         {"key": "best_style", "label": "Best fill style", "type": "select", "default": "", "optional": True,

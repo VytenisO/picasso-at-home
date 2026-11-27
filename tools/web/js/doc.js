@@ -143,7 +143,7 @@ export function tileSel(overlap) {
   if (!o || state.sel.length !== 1) { toast('Select one drawing to tile.', true); return; }
   if (o.rot % 360) { toast('Tiling works on an unturned drawing: turn it back to 0 first.', true); return; }
   const c = G.canvasRect().canvas, cw = c[2] - c[0], ch = c[3] - c[1];
-  if (overlap * 2 >= Math.min(cw, ch)) { toast('The overlap is too large for the canvas.', true); return; }
+  if (overlap * 2 >= Math.min(cw, ch)) { toast('The overlap is too large for the drawable area.', true); return; }
   const sx = cw - overlap, sy = ch - overlap;
   const nx = Math.max(1, Math.ceil((o.w - overlap) / sx)), ny = Math.max(1, Math.ceil((o.h - overlap) / sy));
   if (nx * ny === 1) { toast('It fits on one sheet already.'); return; }
@@ -541,7 +541,7 @@ export function nudge(dx, dy) {
 // True (and says so) when the selection has a locked object: it may not move, resize, turn or go.
 export function lockedSel() {
   if (!selected().some((o) => o.locked)) return false;
-  toast('The selection has a locked object. Unlock it first (Arrange, Unlock).', true);
+  toast('The selection has a locked object. Unlock it first (Object, Unlock).', true);
   return true;
 }
 

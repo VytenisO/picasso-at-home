@@ -3,6 +3,34 @@
 One workspace in the spirit of LightBurn: the bed is the centre of attention, everything else is a panel around
 it. Stdlib Python server, plain ES modules, no build step, no CDN. Research behind the rules: `ui-research.md`.
 
+## Design language (2026-11-27)
+
+The page respects the operator's time: it does not explain what they already know, and it never hides what is
+about to happen to the machine. Every new control follows these rules.
+
+1. **Labels are 1 to 3 words**: a verb for an action (Preview, Set S here), a short noun for a setting (Copies,
+   Hatch spacing). The explanation goes in the control's `title`, which `chrome.js` shows as a tooltip on hover,
+   keyboard focus or a long press, with the shortcut beside it.
+2. **No explanatory paragraphs in panels.** Visible text is live state ("Carriage: position unknown") or a
+   safety warning (sport mode, a stale plan, a partial plot). A section's explanation is its heading's tooltip.
+3. **Units sit inside the field** (`.with-unit`), ranges in the tooltip, defaults as the placeholder.
+4. **The control fits the choice**: on/off a checkbox or a pressed button, one of a few segmented buttons, one of
+   many a drop-down, a number a field.
+5. **One primary button per area**: Plot, Send to Plot, Save.
+6. **No control panel scrolls at 1600 x 900.** What does not fit moves out, by how often it is used:
+   used constantly: the toolbar; watched while working: a panel tab; set once: a dialog; rare: the menu bar
+   only; acting on an object: the options bar or the right-click menu. Lists (library, console, history) may
+   scroll; forms may not.
+7. **One editor at a time**: a layer, a recipe step, a pen test, a job section opens on its own and closes the
+   others (`details name=...`, or the open row in the layer list).
+8. **One word per thing**: a *drawing* is a file in the Library, an *object* is a drawing placed on the bed,
+   then *layer*, *pen*, *project*. The *drawable area* is the dashed rectangle (never "canvas" in the page);
+   *S* is the start point the carriage is parked at by hand; *Home* is only switch homing.
+9. **Every control is reachable from the menu bar.** A menu item presses the existing control (so it is
+   disabled under the same conditions) and `reveal()` opens whatever holds it: workspace, tab, section, dialog.
+10. **Ids are the wiring.** Moving a control keeps its id and `data-act`; `tests/test_web_ui.py` checks that
+    every id and `data-act` a script uses exists, and that no inline style breaks the content security policy.
+
 ## Workspaces: Prepare and Plot (decided and built 2026-11-18)
 
 Two top-level tabs in the top bar (keys `1` and `2`, or `#prepare` / `#plot` in the address), the way a slicer
@@ -91,14 +119,14 @@ takes the new proportions instead of stretching it.
   drawing placed exactly where it was made; the booleans replace their inputs (undoable).
 - **Projects** are named copies of the document under `results/web/projects/`. Opening one replaces the bed
   (undoable); drawings no longer in the library are left out with a note.
-- **Arrange panel:** the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
+- **Options bar and Objects tab** (the Arrange panel until 2026-11-27): the objects list (plot order, earlier/later), X/Y/W/H of the selection at a 9-point reference
   point with keep-proportions, a turn angle (one object), turn 90, mirror, align (to each other, or to the canvas
   for one), spread, to-canvas-anchor, fit, duplicate, remove. On the bed: click, Shift/Ctrl-click, box select (left
   to right encloses, right to left touches), drag to move (snaps to 0.5 mm, Alt for none), side handles stretch,
   corner handles keep proportions (Shift: free), the round handle turns in 15 degree steps (Shift: free). Right or
   middle drag pans; a finger on empty bed pans.
 
-## Machine tab (built 2026-11-18, simulator only so far)
+## Manual control and machine settings (built 2026-11-18; split into the Control tab and the Machine dialog 2026-11-27)
 
 - **Control** is a job of kind `machine`: `tools/jog.py --control` keeps the motors on and takes `MOVE`, `GOTO`,
   `HOME`, `PEN UP|DOWN`, `TICK`, `SPEED`, `SETS`, `QUIT [HERE]` and `STOP` on stdin. It starts like a plot (parked
@@ -116,28 +144,31 @@ takes the new proportions instead of stretching it.
 
 ## Layout
 
+Plot workspace (2026-11-27), in the manner of LightBurn and Photoshop:
+
 ```
-+----------------------------------------------------------------------------------+
-| Plotter  [Simulator|Hardware]  [link: live]   [state pill]        [Stop] [theme] |
-+------------+-----------------------------------------------+---------------------+
-| Library    |                                               | Status              |
-|  upload,   |          bed (368 x 227.5 mm)                 |  state, next action |
-|  convert,  |          paper, inset canvas,                 |  progress, ETA      |
-|  files,    |          objects (select, move, stretch,      |  layer, pen, up/dn  |
-|  projects  |          turn handles), strokes, carriage,    |  x/y mm, speed, prs |
-| Layers     |          start point S                        | Run                 |
-|  pen,speed,|          box select; right-drag pans; wheel   |  Preview, Simulate, |
-|  pressure  |                                               |  Start, Pause, Stop |
-| Tools      |                                               | Arrange (objects,   |
-|  sheets    |                                               |  X/Y/W/H, align)    |
-|  pen test  |                                               | Job (speeds, fill)  |
-+------------+-----------------------------------------------+---------------------+
-| Console  [Info|Debug] [search] [copy] [auto-scroll]                               |
-+----------------------------------------------------------------------------------+
++--------------------------------------------------------------------------------------------+
+| Pen plotter  File Edit View Arrange Tools Machine Help  [Prepare|Plot]   Sim  live  Idle  Stop |
++--------------------------------------------------------------------------------------------+
+| Import Projects | Undo Redo History | Preview Simulate Frame [Plot] v |      Pen tests  Machine |
++-------------+----+-----------------------------------------------------+---------------------+
+| Library     | Sel| title, paths/length, pages            View Ink - Fit + | Status|Layers|Obj|Job|
+| Control     | Txt| options bar: ref X Y W H lock rot | turn mirror |      |                     |
+| Write       | Shp|   Align v  Distribute v  Object v  Path v  Colour v  Del |  state, next step,  |
+|  (tabs)     | Nod| scrub bar (after a preview)                          |  progress, plan,    |
+|             | Trm| bed: rulers, paper, drawable area, objects, S        |  recent jobs        |
++-------------+----+-----------------------------------------------------+---------------------+
+|                  | console (collapsed until opened)                     |                     |
++--------------------------------------------------------------------------------------------+
 ```
 
-Phone (< 900 px): one column, bottom tab bar (Bed, Library, Layers, Tools, Run, Console); the state pill and Stop
-stay in the top bar on every tab. Prepare on a phone stacks the preview, the recipe and the result. Dark and light via `prefers-color-scheme` with a manual toggle.
+While a job runs, Pause, Continue, Return, Stop and the speed slider replace Preview..Plot in the toolbar, and
+the right panel switches to Status. Dialogs: Machine (Connection, Motion, Paper, Pen depth, Pens, Backup),
+Projects, Pen tests (one test at a time), Preferences (General, Keyboard), Help (Quick start, Shortcuts, About).
+
+Phone (< 900 px): one column, bottom tab bar (Bed, Library, Control, Status, Layers, Job, Console); the toolbar
+scrolls sideways, the tool strip hides, the state pill and Stop stay in the top bar. Prepare on a phone stacks
+the preview, the recipe and the result. Dark and light via `prefers-color-scheme` with a manual toggle.
 
 ## Safety model (UI never weakens `plot_svg.py`)
 
@@ -284,8 +315,8 @@ selection, move/resize/turn handles, box select, progress, carriage), `geom.js` 
 align/scale/turn/mirror maths, the canvas rectangle), `doc.js` (the bed document: edits with undo/redo, selection,
 clipboard, add/arrange, projects, server sync and previews), `ink.js` (the ink renderer both workspaces use: pen colour, pen width
 `width_mm` in `pens.json` or 0.5 mm, Ink/Lines toggle), `ws.js` (the two workspaces), `prepare.js` (source, recipe
-editor, preview views, pens, save), `workspace.js` (the Arrange panel, objects list, job settings, layers,
-projects), `machine.js` (the Machine tab: control, calibration, paper, pens), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
+editor, preview views, pens, save), `workspace.js` (options bar, tool strip, objects list, job settings, layers,
+projects), `machine.js` (the Control tab and the Machine dialog: control, calibration, paper, pen depth, pens), `chrome.js` (tooltips, drop-down buttons, tab sets, `reveal()`), `run.js` (status panel, run buttons, confirmation, pen-swap prompt), `library.js`, `tools.js`,
 `console.js`, `app.js` (boot, login, events, tabs, theme, shortcuts). Styles: `tools/web/app.css`.
 
 Keyboard: `?` help, `1`/`2` Prepare/Plot, `Ctrl+Enter` send to Plot (Prepare), `P` preview, `Space` pause/continue, `Shift+S` stop (works with dialogs open), arrows nudge

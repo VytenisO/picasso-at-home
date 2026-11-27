@@ -72,11 +72,14 @@ niche.
 | Collapse side panels to maximise the bed | HAVE |  | View, Hide side panels, or the backslash key; remembered in this browser |
 | Reset panel layout | HAVE |  | View menu and Edit menu: Reset the panel layout; double-click a panel edge for its default width |
 | Resizable panels | HAVE |  | drag a side panel's inner edge (200 px to 40% of the window), kept per workspace |
-| Top menu bar (File, Edit, Arrange, Tools, Machine, Help) | HAVE |  | `menubar.js`: each item presses the existing control, so it is disabled under the same conditions; hidden on narrow screens |
+| Top menu bar (File, Edit, View, Arrange, Tools, Machine, Help) | HAVE |  | `menubar.js`: each item presses the existing control, so it is disabled under the same conditions; hidden on narrow screens |
+| Main toolbar (files, history, run controls) | HAVE |  | Plot: Import, Projects, Undo, Redo, History, Preview, Simulate, Frame, Plot (menu: selection only, exports); job controls replace them while a job runs |
+| Tool strip and options bar | HAVE |  | Strip: Select, Text, Shape, Edit nodes, Trim. Options bar: X/Y/W/H, rotation, lock ratio, turn, mirror, Align, Distribute, Object, Path, Colour |
+| Hover tooltips with shortcuts | HAVE |  | `chrome.js`: every title shows as a tooltip on hover, keyboard focus or long press; explanations live there instead of in panels |
 | Right-click context menu on bed and objects | HAVE | | objects: edit, turn, mirror, order, fit, zoom; empty bed: paste, select all, guides, fit |
 | Tooltips that show the shortcut | HAVE |  | every control a key presses gets the key in its tooltip, from the shortcut table (shortcuts.js) |
 | Context help (`?` on a control opens its help) | HAVE |  | Help, What's this? (Shift+F1): the next click on any control, disabled ones too, shows its explanation |
-| Simple / advanced mode (hide advanced options) | HAVE |  | Preferences: Simple mode hides planning fine-tuning, line tools, macros, the EBB command line and backups |
+| Simple / advanced mode (hide advanced options) | DROPPED |  | Removed 2026-11-27: advanced options now live in menus, closed sections and dialogs, so nothing needs hiding |
 | Language switch, right-to-left layout | SKIP | | one user |
 | Second editor window | SKIP | | a second browser tab does it |
 
@@ -124,7 +127,7 @@ niche.
 | Delete with confirmation; refused while plotting | HAVE | | |
 | Trash / undo delete | HAVE |  | Delete moves to the Trash (30 days, then gone); Restore, Delete for good, Empty the trash. The drawing's bed objects leave as an undoable edit |
 | Project file: scene of several objects with layers and settings | HAVE | | the bed document (`document.py`): objects with their own transform, composed into one SVG in machine mm and planned with `plot_svg.py --absolute` |
-| New / open / save / save as project | HAVE | | Library tab, Projects: save the bed under a name, open (undoable), delete, clear the bed |
+| New / open / save / save as project | HAVE | | Toolbar, Projects: save the bed under a name, open (undoable), delete, clear the bed |
 | Recent projects | HAVE |  | the five opened last come first, marked recent |
 | Templates (project that opens as a copy, keeps layer/pen setup) | HAVE |  | Projects: Save as a template; opening one gives a fresh unnamed copy with its objects, pens and settings |
 | Autosave and recovery after reload or crash | HAVE | | the bed is saved on the server with every change and reloads on every device |
@@ -159,8 +162,8 @@ niche.
 | Non-uniform scale (edge handles, unlock aspect) | HAVE | | edge handles stretch one way; corners keep proportions unless Shift |
 | Rotate (handle, 15 degree snap with Shift, rotate 90 keys) | HAVE | | turn handle snaps to 15 degrees (Shift: free), Turn left/right buttons, typed angle |
 | Flip horizontal / vertical | HAVE | | Mirror H / Mirror V about the selection's centre |
-| Mirror about a drawn line | HAVE |  | Line tools, Mirror about a line: two clicks on the bed |
-| Shear | HAVE |  | Line tools, Shear: a slant angle, about the selection's middle |
+| Mirror about a drawn line | HAVE |  | Path, Line tools, Mirror about a line: two clicks on the bed |
+| Shear | HAVE |  | Path, Line tools, Shear: a slant angle, about the selection's middle |
 | Numeric X, Y, W, H, rotation with 9-point anchor and aspect lock | HAVE | | X/Y/W/H are the selection's bounds at the chosen reference point; a group scales about it |
 | Unit-aware and arithmetic input (`100/3`, `2in`) | HAVE |  | Arrange X, Y, width, height, turn: + - * / and brackets, units mm, cm, in or ", pt, px; a decimal comma works |
 | Undo / redo, unlimited, Ctrl+Z / Ctrl+Shift+Z | HAVE | | 200 steps per page; typing and arrow nudges coalesce into one step |
@@ -169,7 +172,7 @@ niche.
 | Group / ungroup | HAVE |  | Arrange Group/Ungroup, Ctrl+G and Ctrl+Shift+G: selecting one member selects the group; copies get their own group |
 | Lock object (no move/resize/delete) | HAVE |  | Arrange Lock/Unlock: no handles, no drag, nudge, transform, shape operation or remove; colour and plot settings still change |
 | Make same width / height | HAVE |  | Arrange, Same width / Same height: as the first object selected, around each one's centre |
-| Two-point rotate/scale (match two points to two targets) | HAVE |  | Line tools, True size from two points: click two points, type their real distance; the drawing scales about the first. Full two-target matching is not there |
+| Two-point rotate/scale (match two points to two targets) | HAVE |  | Path, Line tools, True size from two points: click two points, type their real distance; the drawing scales about the first. Full two-target matching is not there |
 | Warp (4-corner) and deform (grid) | HAVE |  | Line tools: Taper / warp (edges as percentages) and Deform with a grid (2 to 8 points each way, dragged on the bed with a live preview) |
 | Edit locked while a job runs | HAVE | | |
 
@@ -185,8 +188,8 @@ niche.
 | Draw order: forward/back/front/back, per-object priority | HAVE |  | Arrange list arrows; the list order is the plot order within each pen with planning off, or with Finish each object before the next |
 | Grid array (rows, columns, spacing, stagger, alternate mirror) | HAVE |  | Arrange, Array: columns, rows, gaps, stagger of odd rows, mirror every other copy |
 | Circular array | HAVE |  | Arrange, Circular array: copies in all, radius, turn with the circle or stay upright |
-| Copy along path | HAVE |  | Line tools, Copy along a path: the first object selected is the path (its longest line); the rest are copied evenly along it, turned with it |
-| Quick pack small items on a sheet | HAVE |  | Line tools, Pack onto the canvas: rows from the canvas's top-left, tallest first, 3 mm apart (bounding boxes) |
+| Copy along path | HAVE |  | Path, Line tools, Copy along a path: the first object selected is the path (its longest line); the rest are copied evenly along it, turned with it |
+| Quick pack small items on a sheet | HAVE |  | Path, Line tools, Pack onto the drawable area: rows from its top-left, tallest first, 3 mm apart (bounding boxes) |
 | Shape-aware nesting | SKIP | | material saving; paper is not the constraint |
 | Several pages in one project | HAVE |  | bed toolbar: Page tabs, + and -; right-click Move to another page; the plot goes page by page and waits at S for the next sheet; repeats and overlaps are per page. With several pages the bed shows the current page's drawings, not the combined preview |
 
@@ -210,9 +213,9 @@ niche.
 | Shape properties stay editable (sides, radius) | HAVE |  | rectangles, ellipses, polygons and stars keep their size, corner radius, sides and points: double-click or right-click Edit shape redraws every copy in place |
 | Freehand drawing on the bed | HAVE |  | Bed, Shape, Freehand: drag to draw one line, smoothed to 0.3 mm, kept as a drawing; the writing pad still plots live |
 | Node edit: move, add, delete, corner/smooth, break at node, delete segment | HAVE |  | Line tools or right-click: Edit nodes. Drag to move, double-click a line to add, Delete, Break here, Delete segment, Round corner, Undo; up to 4000 nodes |
-| Trim at intersections (click to delete a piece) | HAVE |  | Line tools, Trim: lines are split where they cross; the clicked piece goes |
+| Trim at intersections (click to delete a piece) | HAVE |  | Path, Line tools, Trim: lines are split where they cross; the clicked piece goes |
 | Join touching paths | HAVE | | Prepare clean-up step, and Arrange: Join lines (ends within a set distance, same colour, never at a junction of three or more) |
-| Close nearly closed paths within a tolerance | HAVE |  | Line tools, Close nearly closed lines |
+| Close nearly closed paths within a tolerance | HAVE |  | Path, Line tools, Close nearly closed lines |
 | Remove duplicate and overlapping lines | HAVE |  | Job, Path planning: exact repeats are skipped; Remove overlapping lines leaves out the parts of a stroke that run along an earlier one of the same pen (0.1 mm) |
 | Simplify paths (tolerance, before/after node count) | HAVE |  | Prepare clean-up step Simplify with the point count in Result; Job, Path planning: Simplify (mm) for the plot itself, with the points in the plan |
 | Smooth / fit arcs | HAVE |  | Line tools: Smooth (Chaikin) and Fit arcs (runs of points within a tolerance of a circle become that arc; corners stay) |
@@ -222,8 +225,8 @@ niche.
 | Offset (in, out, both; round/miter/bevel corners) | HAVE | | Arrange, Offset: outward or inward, round, sharp or cut corners; lines get a band (shapely; python3-shapely on robotlab) |
 | Booleans: union/weld, subtract, intersect | HAVE | | Arrange: union, subtract (others from the first), intersect; the result replaces the selection as a new library drawing |
 | Cut shapes with a closed shape | HAVE |  | Line tools: the first object selected cuts the others (keep outside or keep inside); the cutter stays |
-| Fillet corners | HAVE |  | Line tools, Round the corners: closed shapes, convex and concave corners, a set radius |
-| Convex outline around a selection | HAVE |  | Line tools, Convex outline around: added as a new object |
+| Fillet corners | HAVE |  | Path, Line tools, Round the corners: closed shapes, convex and concave corners, a set radius |
+| Convex outline around a selection | HAVE |  | Path, Line tools, Convex outline around: added as a new object |
 | Measure tool (length, size, area, path count) | HAVE |  | Arrange: path count and line length of the selection (from the drawings' geometry), size on the bed label and in the status line; no area |
 | Clip art library (save selection, drag back in) | HAVE |  | right-click: Save the selection as clip art (a library drawing of kind clip art); library drawings can be dragged onto the bed |
 | Tabs, slot resizing, path-from-cut, tangent circles | SKIP | | cutting concepts or niche geometry |
@@ -253,7 +256,7 @@ niche.
 | Skip empty gaps in fills without lifting | HAVE |  | Filled shapes, Bridge: fill lines whose ends are this close are drawn as one stroke, pen down across |
 | Angle increment per pass | HAVE |  | Filled shapes (hatch): Passes and Turn per pass |
 | Several settings on one geometry (outline + hatch, sub-layers) | HAVE |  | Layers, Filled shapes: Own layer puts a colour's hatch or contour fill on a layer of its own, so the fill and the outline take different pens even in the same colour |
-| Pen-width compensation (offset outlines by half the line width) | HAVE |  | Line tools, Allow for the pen width: closed shapes move inward by half the width (the layer's pen width offered) |
+| Pen-width compensation (offset outlines by half the line width) | HAVE |  | Path, Line tools, Allow for the pen width: closed shapes move inward by half the width (the layer's pen width offered) |
 | Dashed / dotted line mode | HAVE |  | Layers, More: Dash drawn / Dash gap (a short dash and a long gap make dots) |
 | Dwell at stroke start/end | HAVE |  | Layers, More: Dwell (ms), counted in the time; a layer with a pen takes the pen's dwell unless it sets its own |
 | Overdraw closed shapes past the start point | HAVE |  | Layers, More: Overdraw (mm) |
@@ -319,7 +322,7 @@ niche.
 | Plotter connection doctor (list ports, test `V`, likely causes) | HAVE |  | Machine, Diagnose the connection: serial ports with USB ids, the board (or its bootloader mode), the server user's groups and port access, the board's answer, and what to do |
 | Port auto-detect / picker | HAVE |  | Machine, Plotter: found by its USB id, or a port picked from the list (kept on the server, used by every job) |
 | Position record: at start / moved / unknown | HAVE | | |
-| Jog pad: step size, speed, pen up, clamped to travel | HAVE | | Machine tab, Control: a machine job (`jog.py`); steps 0.1/1/10/50 mm, speed, arrow keys on the bed; clamped to the travel minus its edge margin |
+| Jog pad: step size, speed, pen up, clamped to travel | HAVE | | Control tab: a machine job (`jog.py`); steps 0.1/1/10/50 mm, speed, arrow keys on the bed; clamped to the travel minus its edge margin |
 | Go to X/Y | HAVE | |  |
 | Click on the bed to move there (arms for a few seconds) | HAVE | | Click to go arms one click (no timeout) |
 | Move to selection anchor (check placement) | HAVE |  | Machine control: To the selection moves pen up to the selection's reference point (Arrange's 9-point anchor) |
@@ -333,7 +336,7 @@ niche.
 | Macros: saved command sequences as buttons | HAVE |  | Machine control, Macros: GOTO, MOVE, PEN, HOME, TICK, SPEED, WAIT lines run as tracked moves, so the position stays known |
 | Raw EBB command line in the console | HAVE |  | Machine control, EBB command line: one command at a time; bootloader, reset, flash, configuration and servo setup refused; any command that can move or free the carriage makes the position unknown |
 | Live writing (font or own handwriting), new page, finish | HAVE | | `live.js`, `live_plot.py` |
-| Live writing: pressure field | HAVE |  | Tools, Live writing: Pressure 0-0.9 (empty = the configured pen-down) |
+| Live writing: pressure field | HAVE |  | Write tab: Pressure 0-0.9 (empty = the configured pen-down) |
 | Live writing: pause and return | HAVE |  | Live writing: Pause (lines typed meanwhile wait for Continue) and Return to S (the next line carries on where the writing was) |
 | Replot a saved live session | HAVE |  | Live writing: Save the page as a drawing, into the Library where it was written, to plot again from the bed |
 | Writing pad (point or stroke mode, pad size, palm rejection), sport mode | HAVE | | `pad.js`, `mirror.py` |
@@ -350,10 +353,10 @@ niche.
 |---|---|---|---|
 | Settings page for the machine (travel, axis signs, steps/mm, servo, margins, paper) | HAVE |  | Machine, Machine settings: travel, axis directions (asks first), speed limits and defaults; paper and margin; steps/mm through calibration; servo only by the pen height test, by design |
 | Units mm / inch for display | HAVE |  | View, Show lengths in mm or inches (status line, selection, measure, plan size); typed values take either |
-| Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Machine tab: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
-| Paper edge calibration in the UI | HAVE |  | Machine, Paper, Measure the sheet with the pen: jog to the top-left and bottom-right corners |
+| Calibration wizard: plot a known length, type the measured one, store steps/mm | HAVE | | Control tab, Calibrate steps/mm: draw ticks a test length apart, measure, save; refused when more than 20% off; machine.json backed up first |
+| Paper edge calibration in the UI | HAVE |  | Control tab, Measure the paper: jog to the top-left and bottom-right corners |
 | Squareness and backlash test patterns | HAVE |  | Tools: Squareness sheet (square with diagonals), Backlash sheet (lines drawn towards each other) |
-| Lost-steps test in the UI | HAVE |  | Tools: Lost-steps sheet and Lost-steps result (the drift turned into steps per metre) |
+| Lost-steps test in the UI | HAVE |  | Pen tests: Lost-steps sheet and Lost-steps result (the drift turned into steps per metre) |
 | Speed and acceleration limits shown and editable within ceilings | HAVE |  | Machine settings: drawing and pen-up limits and defaults within the ceilings. Drawing: soft cap 100 mm/s (over it the plan warns, still starts), hard cap 200. Acceleration and corner slowdown are fixed in `tools/motion.py` (400 mm/s^2, junction deviation 0.02 mm), not settings |
 | Motion smoothing: slow into corners and U-turns, ramp back up | HAVE |  | `tools/motion.py`: every path and travel starts and ends at rest, corner speed from the turn angle (a reversal stops), speed changes at most 400 mm/s^2, ramps sent as 25 ms legs; the time estimate includes it. Values are guesses until tried on the machine |
 | Pen-height check button on the board | HAVE |  | a push button between B0 and GND (the free column next to the servo plug); stock firmware latches it as a PRG press (QB). Between jobs the server polls it: first press locks the motors and lowers the pen to pen_down, second press raises it and releases them; up by itself after 2 min. Presses during a job are dropped, no real job starts while the pen is down (`hardware.PenButton`). Not yet tried on the machine |
@@ -361,7 +364,7 @@ niche.
 | Simulator time scale and estimate tuning | HAVE |  | Job, Simulate at: 1x to 400x (per browser); estimates are scaled by past real runs |
 | Backup / restore all settings (machine, pens, macros, positions) as one file | HAVE |  | Machine, Backup: one JSON of machine settings, pens, colour-to-pen memory and saved projects; restore checks the machine values (steps/mm, travel, axes, servo range) and keeps each replaced file. No macros or saved positions exist yet |
 | Lifetime stats (jobs, pen-down metres; pen wear) | HAVE |  | Machine, Lifetime: real jobs, hours, strokes, metres of line per pen (from each job's plan, by the share of strokes per layer) |
-| Firmware version shown | HAVE | | Machine tab, Plotter: version, port and time of the last answer; Check the plotter asks again (nothing moves) |
+| Firmware version shown | HAVE | | Machine dialog, Connection: version, port and time of the last answer; Check the plotter asks again (nothing moves) |
 | EBB firmware upgrade 2.0.1 -> stock 3.x | HAVE | | 3.1.7 flashed 2026-11-19 with `BL` + mphidflash on robotlab, verified; re-check pen servo values and a short plot |
 | Pen positions put back after every EBB power-on or reset (3.x starts the servo at its own pen-up, 22565, past the top of this lift) | HAVE |  | `hardware.ServoGuard`: checked on the machine 2026-11-20 (power-cycle with the pen watched) |
 | Driver uses `ES`, `QS`, `QM`, `HM` when `V` reports them, timed waits otherwise | HAVE |  | `plot_svg.Plotter`: firmware 3.x found from `V`; Stop sends `ES` and reads the position back with `QS` (checked on the machine 2026-11-20, Stop mid-stroke); 2.0.1 uses timed waits. `QM` and `HM` not needed: the timed model paces, the step counters give the truth after a stop |
@@ -383,9 +386,9 @@ niche.
 | Pressure test sheet | HAVE | | |
 | Record results into the pen profile | HAVE | | |
 | Pen height test (toggle, sweep) | HAVE | | |
-| Two-parameter grid test (e.g. speed x pressure) with value labels | HAVE |  | Tools, Speed x pressure grid: one cell per speed and pressure (patch, line, circle) at its own settings (data-speed, data-pressure), labelled, one run |
+| Two-parameter grid test (e.g. speed x pressure) with value labels | HAVE |  | Pen tests, Speed x pressure grid: one cell per speed and pressure (patch, line, circle) at its own settings (data-speed, data-pressure), labelled, one run |
 | Place a test sheet anywhere on the paper | HAVE |  | placed like any drawing; with drawings already on the bed it goes into the first free canvas corner |
-| Tone ramp test (hatch spacing -> perceived grey) | HAVE |  | Tools, Tone ramp: patches hatched 0.3 to 3 mm apart, labelled |
+| Tone ramp test (hatch spacing -> perceived grey) | HAVE |  | Pen tests, Tone ramp: patches hatched 0.3 to 3 mm apart, labelled |
 | Test presets | HAVE |  | Tools: each test's settings saved under a name and loaded back (per browser) |
 
 ## 15. Images and tracing
@@ -431,7 +434,7 @@ niche.
 | Click-to-place text object on the bed, edit in place | HAVE |  | Text on the bed toolbar: click, type, placed; double-click placed text to edit it (the drawing changes in place, every copy follows) |
 | Letter spacing, line spacing, alignment (left/centre/right, top/middle/bottom) | HAVE |  | Text: letter spacing, left/centre/right and a top/middle/bottom anchor at the click; line spacing 3x the letter height |
 | Weld overlapping letters (outline fonts) | HAVE |  | Prepare clean-up step Weld overlapping outlines (letter counters stay open) |
-| Text on a path | HAVE |  | Line tools, Text along a path: single-line letters along the first selected object's longest line |
+| Text on a path | HAVE |  | Path, Line tools, Text along a path: single-line letters along the first selected object's longest line |
 | Fit text to a width (squeeze) | HAVE |  | Text: Fit to width squeezes or stretches to an exact width |
 | Font browser with favourites and search | HAVE |  | every font field has Browse: search the server's fonts, star favourites (listed first) |
 | Own handwriting as a text font outside live writing | SKIP |  | handwriting capture and synthesis moved to the separate handwriting-synth project (2026-11-19) |
@@ -455,7 +458,7 @@ niche.
 | Feature | Status | Pri | Notes |
 |---|---|---|---|
 | UI preferences in local storage (theme, tab, console) | HAVE | | |
-| Preferences page (units, grid, nudge, snapping, defaults) | HAVE |  | Edit, Preferences: units, start page, grid, nudge, snapping, guides, simple mode, keys |
+| Preferences page (units, grid, nudge, snapping, defaults) | HAVE |  | Edit, Preferences: units, start page, grid, nudge, snapping, guides, notifications, keys |
 | Shortcuts: `?` `P` Space `Shift+S` `+ - 0` arrows Esc | HAVE | | |
 | Editing shortcuts (undo, redo, copy, paste, duplicate, delete, select all, rotate, flip, group) | HAVE |  | Ctrl+Z/Y/A/D/C/X/V, Delete, Esc, R/Shift+R turn, H/V mirror, Ctrl+G/Ctrl+Shift+G group |
 | Shortcut list in the help dialog kept in sync | HAVE |  | the help dialog's list is built from the same table as the tooltips |

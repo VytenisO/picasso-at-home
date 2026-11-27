@@ -627,3 +627,18 @@ dialog .dlg form { padding: 0; }
 .layer-head .eye { min-width: 24px; font-size: 13px; }
 .layer-grid { grid-template-columns: 1fr 1fr 64px; }
 .layer-foot .icon { min-height: 24px; padding: 0 6px; }
+/* property rows from schema forms: label left, value right; help in the tooltip */
+label.field.prop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, 46%); gap: 8px; align-items: center; margin: 0 0 6px; }
+label.field.prop > span:first-child { margin: 0; font-size: 13px; color: var(--text); }
+label.field.slider > span:first-child { font-size: 13px; color: var(--text); }
+.slider-row .with-unit { min-width: 0; }
+.grow { flex: 1; }
+.mbtn-list.flip-up { top: auto; bottom: calc(100% + 4px); right: 0; left: auto; }
+.mbtn-top.big { min-height: 44px; }
+a.menu-link[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+.step.method > select { margin-bottom: 8px; }
+@media (max-width: 900px) {
+  .strip { display: none; }
+  .mobile-tabs button { font-size: 12px; padding: 0 2px; min-width: 0; }
+  .workspace .toolbar { display: flex; }
+}

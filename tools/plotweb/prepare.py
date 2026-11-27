@@ -163,9 +163,9 @@ THRESHOLD = {"key": "threshold", "label": "Dark cutoff", "type": "number", "defa
              "step": 1, "integer": True, "help": "Pixels darker than this count as ink."}
 BLUR = {"key": "blur", "label": "Blur", "type": "number", "default": 1.0, "min": 0, "max": 10, "step": 0.5,
         "unit": "px", "help": "Smooths noise before tracing."}
-INKS = {"key": "inks", "label": "Pens (ink layers)", "type": "number", "default": 1, "min": 1, "max": 4, "step": 1,
+INKS = {"key": "inks", "label": "Pens", "type": "number", "default": 1, "min": 1, "max": 4, "step": 1,
         "integer": True, "help": "More pens: darker tones in separate layers, one pen swap each."}
-ONE_PEN = {"key": "single_pen", "label": "Keep the tones, plot with one pen", "type": "bool", "default": False}
+ONE_PEN = {"key": "single_pen", "label": "One pen for all tones", "type": "bool", "default": False}
 DENSITY = {"key": "density", "label": "Density", "type": "number", "default": 40, "min": 1, "max": 100, "step": 1,
            "integer": True}
 LEVELS = {"key": "levels", "label": "Tone levels", "type": "number", "default": 0, "min": 0, "max": 6, "step": 1,
@@ -460,7 +460,7 @@ STEPS = {s.id: s for s in [
                                                        DETAIL],
          _raster("contour", ("levels", "simplify_px", "min_len_px", "width_px")),
          "Outlines of the dark shapes. Tone levels nest outlines for shading.", "Trace an image"),
-    Step("technical", "Technical drawing (centre lines, pens by weight, shading as fill)", "method", ["image"], [
+    Step("technical", "Technical drawing", "method", ["image"], [
         WIDTH,
         {"key": "threshold", "label": "Dark cutoff", "type": "number", "default": 170, "min": 20, "max": 250,
          "step": 1, "integer": True, "slider": True,
@@ -472,7 +472,7 @@ STEPS = {s.id: s for s in [
          "integer": True, "help": "Lines are sorted by drawn width into this many pens, thinnest first."},
         {"key": "smooth_px", "label": "Simplify", "type": "number", "default": 1.0, "min": 0.3, "max": 4, "step": 0.1,
          "unit": "px", "help": "How far a stroke may stray from the traced centre line. Higher: fewer points."},
-        {"key": "fills", "label": "Find shading and solid areas (fills)", "type": "bool", "default": True,
+        {"key": "fills", "label": "Find fills", "type": "bool", "default": True,
          "section": "Shading",
          "help": "Wide ink that a pen line cannot draw becomes a filled shape for the hatch fill."},
         {"key": "max_pen", "label": "Widest pen line", "type": "number", "default": 1.0, "min": 0.2, "max": 5,
@@ -497,7 +497,7 @@ STEPS = {s.id: s for s in [
          "width, at full resolution. Shaded and solid areas become fills. Slow on large scans: press Trace when "
          "the settings look right in the Shading view.",
          "Trace an image", slow=True, max_px=TECH_MAX_PX, live=TECH_LIVE),
-    Step("lineart", "Line art (centre lines)", "method", ["image"], [WIDTH, THRESHOLD, INKS, BLUR, SMOOTH, SPECKS],
+    Step("lineart", "Line art", "method", ["image"], [WIDTH, THRESHOLD, INKS, BLUR, SMOOTH, SPECKS],
          _raster("lineart", ("simplify_px", "min_len_px")),
          "One stroke down the middle of each drawn line, instead of two outlines. For drawings and sketches.",
          "Trace an image"),
@@ -517,7 +517,7 @@ STEPS = {s.id: s for s in [
          _raster("stipple", ("density", "pattern")),
          "One pen dot per cell where the picture is dark enough: scattered or in a regular pattern. Many pen lifts: "
          "slow but fine for small pictures.", "Trace an image"),
-    Step("sketch", "Photo of a drawing (centre lines)", "method", ["image"], [WIDTH,
+    Step("sketch", "Photo of a drawing", "method", ["image"], [WIDTH,
         {"key": "sensitivity", "label": "Sensitivity", "type": "number", "default": 18, "min": 4, "max": 80, "step": 1,
          "integer": True, "slider": True, "help": "How much darker than its surroundings a line must be. Lower picks up "
                                                   "fainter lines and more paper grain."},
@@ -541,7 +541,7 @@ STEPS = {s.id: s for s in [
          "help": "Only for text the PDF keeps as text; most PDFs carry their letters as outlines."},
     ], _pdf_page, "The page's lines and shapes in vectors (pdftocairo). Filled shapes can be hatched in Fill; "
                   "pictures on the page are left out.", "Vector"),
-    Step("mesh", "Wireframe, hidden lines removed", "method", ["mesh"], [
+    Step("mesh", "Wireframe", "method", ["mesh"], [
         {"key": "yaw", "label": "View yaw", "type": "number", "default": 35, "min": -180, "max": 180, "unit": "deg",
          "slider": True},
         {"key": "pitch", "label": "View pitch", "type": "number", "default": 25, "min": -89, "max": 89, "unit": "deg",
@@ -571,7 +571,7 @@ STEPS = {s.id: s for s in [
         {"key": "align", "label": "Align", "type": "select", "default": "left",
          "options": [["left", "Left"], ["center", "Centre"], ["right", "Right"]]},
         {"key": "width", "label": "Wrap at", "type": "number", "default": 0, "min": 0, "max": 400, "unit": "mm",
-         "help": "0 = the canvas width."},
+         "help": "0 = the drawable width."},
     ], _text_single, "A plotter font: one stroke per line of each letter, so text is quick and crisp.", "Text"),
     Step("text_art", "Text art", "method", [], [
         {"key": "text", "label": "Text", "type": "text", "default": "HELLO", "maxlength": 60},

@@ -65,11 +65,16 @@ export function fmtTime(s) {
 }
 export const mm = (v, d = 1) => (v === null || v === undefined || !isFinite(v)) ? '-' : Number(v).toFixed(d);
 
-// Build a form from a params schema (converters and tools share it). pens: {name: profile}.
+// Build a form from a params schema (converters and tools share it). pens: {name: profile}. Each field is one row,
+// label left and value right; its help and allowed range are the row's tooltip, its unit sits inside the field.
+const tipOf = (p) => [p.help, p.type === 'number' && p.min !== undefined && p.max !== undefined ? `${p.min} to ${p.max}${p.unit ? ' ' + p.unit : ''}` : '']
+  .filter(Boolean).join('. ') || undefined;
+const withUnit = (input, unit) => unit ? el('span', { class: 'with-unit' }, input, el('span', { class: 'unit', text: unit })) : input;
 export function schemaForm(form, params, pens, values = {}) {
   form.replaceChildren();
   for (const p of params) {
     const id = `${form.id}-${p.key}`;
+    const tip = tipOf(p);
     let input;
     if (p.section) form.append(el('h3', { class: 'form-section', text: p.section }));
     if (p.type === 'hidden') {          // carried with the form, edited elsewhere (e.g. by clicking the preview)
@@ -81,14 +86,13 @@ export function schemaForm(form, params, pens, values = {}) {
       input.value = values[p.key] ?? p.default ?? '';
     } else if (p.type === 'pen') {
       input = el('select', { id, name: p.key, required: true },
-        el('option', { value: '', text: 'Choose the pen type...' }),
+        el('option', { value: '', text: 'Choose...' }),
         Object.entries(pens || {}).map(([name, pr]) => el('option', { value: name, text: pr.colour ? `${name} (${pr.colour})` : name })));
       input.value = values[p.key] ?? '';
     } else if (p.type === 'bool') {
       input = el('input', { id, name: p.key, type: 'checkbox' });
       input.checked = !!(values[p.key] ?? p.default);
-      form.append(el('label', { class: 'check' }, input, ' ', p.label));
-      if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
+      form.append(el('label', { class: 'check', title: tip }, input, ' ', p.label));
       continue;
     } else if (p.type === 'number') {
       input = el('input', { id, name: p.key, type: 'number', min: p.min, max: p.max, step: p.step || 'any',
@@ -105,31 +109,27 @@ export function schemaForm(form, params, pens, values = {}) {
         range.onchange = () => num.dispatchEvent(new Event('change', { bubbles: true }));
         num.addEventListener('input', () => { range.value = num.value; });
         num.classList.add('slider-num');
-        const unit = p.unit ? ` (${p.unit})` : '';
-        form.append(el('label', { class: 'field slider', for: id }, el('span', { text: p.label + unit }),
-          el('div', { class: 'slider-row' }, range, num)));
-        if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
+        form.append(el('label', { class: 'field slider', for: id, title: tip }, el('span', { text: p.label }),
+          el('div', { class: 'slider-row' }, range, withUnit(num, p.unit))));
         continue;
       }
     } else if (p.type === 'textarea') {
       input = el('textarea', { id, name: p.key, rows: 5, maxlength: p.maxlength || 4000, placeholder: p.placeholder });
       input.value = values[p.key] ?? p.default ?? '';
+      form.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }), input));
+      continue;
     } else {
       input = el('input', { id, name: p.key, maxlength: p.maxlength || 80, placeholder: p.placeholder,
         list: p.list === 'fonts' ? 'fontList' : undefined });
       input.value = values[p.key] ?? p.default ?? '';
       if (p.list === 'fonts') {           // a font field gets the font browser next to it
         const inp = input;
-        form.append(el('label', { class: 'field', for: id }, el('span', { text: p.label }),
-          el('div', { class: 'row' }, inp, el('button', { type: 'button', class: 'icon', text: 'Browse', onclick: () => openFontBrowser(inp) }))));
-        if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
+        form.append(el('label', { class: 'field', for: id, title: tip }, el('span', { text: p.label }),
+          el('div', { class: 'row nowrap' }, inp, el('button', { type: 'button', class: 'icon', text: 'Browse', onclick: () => openFontBrowser(inp) }))));
         continue;
       }
     }
-    const unit = p.unit ? ` (${p.unit})` : '';
-    const range = p.type === 'number' && p.min !== undefined ? ` ${p.min}-${p.max}` : '';
-    form.append(el('label', { class: 'field', for: id }, el('span', { text: p.label + unit + (range ? ',' + range : '') }), input));
-    if (p.help) form.append(el('p', { class: 'hint', text: p.help }));
+    form.append(el('label', { class: 'field prop', for: id, title: tip }, el('span', { text: p.label }), withUnit(input, p.unit)));
   }
 }
 

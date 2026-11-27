@@ -600,7 +600,7 @@ function openMenu(clientX, clientY, mm) {
       state.sel.length === 1 && !!(state.files || []).find((f) => f.id === (D.selected()[0] || {}).file && f.shape_params)),
     item('Start closed shapes here', () => setSeam(mm), state.sel.length === 1),
     item('Tile across pages...', async () => {
-      const t = await askText('Tile across pages', 'For a drawing larger than the canvas: one sheet per tile. Overlap between tiles (mm):', '10', 'Tile');
+      const t = await askText('Tile across pages', 'For a drawing larger than the drawable area: one sheet per tile. Overlap between tiles (mm):', '10', 'Tile');
       if (t !== null && Number(t) >= 0) D.tileSel(Number(t));
     }, state.sel.length === 1),
     item('Move to another page...', async () => {
@@ -715,7 +715,7 @@ function overlays(px) {
     const label = (one
       ? `${G.fmtLen(one.w, false)} x ${G.fmtLen(one.h)}${one.rot ? `, ${G.r2(one.rot)} deg` : ''}`
       : `${sel.length} objects, ${G.fmtLen(b.w, false)} x ${G.fmtLen(b.h)}`) + (sel.some((o) => o.locked) ? '  (locked)' : '');
-    ctx.fillText(label + (bad ? '  outside the canvas' : ''), b.x0, b.y0 - (one && !one.rot ? 5 : 5 + ROT_PX) * px);
+    ctx.fillText(label + (bad ? '  outside the drawable area' : ''), b.x0, b.y0 - (one && !one.rot ? 5 : 5 + ROT_PX) * px);
   }
   if (drag && drag.mode === 'marquee' && drag.rect) {
     const r = drag.rect;

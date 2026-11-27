@@ -1,4 +1,4 @@
-// The menu bar (File, Edit, Arrange, Tools, Machine, Help), Preferences, simple mode, rebound keys and "What's
+// The menu bar (File, Edit, View, Arrange, Tools, Machine, Help), Preferences, rebound keys and "What's
 // this?" help. Menu items press the controls that already exist, so a command behaves the same from either place
 // (including being disabled while a job runs).
 import { state, prefs } from './store.js';
